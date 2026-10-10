@@ -10,7 +10,8 @@
   import TokenText, { type Tok } from '../../ui/TokenText.svelte';
   import { engine } from '../../lib/audio/engine';
   import { signal } from '../../lib/state/signal.svelte';
-  import { currentLevel, playCw, receiveSpeeds, saveSession } from '../../lib/train/session';
+  import { currentLevel, maybeTaper, playCw, receiveSpeeds, saveSession } from '../../lib/train/session';
+  import { route } from '../../lib/state/router.svelte';
   import { items } from '../../lib/train/generate';
   import { compareCopy, recoveryLength, type CopyResult } from '../../lib/train/scoring';
   import { align, textTokens } from '../../lib/util/text';
@@ -22,7 +23,9 @@
   const rng = mulberry32(randomSeed());
   signal.receiving = true;
 
-  let length = $state<'45' | '90' | '180'>('90');
+  // /practice/ifr/endurance starts with the 3-minute stream.
+  let length = $state<'45' | '90' | '180'>(route.path[2] === 'endurance' ? '180' : '90');
+  let tapered = $state<number | null>(null);
   let stage = $state<'ready' | 'playing' | 'done'>('ready');
   let typed = $state<string[]>([]);
   let text = '';
@@ -77,6 +80,7 @@
       wpm: receiveSpeeds().charWpm,
       recovery: recoveryLength(result),
     });
+    tapered = maybeTaper(result.accuracy);
   }
 
   onDestroy(() => {
@@ -114,6 +118,7 @@
       <div><dt class="label">Miss runs</dt><dd class="num big">{result.missRuns.length}</dd></div>
     </dl>
     <p class="muted">Recovery is the average run of characters missed after the first miss. Lower is better.</p>
+    {#if tapered}<p>Effective speed raised to {tapered} wpm.</p>{/if}
     <TokenText tokens={marked} size="m" label="Sent text, misses underlined" />
   {/if}
 

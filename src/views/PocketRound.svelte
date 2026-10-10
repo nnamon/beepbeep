@@ -40,7 +40,13 @@
   let typed = $state<string[]>([]);
   let learnItem = $state('');
   let last = $state<{ item: string; got: string; ok: boolean; rows: RhythmRow[] } | null>(null);
-  let log = $state<{ item: string; got: string; ok: boolean; ms: number }[]>([]);
+  let log = $state<{ item: string; got: string; ok: boolean; ms: number; replays: number }[]>([]);
+  let replays = 0;
+  // LICW learn: tap each time the new character plays.
+  let learnTaps = $state(0);
+  let learnPlays = $state(0);
+  let tapOpen = false;
+  let tapped = false;
   let pool: string[] = [];
   let map = new Map<string, ItemStat>();
   let recent: string[] = [];
@@ -89,13 +95,21 @@
 
   async function learn(fresh: string[]) {
     phase = 'learn';
+    learnTaps = 0;
+    learnPlays = 0;
+    const licw = settings.track === 'licw';
     for (const c of fresh) {
-      learnItem = settings.track === 'licw' ? '' : c;
-      if (settings.track !== 'licw') await say(c);
-      for (let k = 0; k < 3; k++) {
+      learnItem = licw ? '' : c;
+      if (!licw) await say(c);
+      for (let k = 0; k < (licw ? 5 : 3); k++) {
+        tapOpen = true;
+        tapped = false;
         const pb = await playCw(c, { plain: true });
         await pb.done;
-        await wait(450);
+        // Uneven gaps in LICW learn, so the tap follows the sound, not a beat.
+        await wait(licw ? 600 + rng() * 1400 : 450);
+        tapOpen = false;
+        if (licw) learnPlays++;
       }
       learnItem = c;
       if (settings.track === 'licw') await say(c);
@@ -112,12 +126,24 @@
     return it;
   }
 
+  function learnTap() {
+    if (!tapOpen || tapped) return;
+    tapped = true;
+    learnTaps++;
+  }
+
   async function next() {
     if (n >= ROUND) return wrap();
     item = pickItem();
     typed = [];
     firstKey = 0;
+    replays = 0;
     phase = 'quiz';
+    await play();
+  }
+
+  async function replay() {
+    replays++;
     await play();
   }
 
@@ -144,12 +170,13 @@
   async function submit() {
     const got = typed.join('');
     const ok = textTokens(got).join('') === textTokens(item).join('');
-    const ms = firstKey || 2000;
     const slow = single ? 1500 : 2500 + 300 * item.length;
+    // An answer after a replay counts as slow for scheduling.
+    const ms = replays ? Math.max(firstKey, slow + 1) : firstKey || 2000;
     if (stage !== 'callsigns' && stage !== 'phrases') {
       await answer(map, `${prefix}${item}`, ok, ms, slow, !ok && single ? { want: item, got } : undefined);
     }
-    log.push({ item, got, ok, ms });
+    log.push({ item, got, ok, ms: firstKey || 2000, replays });
     n++;
     const rows: RhythmRow[] = [];
     if (!ok && single && got) {
@@ -199,8 +226,18 @@
   });
   const right = $derived(log.filter((l) => l.ok).length);
   const avgMs = $derived(log.length ? log.reduce((a, l) => a + l.ms, 0) / log.length : 0);
+  const replayed = $derived(log.filter((l) => l.replays > 0));
   const title = $derived(stage.charAt(0).toUpperCase() + stage.slice(1));
 </script>
+
+<svelte:window
+  onkeydown={(e) => {
+    if (phase === 'learn' && e.code === 'Space' && !e.repeat) {
+      e.preventDefault();
+      learnTap();
+    }
+  }}
+/>
 
 <section class="round">
   <div class="top">
@@ -221,13 +258,21 @@
   {:else if phase === 'learn'}
     <div class="center">
       <span class="label">New</span>
-      {#if learnItem}<TokenText tokens={[{ t: learnItem }]} size="xl" />{:else}<p class="big muted">Listen</p>{/if}
+      {#if learnItem}<TokenText tokens={[{ t: learnItem }]} size="xl" />{:else if settings.track === 'licw'}
+        <button type="button" class="play" onclick={learnTap} aria-label="Tap when it plays"><Icon name="key" size={40} /></button>
+        <span class="muted">Tap when it plays</span>
+        <span class="num muted">{learnTaps} of {learnPlays}</span>
+      {:else}<p class="big muted">Listen</p>{/if}
     </div>
   {:else if phase === 'wrap'}
     <dl class="facts">
       <div><dt class="label">Right</dt><dd class="num big">{right} of {log.length}</dd></div>
       <div><dt class="label">Average answer</dt><dd class="num big">{(avgMs / 1000).toFixed(1)} s</dd></div>
+      <div><dt class="label">Replayed</dt><dd class="num big">{replayed.length}</dd></div>
     </dl>
+    {#if replayed.length}
+      <p class="muted">Replayed: <span class="mono">{[...new Set(replayed.map((l) => l.item))].join(' ')}</span></p>
+    {/if}
     {#if pairs.length}
       <h3>Mixed up</h3>
       <ul class="pairs">
@@ -242,7 +287,7 @@
     </div>
   {:else}
     <div class="center">
-      <button type="button" class="play" onclick={play} aria-label="Play again" disabled={phase !== 'quiz'}>
+      <button type="button" class="play" onclick={replay} aria-label="Play again" disabled={phase !== 'quiz'}>
         <Icon name="play" size={40} />
       </button>
       {#if phase === 'reveal' && last}
@@ -351,7 +396,8 @@
 
   .facts {
     display: flex;
-    gap: var(--s-5);
+    flex-wrap: wrap;
+    gap: var(--s-2) var(--s-4);
     margin: var(--s-2) 0 0;
   }
 

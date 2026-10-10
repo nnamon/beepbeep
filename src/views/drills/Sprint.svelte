@@ -9,6 +9,7 @@
   import TokenText from '../../ui/TokenText.svelte';
   import { engine } from '../../lib/audio/engine';
   import { signal } from '../../lib/state/signal.svelte';
+  import { strict } from '../../lib/state/settings.svelte';
   import { playCw, receiveSpeeds, saveSession } from '../../lib/train/session';
   import { items } from '../../lib/train/generate';
   import { textTokens } from '../../lib/util/text';
@@ -61,7 +62,9 @@
     log.push({ item, got, wpm, ok });
     n++;
     wpm = Math.max(5, wpm + (ok ? 2 : -2));
-    stage = 'shown';
+    // Strict mode holds answers until the end of the round.
+    if (strict()) void next();
+    else stage = 'shown';
   }
 
   function finish() {

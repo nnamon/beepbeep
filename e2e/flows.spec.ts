@@ -4,22 +4,36 @@ import { patternOf, tokenize } from '../src/lib/morse/code';
 
 test.skip(({ browserName }) => browserName !== 'chromium');
 
-/** Keys text on the Space-bar straight key at the given speed. */
+/**
+ * Keys text on the Space-bar straight key at the given speed. Events are timed
+ * inside the page against one start time, so test-runner latency under load
+ * does not stretch the gaps.
+ */
 async function key(page: Page, text: string, wpm = 18) {
   const dit = 1200 / wpm;
-  for (const t of tokenize(text)) {
-    if (t === ' ') {
-      await page.waitForTimeout(dit * 4);
+  const events: [number, boolean][] = [];
+  let t = 0;
+  for (const tok of tokenize(text)) {
+    if (tok === ' ') {
+      t += dit * 4;
       continue;
     }
-    for (const el of patternOf(t)!) {
-      await page.keyboard.down('Space');
-      await page.waitForTimeout(el === '.' ? dit : dit * 3);
-      await page.keyboard.up('Space');
-      await page.waitForTimeout(dit);
+    for (const el of patternOf(tok)!) {
+      events.push([t, true]);
+      t += el === '.' ? dit : dit * 3;
+      events.push([t, false]);
+      t += dit;
     }
-    await page.waitForTimeout(dit * 2);
+    t += dit * 2;
   }
+  await page.evaluate(async (evs) => {
+    const t0 = performance.now();
+    for (const [at, down] of evs) {
+      const wait = t0 + at - performance.now();
+      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+      document.body.dispatchEvent(new KeyboardEvent(down ? 'keydown' : 'keyup', { code: 'Space', key: ' ', bubbles: true }));
+    }
+  }, events);
 }
 
 const SETTINGS = { input: 'straight', sendWpm: 18, voice: 'off', overTimeout: 2, theme: 'dark', you: { call: 'K1ABC', name: 'TOM', qth: 'BOSTON', state: 'MA', skcc: '' } };

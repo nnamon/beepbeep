@@ -52,6 +52,9 @@
     dataNote = 'Progress deleted.';
   }
 
+  // Desktop Chrome has navigator.vibrate but no motor; offer it on touch devices only.
+  const canVibrate =
+    typeof navigator !== 'undefined' && 'vibrate' in navigator && window.matchMedia('(pointer: coarse)').matches;
   const tone = () => void engine.playText('VVV', { charWpm: 20, pitch: settings.pitch });
 </script>
 
@@ -93,6 +96,10 @@
       label="Use lesson speeds"
       detail="LICW track: 12/8 in BC1, 12/10 in BC2."
     />
+    <p class="muted small">
+      Classic Koch order: K M R S U A P T L O W I . N J E F 0 Y , V G 5 / Q 9 Z H 3 8 B ? 4 2 7 C 1 D 6 X, the sequence
+      most Koch trainers use. LICW's Method Guide traces it to Otto Lipmann (1919).
+    </p>
   </div>
 
   <div class="group">
@@ -108,6 +115,11 @@
     {#if settings.effectiveWpm < settings.charWpm}
       <p class="muted small">Farnsworth spacing is on. LICW treats extra spacing as temporary; raise effective speed toward character speed over time.</p>
     {/if}
+    <Toggle
+      bind:checked={settings.autoTaper}
+      label="Raise effective speed automatically"
+      detail="+1 wpm after a receive drill at 85% or better, up to character speed. Always on in LICW strict mode."
+    />
   </div>
 
   <div class="group">
@@ -117,15 +129,18 @@
       <Slider label="Volume" bind:value={settings.volume} min={0} max={1} step={0.05} format={(v) => `${Math.round(v * 100)}%`} onchange={(v) => engine.setVolume(v)} />
     </div>
     <div><Button onclick={tone}>Play a test tone</Button></div>
-    <Segmented
-      label="Spoken answers"
-      bind:value={settings.voice}
-      options={[
-        { value: 'system', label: 'Device voice' },
-        { value: 'recorded', label: 'My recordings' },
-        { value: 'off', label: 'Off' },
-      ]}
-    />
+    <div class="field">
+      <span class="label">Spoken answers</span>
+      <Segmented
+        label="Spoken answers"
+        bind:value={settings.voice}
+        options={[
+          { value: 'system', label: 'Device voice' },
+          { value: 'recorded', label: 'My recordings' },
+          { value: 'off', label: 'Off' },
+        ]}
+      />
+    </div>
     {#if settings.voice === 'system' && voiceList.length}
       <label class="select">
         <span class="label">Voice</span>
@@ -138,6 +153,9 @@
     {#if settings.voice === 'recorded'}
       <Button onclick={() => (showRecorder = !showRecorder)}>{showRecorder ? 'Hide recorder' : 'Record clips'}</Button>
       {#if showRecorder}<VoiceRecorder />{/if}
+    {/if}
+    {#if canVibrate}
+      <Toggle bind:checked={settings.vibrate} label="Vibrate" detail="The phone vibrates the rhythm while the app sends." />
     {/if}
     <Toggle
       bind:checked={settings.visualCue}
@@ -156,12 +174,31 @@
       <Slider label="Static (QRN)" bind:value={settings.qrn} min={0} max={3} format={(v) => ['Off', 'Light', 'Moderate', 'Heavy'][v]} />
     </div>
     <Toggle bind:checked={settings.humanFist} label="Human fists" detail="Generated code has timing variation like hand sending." />
+    <Toggle bind:checked={settings.chirp} label="Chirp and drift" detail="Pitch shifts at the start of each element and wanders slowly." />
   </div>
 
   <div class="group">
     <h2>Input</h2>
     <p><a href={href('setup')}>Microphone and keyboard keyer setup</a></p>
     <Slider label="End your over after" bind:value={settings.overTimeout} min={1.5} max={6} step={0.5} unit="s of silence" />
+    <div class="field">
+      <span class="label">Timing notes</span>
+      <Segmented
+        label="Timing notes"
+        bind:value={settings.sendTolerance}
+        options={[
+          { value: 'tight', label: 'Tight' },
+          { value: 'normal', label: 'Normal' },
+          { value: 'loose', label: 'Loose' },
+        ]}
+      />
+    </div>
+    <p class="muted small">How far your dah ratio and gaps can drift from standard before a note appears.</p>
+    <Toggle
+      bind:checked={settings.keepSends}
+      label="Keep recent sends"
+      detail="Stores key timing of your last 8 sends for replay in Progress. Timing only, no audio."
+    />
   </div>
 
   <div class="group">
@@ -179,7 +216,7 @@
     {#if dataNote}<p class="small">{dataNote}</p>{/if}
   </div>
 
-  <p class="muted small">BeepBeep {__APP_VERSION__}. Character orders: classic Koch (K M R S U…) and LICW BC1/BC2. LICW is a trademark of the Long Island CW Club; BeepBeep is not affiliated with it.</p>
+  <p class="muted small">BeepBeep {__APP_VERSION__}. LICW is a trademark of the Long Island CW Club; BeepBeep is not affiliated with it.</p>
 </section>
 
 <style>
@@ -188,6 +225,12 @@
     flex-direction: column;
     gap: var(--s-4);
     max-width: 760px;
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-half);
   }
 
   .group {

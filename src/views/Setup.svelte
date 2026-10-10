@@ -8,6 +8,7 @@
   import { settings } from '../lib/state/settings.svelte';
   import { signal, startMic, stopMic } from '../lib/state/signal.svelte';
   import { textTokens } from '../lib/util/text';
+  import { straightOnly } from '../lib/train/session';
 
   let devices = $state<MediaDeviceInfo[]>([]);
   let spec = $state<{ hz: number[]; db: number[] }>({ hz: [], db: [] });
@@ -132,11 +133,18 @@
       options={[
         { value: 'mic' as InputSource, label: 'Microphone' },
         { value: 'straight' as InputSource, label: 'Keyboard straight key' },
-        { value: 'iambicA' as InputSource, label: 'Paddles A' },
-        { value: 'iambicB' as InputSource, label: 'Paddles B' },
+        ...(straightOnly()
+          ? []
+          : [
+              { value: 'iambicA' as InputSource, label: 'Paddles A' },
+              { value: 'iambicB' as InputSource, label: 'Paddles B' },
+            ]),
       ]}
     />
   </div>
+  {#if straightOnly()}
+    <p class="muted">LICW strict mode, BC lessons: straight key only. Turn strict mode off in Settings to use paddles.</p>
+  {/if}
 
   {#if settings.input === 'mic'}
     <div class="block">

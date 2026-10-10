@@ -8,7 +8,7 @@
   import TokenText from '../../ui/TokenText.svelte';
   import { engine } from '../../lib/audio/engine';
   import { signal } from '../../lib/state/signal.svelte';
-  import { playCw, receiveSpeeds, saveSession } from '../../lib/train/session';
+  import { maybeTaper, playCw, receiveSpeeds, saveSession } from '../../lib/train/session';
   import { makeIdentity, type BotIdentity } from '../../lib/qso/bot';
   import { editDistance, textTokens } from '../../lib/util/text';
   import { mulberry32, pick, randomSeed } from '../../lib/util/random';
@@ -80,6 +80,7 @@
       accuracy: got / 6,
       wpm: receiveSpeeds().charWpm,
     });
+    maybeTaper(got / 6);
   }
 
   onDestroy(() => {

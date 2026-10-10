@@ -12,7 +12,8 @@
   import { settings, strict } from '../../lib/state/settings.svelte';
   import { signal } from '../../lib/state/signal.svelte';
   import { TRACKS } from '../../lib/train/courses';
-  import { answer, currentLevel, playCw, receiveSpeeds, saveSession, stats } from '../../lib/train/session';
+  import { answer, currentLevel, maybeTaper, playCw, receiveSpeeds, saveSession, stats } from '../../lib/train/session';
+  import { route } from '../../lib/state/router.svelte';
   import { pickNext, type ItemStat } from '../../lib/train/srs';
   import { compareCopy } from '../../lib/train/scoring';
   import { wordsFromKnown, QSO_WORDS, COMMON_WORDS } from '../../lib/train/words';
@@ -21,7 +22,13 @@
   import { keepAwake } from '../../lib/util/wakelock';
 
   const ROUND = 20;
-  let material = $state<'groups' | 'words'>('groups');
+  type Material = 'chars' | 'groups' | 'words' | 'context';
+  // Presets from links: /practice/copy/<material> or /practice/copy/comfort|stretch.
+  const preset = route.path[2] ?? '';
+  const session: 'comfort' | 'stretch' | null = preset === 'comfort' || preset === 'stretch' ? preset : null;
+  let material = $state<Material>((['chars', 'groups', 'words', 'context'] as const).find((m) => m === preset) ?? 'groups');
+  let tapered = $state<number | null>(null);
+  let promoted = $state(false);
   let stage = $state<'ready' | 'playing' | 'typing' | 'shown' | 'done'>('ready');
   let i = $state(0);
   let item = $state('');
@@ -39,11 +46,14 @@
   const known = level.known;
 
   function makeItem(): string {
-    if (material === 'words') {
-      const pool = wordsFromKnown([...QSO_WORDS, ...COMMON_WORDS], new Set(known));
-      if (pool.length >= 5) return pick(rng, pool);
+    const pool = wordsFromKnown([...QSO_WORDS, ...COMMON_WORDS], new Set(known));
+    if (material === 'words' && pool.length >= 5) return pick(rng, pool);
+    // Context: two or three known words together, so characters land in meaning.
+    if (material === 'context' && pool.length >= 5) {
+      const n = 2 + Math.floor(rng() * 2);
+      return Array.from({ length: n }, () => pick(rng, pool)).join(' ');
     }
-    const n = known.length < 4 ? 1 + Math.floor(rng() * 2) : 2 + Math.floor(rng() * 4);
+    const n = material === 'chars' ? 1 : known.length < 4 ? 1 + Math.floor(rng() * 2) : 2 + Math.floor(rng() * 4);
     const recent: string[] = [];
     let g = '';
     for (let k = 0; k < n; k++) {
@@ -73,7 +83,7 @@
 
   async function play() {
     stage = 'playing';
-    const pb = await playCw(item);
+    const pb = await playCw(item, speedOverride ?? {});
     endPerf = performance.now() + (pb.startTime - engine.now + pb.duration - 0.2) * 1000;
     stage = 'typing';
     await pb.done;
@@ -127,9 +137,18 @@
       sending: false,
       items: log.length,
       accuracy: r.accuracy,
-      wpm: receiveSpeeds().charWpm,
-      effectiveWpm: receiveSpeeds().effectiveWpm,
+      wpm: speeds.charWpm,
+      effectiveWpm: speeds.effectiveWpm,
+      stretch: session === 'stretch',
     });
+    if (!session) tapered = maybeTaper(r.accuracy);
+  }
+
+  /** The stretch speed has become comfortable: promote it and set a new stretch. */
+  function promote() {
+    settings.comfortWpm = settings.stretchWpm;
+    settings.stretchWpm = settings.stretchWpm + 4;
+    promoted = true;
   }
 
   function summary() {
@@ -159,17 +178,27 @@
       .map((o) => ({ t: o.op === 'del' ? o.want : o.want, state: o.op === 'match' ? 'ok' : 'miss' }));
   }
   const result = $derived(stage === 'done' ? summary() : null);
-  const speeds = receiveSpeeds();
+  const speedOverride = session ? { charWpm: settings[`${session}Wpm`], effectiveWpm: settings[`${session}Wpm`] } : null;
+  const speeds = speedOverride ?? receiveSpeeds();
 </script>
 
 <DrillFrame
-  title="Copy drill"
+  title={session === 'stretch' ? 'Stretch session' : session === 'comfort' ? 'Comfort session' : 'Copy drill'}
   eyebrow="{level.name} · {speeds.charWpm}/{speeds.effectiveWpm} wpm"
   count={stage !== 'ready' && stage !== 'done' ? `${Math.min(i + 1, ROUND)} / ${ROUND}` : ''}
 >
   {#if stage === 'ready'}
     <div class="intro">
-      <Segmented label="Material" bind:value={material} options={[{ value: 'groups', label: 'Groups' }, { value: 'words', label: 'Words' }]} />
+      <Segmented
+        label="Material"
+        bind:value={material}
+        options={[
+          { value: 'chars', label: 'Characters' },
+          { value: 'groups', label: 'Groups' },
+          { value: 'words', label: 'Words' },
+          { value: 'context', label: 'Context' },
+        ]}
+      />
       <p class="muted">
         {ROUND} items from {known.length} characters. Replays are counted, not scored.
         {strict() ? 'Answers show at the end.' : 'Answers show after each item.'}
@@ -186,8 +215,15 @@
           <li><TokenText tokens={marked(l.want, l.got)} size="m" /><span class="muted mono">{l.got || '–'}</span></li>
         {/each}
       </ul>
-      {#if result.accuracy >= threshold && nextLevel}
+      {#if result.accuracy >= threshold && nextLevel && !session}
         <p>Above {Math.round(threshold * 100)}%: {nextLevel.name} is open.</p>
+      {/if}
+      {#if tapered}<p>Effective speed raised to {tapered} wpm.</p>{/if}
+      {#if session === 'stretch' && result.accuracy >= 0.9 && !promoted}
+        <p>{settings.stretchWpm} wpm held at {Math.round(result.accuracy * 100)}%.</p>
+        <div><Button onclick={promote}>Make {settings.stretchWpm} wpm the comfort speed</Button></div>
+      {:else if promoted}
+        <p>Comfort is now {settings.comfortWpm} wpm; stretch is {settings.stretchWpm} wpm.</p>
       {/if}
     </div>
   {:else}
@@ -210,7 +246,7 @@
       <Button kind="primary" onclick={start} hint="Enter">Start</Button>
     {:else if stage === 'done'}
       <Button kind="primary" onclick={start}>Another round</Button>
-      {#if result && result.accuracy >= threshold && nextLevel}<Button onclick={levelUp}>Next lesson</Button>{/if}
+      {#if result && result.accuracy >= threshold && nextLevel && !session}<Button onclick={levelUp}>Next lesson</Button>{/if}
     {:else if stage === 'shown'}
       <Button kind="primary" onclick={advance} hint="Enter">Next</Button>
       <Button onclick={replay}>Replay</Button>
