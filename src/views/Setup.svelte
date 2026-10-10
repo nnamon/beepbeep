@@ -83,7 +83,9 @@
     cal = 'done';
   }
 
-  const W = 600;
+  // Drawn at the container's pixel width so the axis text stays 13 px.
+  let specWidth = $state(0);
+  const W = $derived(Math.max(240, specWidth || 600));
   const H = 120;
   const path = $derived.by(() => {
     if (!spec.hz.length) return '';
@@ -195,9 +197,12 @@
             {:else if signal.pitch}Locked at <span class="num">{Math.round(signal.pitch)} Hz</span>{:else}Searching 300–1200 Hz{/if}
           </span>
         </div>
+        <div class="spec-wrap" bind:clientWidth={specWidth}>
         <svg
           class="spec"
           viewBox="0 0 {W} {H}"
+          width={W}
+          height={H}
           role="slider"
           tabindex="0"
           aria-label="Input spectrum. Click, or use arrow keys, to pin the tone."
@@ -213,6 +218,7 @@
           {#if signal.pitch}<line x1={xOf(signal.pitch)} x2={xOf(signal.pitch)} y1="0" y2={H} class="lock" />{/if}
           {#each [400, 600, 800, 1000, 1200] as t (t)}<text x={xOf(t)} y={H - 4} class="tick" text-anchor="middle">{t}</text>{/each}
         </svg>
+        </div>
         <p class="muted small">Click the spectrum to pin a tone. Level {Math.round(signal.level)} dBFS, signal {Math.round(signal.snr)} dB over noise.</p>
       </div>
     {/if}
@@ -303,8 +309,10 @@
   }
 
   .spec {
+    display: block;
+    box-sizing: border-box;
     width: 100%;
-    height: auto;
+    height: 120px;
     border: var(--hairline) solid var(--line);
     border-radius: var(--radius);
     cursor: crosshair;
@@ -326,7 +334,7 @@
   }
 
   .tick {
-    font-size: 11px;
+    font-size: var(--size-s);
     fill: var(--muted);
     font-family: var(--font-mono);
   }

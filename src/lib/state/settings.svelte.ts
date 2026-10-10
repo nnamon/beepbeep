@@ -31,7 +31,7 @@ export interface Settings {
   /** Human-sounding fists in generated code. */
   humanFist: boolean;
   you: { call: string; name: string; qth: string; state: string; skcc: string };
-  voice: 'system' | 'recorded' | 'off';
+  voice: 'builtin' | 'system' | 'recorded' | 'off';
   voiceURI: string;
   /** Pulse a light with the app's tone (noisy rooms, hard of hearing). */
   visualCue: boolean;
@@ -76,7 +76,7 @@ const DEFAULTS: Settings = {
   qrn: 0,
   humanFist: true,
   you: { call: '', name: '', qth: '', state: '', skcc: '' },
-  voice: 'system',
+  voice: 'builtin',
   voiceURI: '',
   visualCue: false,
   ttrDelay: 1.0,

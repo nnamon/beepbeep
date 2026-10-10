@@ -5,6 +5,7 @@
 #   docker compose run --rm dev npm run build        # static build into dist/
 #   docker compose run --rm --service-ports dev npm run dev   # dev server on :7373
 #   docker compose run --rm e2e                      # Playwright screenshots + e2e
+#   docker compose run --rm voice                    # regenerate public/voice/ clips (Piper TTS)
 #
 # Deployment is GitHub Pages, built by .github/workflows/pages.yml (also in a container).
 
@@ -33,5 +34,17 @@ services:
       - CI=1
     command: ["npx", "playwright", "test"]
 
+  voice:
+    build:
+      context: .
+      dockerfile: scripts/voice.Dockerfile
+    working_dir: /app
+    volumes:
+      - .:/app
+      - voice_models:/models
+    command: ["python", "scripts/voice_clips.py"]
+    profiles: ["tools"]
+
 volumes:
   node_modules:
+  voice_models:

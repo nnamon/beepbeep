@@ -1,6 +1,7 @@
 <script lang="ts">
   // One series over time: 2px line, end label, hairline grid, crosshair with a
-  // tooltip on hover or arrow keys, and a table view of every value.
+  // tooltip on hover or arrow keys, and a table view of every value. Drawn at
+  // the container's pixel width so text stays at its real size.
   let {
     points,
     title,
@@ -15,9 +16,10 @@
     lowerIsBetter?: boolean;
   } = $props();
 
-  const W = 600;
+  let width = $state(0);
+  const W = $derived(Math.max(240, width || 600));
   const H = 180;
-  const L = 40;
+  const L = 48;
   const R = 56;
   const T = 12;
   const B = 26;
@@ -93,8 +95,11 @@
       <tbody>{#each points as p, i (i)}<tr><td>{date(p.t)}</td><td class="num">{fmt(p.y)}</td></tr>{/each}</tbody>
     </table>
   {:else}
+    <div class="plot" bind:clientWidth={width}>
     <svg
       viewBox="0 0 {W} {H}"
+      width={W}
+      height={H}
       role="slider"
       aria-label="{title}: {points.length} sessions. Arrow keys step through them."
       aria-valuemin={0}
@@ -120,13 +125,14 @@
         {@const p = points[active]}
         <line x1={x(active)} x2={x(active)} y1={T} y2={H - B} class="cross" />
         <circle cx={x(active)} cy={y(p.y)} r="4" class="dot" />
-        <g transform="translate({Math.min(W - R - 110, Math.max(L, x(active) - 55))} {T})">
-          <rect width="110" height="38" rx="4" class="tip" />
-          <text x="10" y="16" class="tipv">{fmt(p.y)} {unit}</text>
-          <text x="10" y="31" class="tipl">{date(p.t)}</text>
+        <g transform="translate({Math.min(W - R - 120, Math.max(L, x(active) - 60))} {T})">
+          <rect width="120" height="44" rx="4" class="tip" />
+          <text x="10" y="18" class="tipv">{fmt(p.y)} {unit}</text>
+          <text x="10" y="36" class="tipl">{date(p.t)}</text>
         </g>
       {/if}
     </svg>
+    </div>
   {/if}
 </figure>
 
@@ -140,8 +146,9 @@
 
   figcaption {
     display: flex;
+    flex-wrap: wrap;
     align-items: baseline;
-    gap: var(--s-1);
+    gap: 0 var(--s-1);
   }
 
   .title {
@@ -162,10 +169,14 @@
     min-height: 32px;
   }
 
-  svg {
+  .plot {
     width: 100%;
-    height: auto;
+    min-width: 0;
+  }
+
+  svg {
     display: block;
+    max-width: 100%;
     touch-action: pan-y;
   }
 
@@ -180,7 +191,7 @@
   }
 
   .tick {
-    font-size: 11px;
+    font-size: var(--size-s);
     fill: var(--muted);
     font-family: var(--font-mono);
   }
@@ -200,7 +211,7 @@
   }
 
   .end {
-    font-size: 12px;
+    font-size: var(--size-s);
     fill: var(--ink);
     font-family: var(--font-ui);
     font-weight: 600;
@@ -217,14 +228,14 @@
   }
 
   .tipv {
-    font-size: 13px;
+    font-size: var(--size-s);
     font-weight: 600;
     fill: var(--ink);
     font-family: var(--font-ui);
   }
 
   .tipl {
-    font-size: 11px;
+    font-size: var(--size-s);
     fill: var(--muted);
     font-family: var(--font-ui);
   }

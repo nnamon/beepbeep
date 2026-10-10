@@ -30,7 +30,7 @@
 
 <div class="rhythm" role="img" aria-label="Rhythm drawn to scale. {desc}" style:--lw="{labelWidth}px">
   {#each rows as r, i (i)}
-    <div class="row" class:notes={hasNotes}>
+    <div class="row" class:notes={hasNotes} class:bare={labelWidth === 0}>
       {#if labelWidth > 0}<span class="label">{r.label}</span>{/if}
       <svg viewBox="0 0 {W} {height}" preserveAspectRatio="none" style:height="{height}px" aria-hidden="true">
         {#each r.marks as m, j (j)}
@@ -66,6 +66,14 @@
 
   .row.notes {
     grid-template-columns: var(--lw) minmax(0, 1fr) auto;
+  }
+
+  .row.bare {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .row.bare.notes {
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .label,

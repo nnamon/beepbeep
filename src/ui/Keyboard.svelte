@@ -146,7 +146,7 @@
   }
 
   .alias {
-    font-size: 11px;
+    font-size: var(--size-s);
     color: var(--muted);
   }
 

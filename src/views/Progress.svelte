@@ -2,9 +2,12 @@
   import { onMount } from 'svelte';
   import LineChart from '../ui/LineChart.svelte';
   import TokenText from '../ui/TokenText.svelte';
-  import { confusions, getItems, qsos, sessions, type QsoRecord, type SessionRecord } from '../lib/state/db';
-  import { strict } from '../lib/state/settings.svelte';
-  import { currentLevel, playCw, wait } from '../lib/train/session';
+  import Segmented from '../ui/Segmented.svelte';
+  import RhythmView from '../ui/RhythmView.svelte';
+  import { confusions, getItems, getKv, qsos, sessions, type QsoRecord, type SessionRecord } from '../lib/state/db';
+  import { settings, strict } from '../lib/state/settings.svelte';
+  import { href } from '../lib/state/router.svelte';
+  import { currentLevel, playCw, playMarks, wait, type SlipCounts } from '../lib/train/session';
   import { accuracy, type ItemStat } from '../lib/train/srs';
   import { displayToken, isProsign } from '../lib/morse/code';
   import { FORMATS } from '../lib/qso/bot';
@@ -12,13 +15,19 @@
   let list = $state<SessionRecord[]>([]);
   let log = $state<QsoRecord[]>([]);
   let rx = $state<Map<string, ItemStat>>(new Map());
+  let tx = $state<Map<string, ItemStat>>(new Map());
   let pairs = $state<{ want: string; got: string; count: number }[]>([]);
+  let slips = $state<SlipCounts | null>(null);
+  let sends = $state<{ at: number; text: string; marks: { start: number; end: number }[] }[]>([]);
+  let heatOf = $state<'rx' | 'tx'>('rx');
   let loaded = $state(false);
 
   onMount(async () => {
     try {
-      [list, log, rx] = await Promise.all([sessions(), qsos(), getItems('rx:')]);
+      [list, log, rx, tx] = await Promise.all([sessions(), qsos(), getItems('rx:'), getItems('tx:')]);
       pairs = (await confusions()).sort((a, b) => b.count - a.count).slice(0, 10);
+      slips = await getKv<SlipCounts | null>('sendSlips', null);
+      sends = await getKv('recentSends', []);
     } catch {
       /* storage unavailable */
     }
@@ -39,7 +48,17 @@
   const recovery = $derived(list.filter((s) => s.recovery !== undefined && s.recovery !== null).map((s) => ({ t: s.at, y: s.recovery! })));
   const lastFist = $derived([...list].reverse().find((s) => s.fist)?.fist ?? null);
 
-  const chars = $derived(currentLevel().known.map((t) => ({ t, s: rx.get(`rx:${t}`) })));
+  const level = $derived(currentLevel());
+  const chars = $derived(level.known.map((t) => ({ t, s: (heatOf === 'rx' ? rx : tx).get(`${heatOf}:${t}`) })));
+  const SLIPS: { kind: Exclude<keyof SlipCounts, 'pairs'>; label: string }[] = [
+    { kind: 'merged-words', label: 'Words ran together' },
+    { kind: 'merged-letters', label: 'Letters ran together' },
+    { kind: 'split-letter', label: 'Letter split in two' },
+    { kind: 'split-word', label: 'Word split in two' },
+  ];
+  const slipTotal = $derived(slips ? SLIPS.reduce((a, k) => a + slips![k.kind], 0) : 0);
+  const slipPairs = $derived(slips ? Object.entries(slips.pairs).sort((a, b) => b[1] - a[1]).slice(0, 6) : []);
+  const time = (t: number) => new Date(t).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   const shade = (a: number | null) => (a === null ? 0 : 0.1 + a * 0.75);
 
   async function playPair(want: string, got: string) {
@@ -64,6 +83,11 @@
       <dd class="aim muted">aim 25% or more</dd>
     </div>
     <div><dt class="label">QSOs</dt><dd class="value">{log.length}</dd></div>
+    <div><dt class="label">Lesson</dt><dd class="value small-value">{level.name}</dd></div>
+    <div>
+      <dt class="label">Comfort / stretch</dt>
+      <dd class="value small-value">{settings.comfortWpm} / {settings.stretchWpm} <span class="muted unit">wpm</span></dd>
+    </div>
   </dl>
 
   {#if loaded && !list.length}
@@ -87,8 +111,14 @@
   {/if}
 
   <div class="block">
-    <h2>Receive accuracy by character</h2>
-    <p class="muted small">Last 10 answers each. Stronger colour is more accurate. Blank cells have no answers yet.</p>
+    <div class="head">
+      <h2>Accuracy by character</h2>
+      <Segmented label="Accuracy of" bind:value={heatOf} options={[{ value: 'rx', label: 'Copying' }, { value: 'tx', label: 'Sending' }]} />
+    </div>
+    <p class="muted small">
+      {heatOf === 'rx' ? 'Characters you copied.' : 'Characters you sent, as the decoder received them.'} Last 10 each. Stronger
+      colour is more accurate. Blank cells have none yet.
+    </p>
     <ul class="heat">
       {#each chars as c (c.t)}
         {@const a = c.s ? accuracy(c.s) : null}
@@ -115,6 +145,24 @@
     </div>
   {/if}
 
+  {#if slips && slipTotal}
+    <div class="block">
+      <h2>Spacing slips</h2>
+      <dl class="fist">
+        {#each SLIPS as k (k.kind)}
+          <div><dt class="label">{k.label}</dt><dd class="num">{slips[k.kind]}</dd></div>
+        {/each}
+      </dl>
+      {#if slipPairs.length}
+        <ul class="slips">
+          {#each slipPairs as [d, n] (d)}
+            <li><span class="mono">{d}</span> <span class="num muted">×{n}</span></li>
+          {/each}
+        </ul>
+      {/if}
+    </div>
+  {/if}
+
   {#if lastFist}
     <div class="block">
       <h2>Latest fist report</h2>
@@ -126,6 +174,30 @@
         <div><dt class="label">Weighting</dt><dd class="num">{lastFist.weighting.toFixed(2)} <span class="muted">aim 1.0</span></dd></div>
       </dl>
     </div>
+  {/if}
+
+  {#if sends.length || settings.keepSends}
+    <div class="block">
+      <h2>Recent sends</h2>
+      {#if sends.length}
+        <ul class="sends">
+          {#each sends as r (r.at)}
+            <li>
+              <div class="send-head">
+                <span class="mono">{r.text || '–'}</span>
+                <span class="muted small">{time(r.at)}</span>
+                <button type="button" class="play" onclick={() => playMarks(r.marks)}>Replay</button>
+              </div>
+              {#if !strict()}<RhythmView rows={[{ label: '', marks: r.marks }]} labelWidth={0} />{/if}
+            </li>
+          {/each}
+        </ul>
+      {:else}
+        <p class="muted small">None yet. Sends from the send drills appear here.</p>
+      {/if}
+    </div>
+  {:else}
+    <p class="muted small">Turn on <a href={href('settings')}>Keep recent sends</a> to replay your last 8 sends here.</p>
   {/if}
 
   <div class="block">
@@ -188,6 +260,58 @@
     font-size: var(--size-s);
   }
 
+  .small-value {
+    font-size: var(--size-l);
+  }
+
+  .unit {
+    font-size: var(--size-s);
+    font-weight: normal;
+  }
+
+  .head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s-2);
+    flex-wrap: wrap;
+  }
+
+  .slips {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-half) var(--s-3);
+  }
+
+  .sends {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  .sends li {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-half);
+    padding: var(--s-1) 0;
+    border-bottom: var(--hairline) solid var(--line);
+  }
+
+  .send-head {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    min-width: 0;
+  }
+
+  .send-head .mono {
+    overflow-wrap: anywhere;
+    min-width: 0;
+  }
+
   .charts {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
@@ -241,7 +365,7 @@
   }
 
   .pc {
-    font-size: 11px;
+    font-size: var(--size-s);
   }
 
   .pairs {

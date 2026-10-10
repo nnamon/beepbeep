@@ -135,12 +135,18 @@
         label="Spoken answers"
         bind:value={settings.voice}
         options={[
+          { value: 'builtin', label: 'Built-in' },
           { value: 'system', label: 'Device voice' },
           { value: 'recorded', label: 'My recordings' },
           { value: 'off', label: 'Off' },
         ]}
       />
     </div>
+    {#if settings.voice === 'builtin'}
+      <p class="muted small">Characters and prosigns use built-in clips. Words use the device voice.</p>
+    {:else if settings.voice === 'recorded'}
+      <p class="muted small">Characters you have not recorded use the built-in clips.</p>
+    {/if}
     {#if settings.voice === 'system' && voiceList.length}
       <label class="select">
         <span class="label">Voice</span>

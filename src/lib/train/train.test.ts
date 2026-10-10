@@ -77,6 +77,8 @@ describe('scoring', () => {
     expect(spacingIssues('TNX FER CALL ES 73', 'TNX FER CALLES 73').map((i) => i.kind)).toEqual(['merged-words']);
     expect(spacingIssues('ET', 'A').map((i) => i.kind)).toEqual(['merged-letters']);
     expect(spacingIssues('R', 'EN').map((i) => i.kind)).toEqual(['split-letter']);
+    expect(spacingIssues('SET TO', 'SA TO').map((i) => i.detail)).toEqual(['ET as A']);
+    expect(spacingIssues('CAR', 'CAEN').map((i) => i.detail)).toEqual(['R as EN']);
     expect(oneNote(null, spacingIssues('CALL ES', 'CALLES'))).toMatch(/Word gap too short/);
   });
 });

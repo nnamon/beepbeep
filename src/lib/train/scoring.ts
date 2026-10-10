@@ -78,17 +78,24 @@ export function spacingIssues(intended: string, received: string): SendIssue[] {
       const prev = ops[i - 1];
       const next = ops[i + 1];
       const p = (t: string) => patternOf(t) ?? '#';
-      const merged = (x?: AlignOp, before = false) =>
-        x && x.op === 'del' && x.want !== ' ' &&
-        p(o.got) === (before ? p(x.want) + p(o.want) : p(o.want) + p(x.want));
-      const split = (x?: AlignOp, before = false) =>
-        x && x.op === 'ins' && x.got !== ' ' &&
-        p(o.want) === (before ? p(x.got) + p(o.got) : p(o.got) + p(x.got));
-      if (merged(next) || merged(prev, true)) {
-        issues.push({ kind: 'merged-letters', at: o.gi, detail: 'letters ran together' });
+      // Each returns the letters involved, e.g. "ET" (ran together as A) or "EN" (R split).
+      const merged = (x: AlignOp | undefined, before = false) => {
+        if (!x || x.op !== 'del' || x.want === ' ') return null;
+        const pair = before ? x.want + o.want : o.want + x.want;
+        return p(o.got) === (before ? p(x.want) + p(o.want) : p(o.want) + p(x.want)) ? pair : null;
+      };
+      const split = (x: AlignOp | undefined, before = false) => {
+        if (!x || x.op !== 'ins' || x.got === ' ') return null;
+        const parts = before ? x.got + o.got : o.got + x.got;
+        return p(o.want) === (before ? p(x.got) + p(o.got) : p(o.got) + p(x.got)) ? parts : null;
+      };
+      const m = merged(next) ?? merged(prev, true);
+      const sp = m ? null : (split(next) ?? split(prev, true));
+      if (m) {
+        issues.push({ kind: 'merged-letters', at: o.gi, detail: `${m} as ${o.got}` });
         if (merged(next)) i++;
-      } else if (split(next) || split(prev, true)) {
-        issues.push({ kind: 'split-letter', at: o.gi, detail: `${o.want} split in two` });
+      } else if (sp) {
+        issues.push({ kind: 'split-letter', at: o.gi, detail: `${o.want} as ${sp}` });
         if (split(next)) i++;
       }
     }

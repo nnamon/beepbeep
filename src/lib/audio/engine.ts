@@ -132,6 +132,12 @@ class AudioEngine {
     };
   }
 
+  /** Decodes a compressed clip (mp3) at the context's sample rate. */
+  async decode(data: ArrayBuffer): Promise<AudioBuffer> {
+    const ctx = await this.ensure();
+    return ctx.decodeAudioData(data);
+  }
+
   /** Renders text to CW at the context's sample rate and plays it. */
   async playText(text: string, o: PlayTextOptions): Promise<Playback> {
     const ctx = await this.ensure();
