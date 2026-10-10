@@ -1,0 +1,168 @@
+// Reads a decoded over (possibly with copy errors) into QSO fields.
+
+import { STATES } from '../train/words';
+import { editDistance } from '../util/text';
+
+export interface Parsed {
+  words: string[];
+  calls: string[];
+  cq: boolean;
+  de: boolean;
+  rst: string | null;
+  name: string | null;
+  qth: string | null;
+  state: string | null;
+  serial: string | null;
+  skcc: string | null;
+  /** Ends the over and hands it back: K, KN, BK, AR. */
+  handover: boolean;
+  /** Signing off: 73, SK, TU at the end. */
+  signoff: boolean;
+  agn: boolean;
+  qrs: boolean;
+  qrq: boolean;
+  qrz: boolean;
+  /** Asked something: NAME?, QTH?, RST?, HW? */
+  asks: ('name' | 'qth' | 'rst' | 'rig' | 'wx' | 'call')[];
+  /** Topic words the operator mentioned (for a friendly reply). */
+  topics: { rig?: string; ant?: string; wx?: string; pwr?: string; age?: string; job?: string };
+}
+
+const KEYWORDS = new Set([
+  'CQ', 'DE', 'K', 'KN', 'BK', 'R', 'RR', 'TU', 'TNX', 'TKS', 'FER', 'UR', 'RST', 'NAME', 'OP', 'NM',
+  'QTH', 'IS', 'HR', 'ES', 'FB', 'GM', 'GA', 'GE', 'GN', 'OM', 'HW', 'CPY', 'AGN', 'PSE', 'QRS', 'QRQ',
+  'QRZ', 'QRZ?', 'CUL', '73', 'GL', 'SK', 'AR', 'BT', '5NN', 'NR', 'TEST', 'SST', 'SKCC', 'POTA', 'SOTA',
+  'RIG', 'ANT', 'WX', 'PWR', 'AGE', '?', 'CALL', 'QSO', 'HPE', 'SRI', 'VY', 'GUD', 'SIG', 'ON', 'TO', 'A',
+]);
+
+const CALL_RE = /^(?=.*\d)(?=.*[A-Z])[A-Z0-9]{1,3}\d[A-Z]{1,4}$/;
+const RST_RE = /^[1-5][1-9N][1-9N]$/;
+
+export function isCallsign(w: string): boolean {
+  return CALL_RE.test(w) && !RST_RE.test(w) && w !== '5NN' && !/^\d+[A-Z]?$/.test(w);
+}
+
+/** Splits decoded text into words, prosigns as their own words without brackets. */
+export function words(text: string): string[] {
+  return text
+    .toUpperCase()
+    .replace(/<([A-Z]{2})>/g, ' $1 ')
+    .replace(/=/g, ' BT ')
+    .replace(/\+/g, ' AR ')
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+export function parse(text: string): Parsed {
+  const w = words(text);
+  const p: Parsed = {
+    words: w,
+    calls: [],
+    cq: false,
+    de: false,
+    rst: null,
+    name: null,
+    qth: null,
+    state: null,
+    serial: null,
+    skcc: null,
+    handover: false,
+    signoff: false,
+    agn: false,
+    qrs: false,
+    qrq: false,
+    qrz: false,
+    asks: [],
+    topics: {},
+  };
+  for (let i = 0; i < w.length; i++) {
+    const x = w[i];
+    const next = (n = 1) => w[i + n];
+    if (x === 'CQ') p.cq = true;
+    else if (x === 'DE') p.de = true;
+    else if (x === 'AGN' || x === 'AGN?' || x === '?') p.agn = true;
+    else if (x === 'QRS') p.qrs = true;
+    else if (x === 'QRQ') p.qrq = true;
+    else if (x === 'QRZ' || x === 'QRZ?') p.qrz = true;
+    else if (isCallsign(x)) {
+      if (!p.calls.includes(x)) p.calls.push(x);
+    } else if ((x === 'RST' || x === 'UR') && next() && RST_RE.test(next()!.replace('?', ''))) {
+      p.rst = norm(next()!);
+    } else if (RST_RE.test(x) && !p.rst && (w[i - 1] === 'UR' || w[i - 1] === 'RST' || x === '5NN' || /N/.test(x))) {
+      p.rst = norm(x);
+    } else if (x === 'NAME' || x === 'OP' || x === 'NM') {
+      let j = i + 1;
+      while (w[j] === 'IS' || w[j] === 'HR' || w[j] === 'BT') j++;
+      if (w[j] && w[j].endsWith('?')) p.asks.push('name');
+      else if (w[j] && !KEYWORDS.has(w[j]) && /^[A-Z]{2,10}$/.test(w[j])) p.name ??= w[j];
+    } else if (x === 'NAME?') p.asks.push('name');
+    else if (x === 'QTH?') p.asks.push('qth');
+    else if (x === 'RST?') p.asks.push('rst');
+    else if (x === 'QTH') {
+      let j = i + 1;
+      while (w[j] === 'IS' || w[j] === 'HR' || w[j] === 'NR') j++;
+      if (w[j] && w[j].endsWith('?')) p.asks.push('qth');
+      else {
+        const parts: string[] = [];
+        while (w[j] && !KEYWORDS.has(w[j]) && parts.length < 3 && !isCallsign(w[j])) {
+          if (parts.length && w[j] === parts[0]) break; // repeated, e.g. "QTH BOSTON BOSTON"
+          parts.push(w[j]);
+          j++;
+        }
+        if (parts.length) {
+          p.qth ??= parts.join(' ');
+          const st = parts.find((s) => STATES.includes(s));
+          if (st) p.state ??= st;
+        }
+      }
+    } else if (x === 'HW' || x === 'HW?') {
+      if (x.endsWith('?') || next() === '?' || next() === 'CPY?') p.asks.push('rst');
+    } else if (x === 'NR' && next() && /^\d{1,6}[CTS]?$/.test(next()!)) {
+      p.skcc = next()!;
+    } else if (/^\d{1,4}$/.test(x) && (w[i - 1] === '5NN' || /^[1-5][9N][9N]$/.test(w[i - 1] ?? ''))) {
+      p.serial ??= x.replace(/^0+(?=\d)/, '');
+    } else if (STATES.includes(x) && !p.state) {
+      p.state = x;
+    } else if (x === 'RIG' && next()) {
+      let j = i + 1;
+      while (w[j] === 'IS' || w[j] === 'HR') j++;
+      if (w[j] && !KEYWORDS.has(w[j])) p.topics.rig = w[j];
+    } else if (x === 'ANT' && next()) {
+      let j = i + 1;
+      while (w[j] === 'IS' || w[j] === 'HR') j++;
+      if (w[j] && !KEYWORDS.has(w[j])) p.topics.ant = w[j];
+    } else if (x === 'WX' && next()) {
+      let j = i + 1;
+      while (w[j] === 'IS' || w[j] === 'HR') j++;
+      if (w[j] && !KEYWORDS.has(w[j])) p.topics.wx = w[j];
+    } else if (x === 'PWR' && next()) {
+      p.topics.pwr = next()!;
+    } else if (x === 'AGE' && next() && /^\d{1,3}$/.test(next()!)) {
+      p.topics.age = next()!;
+    }
+  }
+  const last = w[w.length - 1];
+  const tail = w.slice(-4);
+  p.handover = ['K', 'KN', 'BK', 'AR'].includes(last ?? '') || (last ?? '').endsWith('?');
+  p.signoff = tail.includes('SK') || (tail.includes('73') && (tail.includes('TU') || last === '73' || last === 'SK' || last === 'EE'));
+  return p;
+}
+
+function norm(rst: string): string {
+  return rst.replace('?', '').replace(/N/g, '9');
+}
+
+/** Callsign similarity: 0 exact, 1-2 close (busted), Infinity unrelated. */
+export function callDistance(heard: string, actual: string): number {
+  const d = editDistance([...heard], [...actual]);
+  return d <= 2 && heard.length >= 3 ? d : Number.POSITIVE_INFINITY;
+}
+
+/** The part of `actual` most likely missed when `heard` was copied (for repairs). */
+export function missingPart(heard: string, actual: string): string {
+  // Longest common prefix, then the rest of the actual call is what to repeat.
+  let i = 0;
+  while (i < heard.length && i < actual.length && heard[i] === actual[i]) i++;
+  const tail = actual.slice(i);
+  return tail.length ? tail : actual.slice(-3);
+}

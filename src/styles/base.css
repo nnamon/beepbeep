@@ -1,0 +1,106 @@
+@import '@fontsource/atkinson-hyperlegible-next/latin-400.css';
+@import '@fontsource/atkinson-hyperlegible-next/latin-600.css';
+@import '@fontsource/atkinson-hyperlegible-mono/latin-400.css';
+@import '@fontsource/atkinson-hyperlegible-mono/latin-600.css';
+@import './tokens.css';
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--size-m);
+  line-height: var(--leading);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: var(--size-l);
+  font-weight: var(--weight-strong);
+}
+
+h2 {
+  font-size: var(--size-m);
+  font-weight: var(--weight-strong);
+}
+
+h3 {
+  font-size: var(--size-s);
+  font-weight: var(--weight-strong);
+  color: var(--muted);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+a {
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-feature-settings: 'zero' 1, 'tnum' 1;
+}
+
+.num {
+  font-family: var(--font-mono);
+  font-feature-settings: 'zero' 1, 'tnum' 1;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.label {
+  font-size: var(--size-s);
+  font-weight: var(--weight-strong);
+  color: var(--muted);
+}
+
+.prosign {
+  text-decoration: overline;
+  text-decoration-thickness: 1.5px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

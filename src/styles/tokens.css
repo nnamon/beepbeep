@@ -1,0 +1,89 @@
+/*
+ * Design tokens: the only place colour, type and spacing values live.
+ * stylelint rejects raw colour values in every other file.
+ */
+
+:root {
+  /* Shack (dark) is the default theme. */
+  --bg: #0f1113;
+  --surface: #16191c;
+  --surface-2: #1c2024;
+  --line: #2a2f35;
+  --ink: #e9e6df;
+  --muted: #9ba1a8;
+  --signal: #f2a93b;
+  --signal-soft: rgb(242 169 59 / 14%);
+  --signal-ink: #0f1113;
+  --fault: #e5484d;
+  --scrim: rgb(0 0 0 / 55%);
+
+  /* Type */
+  --font-ui: 'Atkinson Hyperlegible Next', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'Atkinson Hyperlegible Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --size-s: 13px;
+  --size-m: 15px;
+  --size-l: 20px;
+  --size-xl: 40px;
+  --weight-regular: 400;
+  --weight-strong: 600;
+  --leading: 1.45;
+
+  /* Space: an 8 px grid (4 for the tight spots). */
+  --s-half: 4px;
+  --s-1: 8px;
+  --s-2: 16px;
+  --s-3: 24px;
+  --s-4: 32px;
+  --s-5: 40px;
+  --s-6: 48px;
+  --s-8: 64px;
+
+  --radius: 4px;
+  --hairline: 1px;
+  --target: 48px;
+  --reading: 72ch;
+  --transition: 120ms;
+
+  color-scheme: dark;
+}
+
+/* Paper (light) theme: chosen explicitly, or by the system when no choice is stored. */
+:root[data-theme='light'] {
+  --bg: #f5f3ee;
+  --surface: #fff;
+  --surface-2: #eceae4;
+  --line: #d9d5cc;
+  --ink: #1a1b1d;
+  --muted: #5e636a;
+  --signal: #9a5b00;
+  --signal-soft: rgb(154 91 0 / 12%);
+  --signal-ink: #fff;
+  --fault: #c42b30;
+  --scrim: rgb(26 27 29 / 35%);
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) {
+    --bg: #f5f3ee;
+    --surface: #fff;
+    --surface-2: #eceae4;
+    --line: #d9d5cc;
+    --ink: #1a1b1d;
+    --muted: #5e636a;
+    --signal: #9a5b00;
+    --signal-soft: rgb(154 91 0 / 12%);
+    --signal-ink: #fff;
+    --fault: #c42b30;
+    --scrim: rgb(26 27 29 / 35%);
+
+    color-scheme: light;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --transition: 0ms;
+  }
+}
