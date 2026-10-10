@@ -32,6 +32,8 @@
 <style>
   .seg {
     display: inline-flex;
+    align-self: flex-start;
+    max-width: 100%;
     flex-wrap: wrap;
     border: var(--hairline) solid var(--line);
     border-radius: var(--radius);

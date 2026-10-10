@@ -9,8 +9,8 @@
 
 <script lang="ts">
   // Morse drawn to scale: each mark is a bar as long as it lasted. Rows share
-  // one time scale so "yours" and "standard" line up.
-
+  // one time scale so "yours" and "standard" line up. Labels are real text, so
+  // they stay legible at any width; only the bars stretch.
   let {
     rows,
     height = 12,
@@ -18,50 +18,67 @@
     fixedSpan,
   }: { rows: RhythmRow[]; height?: number; labelWidth?: number; fixedSpan?: number } = $props();
 
-  // Rows share one time scale; `fixedSpan` sets it explicitly so several views line up.
   const span = $derived(
     fixedSpan ??
       Math.max(0.05, ...rows.map((r) => (r.marks.length ? r.marks[r.marks.length - 1].end - r.marks[0].start : 0))),
   );
-  const W = 600;
-  const noteWidth = $derived(rows.some((r) => r.note) ? 130 : 0);
-  const plot = $derived(W - labelWidth - noteWidth);
-  const rowH = $derived(height + 12);
-  const x = (r: RhythmRow, t: number) => labelWidth + ((t - (r.marks[0]?.start ?? 0)) / span) * plot;
-  const desc = $derived(rows.map((r) => `${r.label}: ${r.marks.length} marks${r.note ? `, ${r.note}` : ''}`).join('; '));
+  const W = 1000;
+  const x = (r: RhythmRow, t: number) => ((t - (r.marks[0]?.start ?? 0)) / span) * W;
+  const desc = $derived(rows.map((r) => `${r.label || 'rhythm'}: ${r.marks.length} marks${r.note ? `, ${r.note}` : ''}`).join('; '));
+  const hasNotes = $derived(rows.some((r) => r.note));
 </script>
 
-<svg viewBox="0 0 {W} {rows.length * rowH}" role="img" aria-label="Rhythm drawn to scale. {desc}" class="rhythm">
+<div class="rhythm" role="img" aria-label="Rhythm drawn to scale. {desc}" style:--lw="{labelWidth}px">
   {#each rows as r, i (i)}
-    <g transform="translate(0 {i * rowH})">
-      <text x="0" y={height - 1} class="label">{r.label}</text>
-      {#each r.marks as m, j (j)}
-        <rect
-          x={x(r, m.start)}
-          y="1"
-          width={Math.max(1.5, x(r, m.end) - x(r, m.start))}
-          {height}
-          rx="1"
-          class={r.style === 'outline' ? 'outline' : 'filled'}
-        />
-      {/each}
-      {#if r.note}<text x={W} y={height - 1} class="note" text-anchor="end">{r.note}</text>{/if}
-    </g>
+    <div class="row" class:notes={hasNotes}>
+      {#if labelWidth > 0}<span class="label">{r.label}</span>{/if}
+      <svg viewBox="0 0 {W} {height}" preserveAspectRatio="none" style:height="{height}px" aria-hidden="true">
+        {#each r.marks as m, j (j)}
+          <rect
+            x={x(r, m.start)}
+            y={r.style === 'outline' ? 0.5 : 0}
+            width={Math.max(2, x(r, m.end) - x(r, m.start))}
+            height={r.style === 'outline' ? height - 1 : height}
+            class={r.style === 'outline' ? 'outline' : 'filled'}
+            vector-effect="non-scaling-stroke"
+          />
+        {/each}
+      </svg>
+      {#if hasNotes}<span class="note">{r.note ?? ''}</span>{/if}
+    </div>
   {/each}
-</svg>
+</div>
 
 <style>
   .rhythm {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-1);
     width: 100%;
-    height: auto;
-    display: block;
+  }
+
+  .row {
+    display: grid;
+    grid-template-columns: var(--lw) minmax(0, 1fr);
+    align-items: center;
+    gap: var(--s-1);
+  }
+
+  .row.notes {
+    grid-template-columns: var(--lw) minmax(0, 1fr) auto;
   }
 
   .label,
   .note {
-    font-size: 12px;
-    fill: var(--muted);
-    font-family: var(--font-ui);
+    font-size: var(--size-s);
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  svg {
+    width: 100%;
+    display: block;
+    overflow: visible;
   }
 
   .filled {

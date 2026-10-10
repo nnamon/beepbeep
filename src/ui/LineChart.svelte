@@ -35,7 +35,7 @@
     }
     const raw = (hi - lo) / 4;
     const mag = Math.pow(10, Math.floor(Math.log10(raw)));
-    const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw) ?? raw;
+    const step = [1, 2, 5, 10].map((m) => m * mag).find((s) => s >= raw) ?? raw;
     return { lo: Math.floor(lo / step) * step, hi: Math.ceil(hi / step) * step, step };
   });
   const ticks = $derived.by(() => {
@@ -47,6 +47,9 @@
   const y = (v: number) => T + (1 - (v - ext.lo) / (ext.hi - ext.lo)) * (H - T - B);
   const d = $derived(points.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(p.y).toFixed(1)}`).join(''));
   const fmt = (v: number) => v.toFixed(digits);
+  // Tick labels need enough decimals for the step (0.05 s steps need two).
+  const tickDigits = $derived(Math.max(0, -Math.floor(Math.log10(ext.step) + 1e-9)));
+  const fmtTick = (v: number) => v.toFixed(tickDigits);
   const date = (t: number) => new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 
   function move(e: PointerEvent) {
@@ -106,7 +109,7 @@
     >
       {#each ticks as v (v)}
         <line x1={L} x2={W - R} y1={y(v)} y2={y(v)} class="grid" />
-        <text x={L - 6} y={y(v) + 4} text-anchor="end" class="tick">{fmt(v)}</text>
+        <text x={L - 6} y={y(v) + 4} text-anchor="end" class="tick">{fmtTick(v)}</text>
       {/each}
       <text x={L} y={H - 6} class="tick">{date(points[0].t)}</text>
       {#if points.length > 1}<text x={W - R} y={H - 6} text-anchor="end" class="tick">{date(last.t)}</text>{/if}

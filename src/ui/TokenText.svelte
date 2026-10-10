@@ -17,7 +17,7 @@
 
 <p class="text {size} mono" aria-label={label || undefined}>
   {#each tokens as k, i (i)}
-    {#if k.t === ' '}<span class="sp"> </span>{:else if k.state === 'unknown' || k.t === '⁇'}<button
+    {#if k.t === ' '}<span class="sp">{' '}</span>{:else if k.state === 'unknown' || k.t === '⁇'}<button
         type="button"
         class="unknown"
         onclick={k.onclick}

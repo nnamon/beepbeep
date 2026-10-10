@@ -1,7 +1,7 @@
 <script lang="ts">
   // One 1.5 px line icon set, drawn for BeepBeep. Used only where a symbol is
   // clearer than a word: transport controls, the mic, settings, close.
-  type Name = 'play' | 'stop' | 'replay' | 'mic' | 'mic-off' | 'settings' | 'close' | 'back' | 'key' | 'check';
+  type Name = 'play' | 'stop' | 'replay' | 'mic' | 'mic-off' | 'settings' | 'close' | 'back' | 'forward' | 'key' | 'check';
   let { name, size = 20, label = '' }: { name: Name; size?: number; label?: string } = $props();
 </script>
 
@@ -38,6 +38,8 @@
     <path d="M6 6l12 12M18 6 6 18" />
   {:else if name === 'back'}
     <path d="M14.5 5.5 8 12l6.5 6.5" />
+  {:else if name === 'forward'}
+    <path d="M9.5 5.5 16 12l-6.5 6.5" />
   {:else if name === 'key'}
     <path d="M4 17.5h16M7 17.5v-3h10v3M12 14.5V8.5M9.5 8.5h5" />
   {:else if name === 'check'}

@@ -6,6 +6,8 @@
   import Segmented from '../ui/Segmented.svelte';
   import Button from '../ui/Button.svelte';
   import TokenText from '../ui/TokenText.svelte';
+  import Value from '../ui/Value.svelte';
+  import Icon from '../ui/Icon.svelte';
   import LiveDecoder from './drills/LiveDecoder.svelte';
   import SendDrill from './drills/SendDrill.svelte';
   import HearSend from './drills/HearSend.svelte';
@@ -103,22 +105,22 @@
         <div class="level-name">
           <span class="label">{TRACKS[settings.track].name}</span>
           <div class="stepper">
-            <Button kind="quiet" label="Previous lesson" disabled={idx <= 0} onclick={() => step(-1)}>&larr;</Button>
+            <Button kind="secondary" label="Previous lesson" disabled={idx <= 0} onclick={() => step(-1)}><Icon name="back" size={18} /></Button>
             <strong>{level.name}</strong>
-            <Button kind="quiet" label="Next lesson" disabled={idx >= levels.length - 1} onclick={() => step(1)}>&rarr;</Button>
+            <Button kind="secondary" label="Next lesson" disabled={idx >= levels.length - 1} onclick={() => step(1)}><Icon name="forward" size={18} /></Button>
           </div>
         </div>
         <div class="level-chars">
           <span class="label">New in this lesson</span>
-          <TokenText tokens={level.added.map((t) => ({ t }))} size="l" />
+          <TokenText tokens={level.added.flatMap((t, i) => (i ? [{ t: ' ' }, { t }] : [{ t }]))} size="l" />
         </div>
         <div class="level-meta">
           <span class="label">Receive speed</span>
-          <span class="num">{speeds.charWpm}/{speeds.effectiveWpm} wpm</span>
+          <Value value="{speeds.charWpm}/{speeds.effectiveWpm}" unit="wpm" size="l" />
         </div>
         <div class="level-meta">
           <span class="label">Characters known</span>
-          <span class="num">{level.known.length}</span>
+          <Value value={level.known.length} size="l" />
         </div>
         {#if !strict()}<a class="ref" href={href('reference')}>Character reference</a>{/if}
       </div>
@@ -127,14 +129,16 @@
     <section class="today" aria-labelledby="today-h">
       <h2 id="today-h">Plan</h2>
       <dl class="facts">
-        <div><dt class="label">Session</dt><dd class="num">{settings.sessionMinutes} min</dd></div>
-        <div><dt class="label">Sending</dt><dd class="num">25% or more</dd></div>
-        <div><dt class="label">Comfort</dt><dd class="num">{settings.comfortWpm} wpm</dd></div>
-        <div><dt class="label">Stretch</dt><dd class="num">{settings.stretchWpm} wpm</dd></div>
+        <div><dt class="label">Session</dt><dd><Value value={settings.sessionMinutes} unit="min" /></dd></div>
+        <div><dt class="label">Sending</dt><dd><Value value="25%" unit="or more" /></dd></div>
+        <div><dt class="label">Comfort</dt><dd><Value value={settings.comfortWpm} unit="wpm" /></dd></div>
+        <div><dt class="label">Stretch</dt><dd><Value value={settings.stretchWpm} unit="wpm" /></dd></div>
       </dl>
     </section>
 
-    {#each MODES as g (g.group)}
+    {#each [MODES.slice(0, 2), MODES.slice(2)] as col, ci (ci)}
+      <div class="col">
+    {#each col as g (g.group)}
       <section class="modes" aria-labelledby="g-{g.group}">
         <h3 id="g-{g.group}">{g.group}</h3>
         <ul>
@@ -150,6 +154,8 @@
           {/each}
         </ul>
       </section>
+    {/each}
+      </div>
     {/each}
   </div>
 {/if}
@@ -212,8 +218,11 @@
   .stepper {
     display: flex;
     align-items: center;
-    gap: var(--s-half);
-    margin-left: calc(-1 * var(--s-1));
+    gap: var(--s-1);
+  }
+
+  .stepper :global(.btn) {
+    padding: 0 var(--s-1);
   }
 
   .stepper strong {
@@ -248,6 +257,12 @@
 
   .facts dd {
     margin: 0;
+  }
+
+  .col {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-4);
   }
 
   .modes ul {

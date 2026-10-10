@@ -1,7 +1,7 @@
 <script lang="ts">
   // A pocket round: learn new items, then 20 quiz items answered on the full
   // keyboard. A miss plays the right answer and your pick back to back.
-  import { onDestroy, onMount } from 'svelte';
+  import { onDestroy } from 'svelte';
   import Button from '../ui/Button.svelte';
   import Icon from '../ui/Icon.svelte';
   import Keyboard from '../ui/Keyboard.svelte';
@@ -34,7 +34,7 @@
   const single = $derived(stage === 'characters' || (stage === 'custom' && !customSet.words.length));
   signal.receiving = true;
 
-  let phase = $state<'loading' | 'learn' | 'quiz' | 'reveal' | 'wrap' | 'empty'>('loading');
+  let phase = $state<'ready' | 'loading' | 'learn' | 'quiz' | 'reveal' | 'wrap' | 'empty'>('ready');
   let n = $state(0);
   let item = $state('');
   let typed = $state<string[]>([]);
@@ -65,7 +65,6 @@
     }
   }
 
-  onMount(() => void begin());
 
   async function begin() {
     n = 0;
@@ -211,7 +210,13 @@
   </div>
   <div class="bar" aria-hidden="true"><span style:width="{(n / ROUND) * 100}%"></span></div>
 
-  {#if phase === 'empty'}
+  {#if phase === 'ready'}
+    <div class="center">
+      <p class="muted">{ROUND} items{stage === 'characters' ? ` from ${level.known.length} characters` : ''}.</p>
+      <button type="button" class="play" onclick={begin} aria-label="Start the round"><Icon name="play" size={40} /></button>
+      <span class="muted">Start</span>
+    </div>
+  {:else if phase === 'empty'}
     <p class="muted">Not enough items for this stage at {level.name}. Pick another stage or add to the custom set.</p>
   {:else if phase === 'learn'}
     <div class="center">

@@ -34,7 +34,7 @@
     <div class="signal"><SignalBar /></div>
     <a class="gear" href={href('settings')} aria-label="Settings"><Icon name="settings" /></a>
   </header>
-  <div class="signal-strip"><SignalBar compact /></div>
+  {#if top !== 'pocket'}<div class="signal-strip"><SignalBar compact /></div>{/if}
 
   <main class="main">
     {#if top === 'practice'}

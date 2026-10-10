@@ -275,7 +275,7 @@
   <section class="setup">
     <h1>QSO</h1>
     <div class="grid">
-      <div class="col">
+      <div class="col field">
         <h3>Format</h3>
         <ul class="formats" role="radiogroup" aria-label="Format">
           {#each FORMATS as f (f.id)}
@@ -429,10 +429,14 @@
     gap: var(--s-1);
   }
 
+  .col.field {
+    gap: var(--s-1);
+  }
+
   .formats {
     list-style: none;
     padding: 0;
-    margin: var(--s-1) 0 0;
+    margin: 0;
     border-top: var(--hairline) solid var(--line);
   }
 
