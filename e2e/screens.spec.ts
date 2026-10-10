@@ -1,6 +1,7 @@
 // Screenshots of every screen in both themes for design review, plus checks
 // that nothing throws and nothing scrolls sideways.
 import { test, expect } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
 
 const ROUTES = [
   'practice', 'practice/live', 'practice/send', 'practice/hear-send', 'practice/copy', 'practice/ttr',
@@ -58,8 +59,9 @@ async function seed(page: import('@playwright/test').Page) {
     const letters = 'KMRSUAPTLOWI.NJEF0Y,VG5/Q9ZH38B?427C1D6X'.split('');
     letters.forEach((c, i) => {
       const recent = Array.from({ length: 10 }, (_, k) => ((i * 7 + k * 3) % 10 < 7 - (i % 5) ? 1 : 0));
-      tx.objectStore('items').put({ key: `rx:${c}`, heat: 1, seen: 10, correct: recent.filter(Boolean).length, avgMs: 900, recent, lastSeen: now });
-      tx.objectStore('items').put({ key: `tx:${c}`, heat: 1, seen: 10, correct: 8, avgMs: 0, recent: recent.slice().reverse(), lastSeen: now });
+      const log = (vals: number[], v: (k: number) => number) => vals.map((ok, k) => [now - k * day * 2, ok, ok ? v(k) : 0]);
+      tx.objectStore('items').put({ key: `rx:${c}`, heat: 1, seen: 10, correct: recent.filter(Boolean).length, avgMs: 900, recent, lastSeen: now, log: log(recent, (k) => 700 + ((i * 13 + k * 7) % 9) * 90) });
+      tx.objectStore('items').put({ key: `tx:${c}`, heat: 1, seen: 10, correct: 8, avgMs: 0, recent: recent.slice().reverse(), lastSeen: now, log: log(recent.slice().reverse(), (k) => 60 + ((i * 5 + k * 11) % 7) * 40) });
     });
     tx.objectStore('kv').put({ key: 'sendSlips', value: { 'merged-words': 4, 'merged-letters': 3, 'split-letter': 2, 'split-word': 1, pairs: { 'ET as A': 2, 'R as EN': 1, 'TE as N': 1 } } });
     const dit = 0.067;
@@ -106,5 +108,9 @@ for (const theme of ['dark', 'light'] as const) {
     expect(wide).toBeLessThanOrEqual(1);
     await expect(page.getByText('Spacing slips')).toBeVisible();
     await expect(page.getByText('CQ CQ DE K1ABC')).toBeVisible();
+    await page.locator('.block', { hasText: 'Accuracy by character' }).getByRole('button', { name: 'Table', exact: true }).click();
+    await expect(page.getByRole('columnheader', { name: 'Timing error' })).toBeVisible();
+    const axe = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).analyze();
+    expect(axe.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).slice(0, 3).join(' | ')}`)).toEqual([]);
   });
 }

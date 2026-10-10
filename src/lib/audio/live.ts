@@ -5,6 +5,7 @@ import { Keyer, type KeyEvent } from './keyer';
 import { Decoder, type DecodedChar, type DecoderOutput } from '../decoder/decoder';
 import type { DetectorEvent } from '../dsp/detector';
 import { signal } from '../state/signal.svelte';
+import { buildSchedule } from '../morse/schedule';
 
 export type InputSource = 'mic' | 'straight' | 'iambicA' | 'iambicB';
 
@@ -56,7 +57,7 @@ export class LiveDecoder {
   async start() {
     await engine.ensure();
     if (this.opts.source === 'mic') {
-      this.unsub = engine.onEvents((events) => this.onDetector(events));
+      this.unsub = engine.onEvents((events, time) => this.onDetector(events, time));
       engine.command({ type: 'dit', dit: this.decoder.ditEstimate });
     } else {
       this.keyer = new Keyer({
@@ -107,6 +108,32 @@ export class LiveDecoder {
     this.keyer?.straight(down);
   }
 
+  /**
+   * Your recent marks and the standard keying of the same decoded characters at
+   * your measured speed, both starting at the first of those characters. Marks
+   * still being keyed (not yet decoded) trail on your row.
+   */
+  recentRhythm(maxMarks = 30): { yours: Mark[]; standard: Mark[] } {
+    const toks: string[] = [];
+    let n = 0;
+    let from = Infinity;
+    for (let i = this.outputs.length - 1; i >= 0; i--) {
+      const o = this.outputs[i];
+      if (o.kind === 'space') {
+        if (toks.length) toks.unshift(' ');
+        continue;
+      }
+      if (!o.char.token || n + o.char.marks.length > maxMarks) break;
+      toks.unshift(o.char.token);
+      n += o.char.marks.length;
+      from = o.char.marks[0]?.start ?? from;
+    }
+    if (!toks.length) return { yours: this.marks.slice(-maxMarks), standard: [] };
+    const yours = this.marks.filter((m) => m.start >= from - 1e-6);
+    const std = buildSchedule(toks.join('').trim(), { charWpm: Math.max(5, this.decoder.wpm), leadIn: 0, tail: 0 });
+    return { yours, standard: std.marks.map((m) => ({ start: m.start, end: m.end })) };
+  }
+
   get chars(): DecodedChar[] {
     return this.outputs.filter((o) => o.kind === 'char').map((o) => (o as { char: DecodedChar }).char);
   }
@@ -119,7 +146,7 @@ export class LiveDecoder {
 
   private lastEventTime = 0;
 
-  private onDetector(events: DetectorEvent[]) {
+  private onDetector(events: DetectorEvent[], time: number) {
     for (const e of events) {
       if (e.type === 'key') this.onKey({ down: e.down, t: e.t });
       else if (e.type === 'status') {
@@ -132,6 +159,9 @@ export class LiveDecoder {
         this.opts.onStatus?.(this.status);
       }
     }
+    // Every message carries the detector clock; ticking on it closes characters promptly.
+    this.lastEventTime = Math.max(this.lastEventTime, time);
+    this.push(this.decoder.tick(time));
     const dit = this.decoder.ditEstimate;
     if (Math.abs(dit - this.lastDit) / dit > 0.08) {
       this.lastDit = dit;

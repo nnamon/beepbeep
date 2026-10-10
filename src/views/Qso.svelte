@@ -16,7 +16,8 @@
   import { buildSchedule } from '../lib/morse/schedule';
   import { renderSchedule } from '../lib/morse/render';
   import { conditions, sendInput } from '../lib/train/session';
-  import { analyseFist } from '../lib/train/fist';
+  import { analyseFist, type FistReport } from '../lib/train/fist';
+  import FistPanel from '../ui/FistPanel.svelte';
   import { oneNote } from '../lib/train/scoring';
   import { addQso } from '../lib/state/db';
   import { textTokens } from '../lib/util/text';
@@ -41,6 +42,9 @@
   let botWpm = $state(Math.min(30, settings.sendWpm + 2));
   let botEff = $state(Math.min(30, settings.sendWpm + 2));
   let sendNote = $state('');
+  let onBotKey: (() => void) | null = null;
+  let sendReport = $state<FistReport | null>(null);
+  let received = $state<number | null>(null);
   let crowd = $state(3);
   let transcriptOn = $state(!strict());
   let stage = $state<'setup' | 'running' | 'ended'>('setup');
@@ -80,6 +84,8 @@
     started = Date.now();
     void keepAwake(true);
     sendNote = '';
+    sendReport = null;
+    received = null;
     live = new LiveDecoder({
       source: sendInput(),
       charWpm: settings.sendWpm,
@@ -93,7 +99,10 @@
           if (p.handover || p.signoff) setTimeout(() => endOver(), 300);
         }
       },
-      onKey: () => (lastKey = performance.now()),
+      onKey: (down) => {
+        lastKey = performance.now();
+        if (down && turn === 'bot') onBotKey?.();
+      },
     });
     await live.start();
     watch = setInterval(() => {
@@ -167,12 +176,15 @@
     for (const r of rendered) for (let k = 0; k < r.length; k++) mix[k] += r[k];
     lastAudio = mix;
     const pb = await engine.play(mix);
-    // Break-in with the keyboard key: keying stops the station and starts your over.
+    // Break-in: keying stops the station and starts your over. With the mic this
+    // needs headphones, since otherwise the mic is muted while the station sends.
     const breakIn = (e: KeyboardEvent) => {
       if (['Space', 'BracketLeft', 'BracketRight', 'KeyZ', 'KeyX', 'Comma', 'Period'].includes(e.code)) pb.stop();
     };
     if (settings.input !== 'mic') window.addEventListener('keydown', breakIn, true);
+    else if (settings.headphones) onBotKey = () => pb.stop();
     await pb.done;
+    onBotKey = null;
     window.removeEventListener('keydown', breakIn, true);
     if (transcriptOn) for (const t of turns) lines.push({ from: 'bot', who: t.who, text: t.text });
     if (bot?.done) return finish();
@@ -193,12 +205,14 @@
     if (live) {
       live.flush();
       const rep = analyseFist(live.outputs);
+      sendReport = rep;
       sendNote = rep ? oneNote(rep, [], settings.sendTolerance) : '';
     }
     live?.stop();
     if (watch) clearInterval(watch);
     void keepAwake(false);
     if (!results.length && bot.active && bot.done) results.push({ station: bot.active, copied: { ...copied } });
+    received = sendScore();
     for (const r of results) {
       const sc = score(r.station, r.copied);
       await addQso({
@@ -297,17 +311,15 @@
     <div class="grid">
       <div class="col field">
         <h3>Format</h3>
-        <ul class="formats" role="radiogroup" aria-label="Format">
+        <div class="formats" role="radiogroup" aria-label="Format">
           {#each FORMATS as f (f.id)}
-            <li>
-              <label class:on={format === f.id}>
-                <input type="radio" name="format" value={f.id} bind:group={format} />
-                <span class="name">{f.name}</span>
-                <span class="muted ex">{f.exchange}</span>
-              </label>
-            </li>
+            <label class:on={format === f.id}>
+              <input type="radio" name="format" value={f.id} bind:group={format} />
+              <span class="name">{f.name}</span>
+              <span class="muted ex">{f.exchange}</span>
+            </label>
           {/each}
-        </ul>
+        </div>
       </div>
       <div class="col">
         {#if format !== 'pileup'}
@@ -387,12 +399,15 @@
               </tbody>
             </table>
           {/each}
-          {#if sendNote}<p><span class="label">Your sending</span><br />{sendNote}</p>{/if}
           {#if bot}
-            <p class="muted small">
-              Station received your call as <span class="mono">{bot.copied.call ?? 'nothing'}</span>{bot.copied.name ? `, name ${bot.copied.name}` : ''}{bot.copied.state ? `, state ${bot.copied.state}` : ''}.
+            <p>
+              <span class="label">Station received you</span><br />
+              {#if received !== null}<span class="num">{Math.round(received * 100)}%</span> ·{/if}
+              call <span class="mono">{bot.copied.call ?? 'nothing'}</span>{bot.copied.name ? `, name ${bot.copied.name}` : ''}{bot.copied.state ? `, state ${bot.copied.state}` : ''}{bot.copied.rst ? `, RST sent ${bot.copied.rst}` : ''}.
+              <span class="muted">{mins(elapsed)} on the air.</span>
             </p>
           {/if}
+          {#if sendReport}<div class="fist"><FistPanel report={sendReport} note={sendNote} /></div>{:else if sendNote}<p>{sendNote}</p>{/if}
         {/if}
       </div>
       <aside class="side">
@@ -418,6 +433,10 @@
 {/if}
 
 <style>
+  .fist {
+    max-width: 360px;
+  }
+
   .setup,
   .run {
     display: flex;
@@ -456,9 +475,8 @@
   }
 
   .formats {
-    list-style: none;
-    padding: 0;
-    margin: 0;
+    display: flex;
+    flex-direction: column;
     border-top: var(--hairline) solid var(--line);
   }
 

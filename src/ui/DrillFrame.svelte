@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import Icon from './Icon.svelte';
-  import { href } from '../lib/state/router.svelte';
+  import { go, href } from '../lib/state/router.svelte';
   import { clock } from '../lib/state/clock.svelte';
 
   let dismissed = $state(false);
@@ -24,6 +24,18 @@
     footer?: Snippet;
   } = $props();
 </script>
+
+<!-- Esc leaves the drill (which ends it), unless the drill used Esc itself, e.g. to stop and show results. -->
+<svelte:window
+  onkeydown={(e) => {
+    if (e.key !== 'Escape') return;
+    const t = e.target as HTMLElement | null;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) return;
+    setTimeout(() => {
+      if (!e.defaultPrevented) go(...back.split('/'));
+    }, 0);
+  }}
+/>
 
 <section class="drill">
   <div class="top">

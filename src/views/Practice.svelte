@@ -3,6 +3,9 @@
   import { settings, strict } from '../lib/state/settings.svelte';
   import { TRACKS, type TrackId } from '../lib/train/courses';
   import { currentLevel, farnsworthDays, receiveSpeeds } from '../lib/train/session';
+  import { getItems, sessions } from '../lib/state/db';
+  import { accuracy, windowStats } from '../lib/train/srs';
+  import { displayToken } from '../lib/morse/code';
   import Segmented from '../ui/Segmented.svelte';
   import Button from '../ui/Button.svelte';
   import TokenText from '../ui/TokenText.svelte';
@@ -23,6 +26,42 @@
   const levels = $derived(TRACKS[settings.track].levels);
   const idx = $derived(levels.findIndex((l) => l.id === level.id));
   const speeds = $derived(receiveSpeeds());
+
+  // One to three objectives for today's session, from your own numbers.
+  let objectives = $state<{ text: string; to: string[] }[]>([]);
+  $effect(() => {
+    const lvl = level;
+    const track = settings.track;
+    const minutes = settings.sessionMinutes;
+    const stretchWpm = settings.stretchWpm;
+    void (async () => {
+      try {
+        const [rx, list] = await Promise.all([getItems('rx:'), sessions()]);
+        const out: { text: string; to: string[] }[] = [];
+        const fresh = lvl.added.filter((c) => {
+          const st = rx.get(`rx:${c}`);
+          return !st || st.seen < 10 || (accuracy(st) ?? 0) < 0.9;
+        });
+        if (fresh.length) out.push({ text: `Learn ${fresh.map(displayToken).join(' ')}`, to: track === 'licw' ? ['familiarity'] : ['copy', 'chars'] });
+        const since = Date.now() - 30 * 864e5;
+        const weak = lvl.known
+          .filter((c) => !lvl.added.includes(c))
+          .map((c) => ({ c, w: windowStats(rx.get(`rx:${c}`), since) }))
+          .filter((x) => x.w && x.w.n >= 5 && x.w.accuracy < 0.8)
+          .sort((a, b) => a.w!.accuracy - b.w!.accuracy)
+          .slice(0, 3);
+        if (weak.length) out.push({ text: `Copy ${weak.map((x) => displayToken(x.c)).join(' ')}, under 80% this month`, to: ['copy', 'chars'] });
+        const week = list.filter((x) => x.at > Date.now() - 7 * 864e5);
+        const total = week.reduce((a, x) => a + x.seconds, 0);
+        const sent = week.filter((x) => x.sending).reduce((a, x) => a + x.seconds, 0);
+        if (!total || sent / total < 0.25) out.push({ text: `Send for ${Math.max(3, Math.round(minutes / 4))} min`, to: ['send'] });
+        if (out.length < 3) out.push({ text: `Stretch session at ${stretchWpm} wpm`, to: ['copy', 'stretch'] });
+        objectives = out.slice(0, 3);
+      } catch {
+        objectives = [];
+      }
+    })();
+  });
 
   // Flag extra spacing left on for more than two weeks.
   let wideDays = $state<number | null>(null);
@@ -155,6 +194,11 @@
         <div><dt class="label">Comfort</dt><dd><Value value={settings.comfortWpm} unit="wpm" /></dd></div>
         <div><dt class="label">Stretch</dt><dd><Value value={settings.stretchWpm} unit="wpm" /></dd></div>
       </dl>
+      {#if objectives.length}
+        <ol class="objectives">
+          {#each objectives as o (o.text)}<li><a href={href('practice', ...o.to)}>{o.text}</a></li>{/each}
+        </ol>
+      {/if}
       <div class="sessions">
         <Button href={href('practice', 'copy', 'comfort')}>Comfort session</Button>
         <Button href={href('practice', 'copy', 'stretch')}>Stretch session</Button>
@@ -304,6 +348,23 @@
 
   .facts dd {
     margin: 0;
+  }
+
+  .objectives {
+    margin: var(--s-1) 0 0;
+    padding-left: var(--s-3);
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-half);
+  }
+
+  .objectives a {
+    text-decoration-color: var(--line);
+    text-underline-offset: 3px;
+  }
+
+  .objectives a:hover {
+    text-decoration-color: var(--signal);
   }
 
   .sessions {

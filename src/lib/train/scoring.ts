@@ -103,6 +103,22 @@ export function spacingIssues(intended: string, received: string): SendIssue[] {
   return issues;
 }
 
+/** One line for a spacing issue, e.g. "Letters ran together: ET as A." */
+export function describeIssue(i: SendIssue): string {
+  switch (i.kind) {
+    case 'merged-words':
+      return 'Two words heard as one.';
+    case 'split-word':
+      return 'One word heard as two.';
+    case 'merged-letters':
+      return `Letters ran together: ${i.detail}.`;
+    case 'split-letter':
+      return `Letter split in two: ${i.detail}.`;
+    default:
+      return i.detail;
+  }
+}
+
 export type Tolerance = 'tight' | 'normal' | 'loose';
 const TOL: Record<Tolerance, number> = { tight: 0.6, normal: 1, loose: 1.5 };
 

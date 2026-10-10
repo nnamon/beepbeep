@@ -186,6 +186,11 @@
   <div class="group">
     <h2>Input</h2>
     <p><a href={href('setup')}>Microphone and keyboard keyer setup</a></p>
+    <Toggle
+      bind:checked={settings.headphones}
+      label="Headphones"
+      detail="App audio goes to headphones. The mic stays open while the app sends, so keying stops a QSO station (break-in). Leave off when the app plays through a speaker."
+    />
     <Slider label="End your over after" bind:value={settings.overTimeout} min={1.5} max={6} step={0.5} unit="s of silence" />
     <div class="field">
       <span class="label">Timing notes</span>

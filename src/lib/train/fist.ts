@@ -111,3 +111,20 @@ export function analyseFist(outputs: DecoderOutput[]): FistReport | null {
     clean: chars.filter((c) => c.confidence >= 0.5).length / chars.length,
   };
 }
+
+/**
+ * How far one character's elements and the gaps inside it are from standard
+ * timing at its own decoded speed: mean absolute error relative to each ideal
+ * length (0 = textbook). Null for unknown characters.
+ */
+export function charTimingError(c: DecodedChar): number | null {
+  if (!c.token || !c.marks.length || c.marks.length !== c.pattern.length) return null;
+  const u = 1.2 / c.wpm;
+  const errs: number[] = [];
+  c.marks.forEach((m, i) => {
+    const ideal = (c.pattern[i] === '-' ? 3 : 1) * u;
+    errs.push(Math.abs(m.end - m.start - ideal) / ideal);
+    if (i > 0) errs.push(Math.abs(m.start - c.marks[i - 1].end - u) / u);
+  });
+  return errs.reduce((a, b) => a + b, 0) / errs.length;
+}

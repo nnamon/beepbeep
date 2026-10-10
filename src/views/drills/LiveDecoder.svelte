@@ -1,16 +1,17 @@
 <script lang="ts">
   // Free practice scope: key anything and watch your own sending decoded live,
-  // with its rhythm drawn to scale. Shows text while you key in every mode.
+  // with its rhythm drawn to scale above the standard. In LICW strict mode the
+  // text and rhythm show after each over (silence, or End over) instead.
   import { onDestroy } from 'svelte';
   import DrillFrame from '../../ui/DrillFrame.svelte';
   import Button from '../../ui/Button.svelte';
   import TokenText, { type Tok } from '../../ui/TokenText.svelte';
-  import RhythmView from '../../ui/RhythmView.svelte';
+  import RhythmView, { type RhythmRow } from '../../ui/RhythmView.svelte';
   import FistPanel from '../../ui/FistPanel.svelte';
   import InputHelp from '../../ui/InputHelp.svelte';
   import Inspect from '../../ui/Inspect.svelte';
   import { LiveDecoder } from '../../lib/audio/live';
-  import { settings } from '../../lib/state/settings.svelte';
+  import { settings, strict } from '../../lib/state/settings.svelte';
   import { signal, startMic } from '../../lib/state/signal.svelte';
   import { analyseFist, type FistReport } from '../../lib/train/fist';
   import { oneNote } from '../../lib/train/scoring';
@@ -20,11 +21,15 @@
   let live: LiveDecoder | null = null;
   let running = $state(false);
   let tokens = $state<Tok[]>([]);
-  let marks = $state<{ start: number; end: number }[]>([]);
+  let rows = $state<RhythmRow[]>([]);
+  // Strict mode: tokens before this index are revealed (the finished overs).
+  let revealed = $state(0);
+  let overTimer: ReturnType<typeof setTimeout> | null = null;
   let report = $state<FistReport | null>(null);
   let note = $state('');
   let inspecting = $state<{ start: number; end: number }[] | null>(null);
   let startedAt = 0;
+  const shown = $derived(strict() ? tokens.slice(0, revealed) : tokens);
 
   async function start() {
     if (settings.input === 'mic' && !signal.micOn) {
@@ -42,13 +47,20 @@
           const m = o.char.marks.map((x) => ({ start: x.start, end: x.end }));
           tokens.push({ t: '⁇', state: 'unknown', onclick: () => (inspecting = m) });
         }
-        if (tokens.length > 400) tokens.splice(0, tokens.length - 400);
+        if (tokens.length > 400) {
+          const cut = tokens.length - 400;
+          tokens.splice(0, cut);
+          revealed = Math.max(0, revealed - cut);
+        }
         signal.wpm = live?.decoder.wpm ?? 0;
       },
       onKey: (down) => {
+        if (overTimer) clearTimeout(overTimer);
+        overTimer = null;
         if (!down && live) {
-          marks = live.marks.slice(-30);
+          if (!strict()) rows = rhythmRows();
           signal.wpm = live.decoder.wpm;
+          if (strict()) overTimer = setTimeout(endOver, settings.overTimeout * 1000);
         }
       },
     });
@@ -78,17 +90,30 @@
     void keepAwake(false);
   }
 
+  function rhythmRows(): RhythmRow[] {
+    if (!live) return [];
+    const r = live.recentRhythm(30);
+    return r.standard.length
+      ? [{ label: 'yours', marks: r.yours }, { label: 'standard', marks: r.standard, style: 'outline' }]
+      : [{ label: 'yours', marks: r.yours }];
+  }
+
   function endOver() {
+    if (overTimer) clearTimeout(overTimer);
+    overTimer = null;
     if (!live) return;
     live.flush();
     report = analyseFist(live.outputs);
     note = oneNote(report, [], settings.sendTolerance);
+    revealed = tokens.length;
+    rows = rhythmRows();
     void keepSend(live.text, live.marks);
   }
 
   function clear() {
     tokens = [];
-    marks = [];
+    rows = [];
+    revealed = 0;
     report = null;
     note = '';
     inspecting = null;
@@ -96,24 +121,27 @@
   }
 
   onDestroy(() => {
+    if (overTimer) clearTimeout(overTimer);
     live?.stop();
     void keepAwake(false);
   });
 </script>
 
-<DrillFrame title="Live decoder" eyebrow="Your sending, decoded live">
+<DrillFrame title="Live decoder" eyebrow={strict() ? 'Your sending, decoded after each over' : 'Your sending, decoded live'}>
   <div class="screen" aria-live="polite">
-    {#if tokens.length}
-      <TokenText {tokens} size="xl" label="Decoded sending" />
+    {#if shown.length}
+      <TokenText tokens={shown} size="xl" label="Decoded sending" />
     {:else}
-      <p class="muted placeholder">{running ? 'Decoded text shows here.' : 'Press Start and send.'}</p>
+      <p class="muted placeholder">
+        {running ? (strict() ? `Decoded text shows after ${settings.overTimeout} s of silence.` : 'Decoded text shows here.') : 'Press Start and send.'}
+      </p>
     {/if}
   </div>
   {#if inspecting}<Inspect marks={inspecting} onclose={() => (inspecting = null)} />{/if}
-  {#if marks.length}
+  {#if rows.length && rows[0].marks.length}
     <div class="rhythm">
-      <span class="label">Rhythm, last {marks.length} marks</span>
-      <RhythmView rows={[{ label: 'yours', marks }]} />
+      <span class="label">Rhythm, last {rows[0].marks.length} marks</span>
+      <RhythmView {rows} />
     </div>
   {/if}
   <InputHelp />
@@ -133,7 +161,17 @@
   {/snippet}
 </DrillFrame>
 
-<svelte:window onkeydown={(e) => { if (e.key === 'Escape' && running) stop(); }} />
+<svelte:window
+  onkeydown={(e) => {
+    if (e.key === 'Escape' && running) {
+      e.preventDefault();
+      stop();
+    } else if (e.key === 'Enter' && !running && !(e.target instanceof HTMLButtonElement)) {
+      e.preventDefault();
+      void start();
+    }
+  }}
+/>
 
 <style>
   .screen {

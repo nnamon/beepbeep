@@ -65,12 +65,26 @@ describe('bot calls CQ', () => {
     expect(bot.hear('EEEE TTT')[0].text).toMatch(/^QRZ\?/);
   });
 
+  it('gives stations their own pace and abbreviation habits', () => {
+    const plain = new QsoBot({ format: 'ragchew', opener: 'bot', you: ME, wpm: 20, seed: 1 });
+    plain.stations[0].abbrev = 0;
+    plain.stations[0].pace = 2;
+    const opening = plain.start();
+    expect(opening[0].wpm).toBe(22);
+    const reply = plain.hear(`${plain.active!.call} DE K1ABC TNX FER CALL UR RST 579 579 NAME TOM TOM QTH BOSTON MA BK`);
+    const words = reply.map((t) => t.text).join(' ').split(' ');
+    expect(words.some((w) => ['THANKS', 'FOR', 'AND', 'HERE'].includes(w))).toBe(true);
+    const sst = new QsoBot({ format: 'sst', opener: 'bot', you: ME, wpm: 20, seed: 1 });
+    sst.stations[0].pace = 2;
+    expect(sst.start()[0].wpm).toBe(20);
+  });
+
   it('repeats and slows down on QRS', () => {
     const bot = new QsoBot({ format: 'ragchew', opener: 'bot', you: ME, wpm: 20, seed: 1 });
     const first = bot.start();
     const again = bot.hear('QRS');
     expect(again[0].text).toBe(first[0].text);
-    expect(again[0].wpm).toBe(16);
+    expect(again[0].wpm).toBe(first[0].wpm - 4);
   });
 
   it('repairs a busted call the LICW way', () => {

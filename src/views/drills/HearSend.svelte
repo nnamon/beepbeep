@@ -9,6 +9,7 @@
   import RhythmView, { type RhythmRow } from '../../ui/RhythmView.svelte';
   import InputHelp from '../../ui/InputHelp.svelte';
   import { LiveDecoder } from '../../lib/audio/live';
+  import type { DecodedChar } from '../../lib/decoder/decoder';
   import { engine } from '../../lib/audio/engine';
   import { settings, strict } from '../../lib/state/settings.svelte';
   import { signal, startMic } from '../../lib/state/signal.svelte';
@@ -59,7 +60,7 @@
       const r = compareCopy(current, got.text);
       const ok = r.accuracy === 1 && textTokens(got.text).length === textTokens(current).length;
       results.push({ want: current, got: got.text, ok, wpm, marks: got.marks });
-      void recordSend(current, got.text, []);
+      void recordSend(current, got.text, [], got.chars);
       const std = buildSchedule(current, { charWpm: wpm, leadIn: 0, tail: 0 });
       lastResult = {
         want: current,
@@ -77,7 +78,7 @@
   }
 
   /** Listens until a pause after your sending, or up to 8 seconds. */
-  async function listen(wpm: number): Promise<{ text: string; marks: { start: number; end: number }[] }> {
+  async function listen(wpm: number): Promise<{ text: string; marks: { start: number; end: number }[]; chars: DecodedChar[] }> {
     let last = 0;
     const began = performance.now();
     const live = new LiveDecoder({
@@ -92,7 +93,7 @@
     );
     live.flush();
     live.stop();
-    return { text: live.text, marks: live.marks };
+    return { text: live.text, marks: live.marks, chars: live.chars };
   }
 
   const gapMs = (wpm: number) => Math.max(1100, (1.2 / wpm) * 10 * 1000);
@@ -198,8 +199,10 @@
 
 <svelte:window
   onkeydown={(e) => {
-    if (e.key === 'Escape' && running) stop();
-    else if (e.key === 'Enter' && !running) {
+    if (e.key === 'Escape' && running) {
+      e.preventDefault();
+      stop();
+    } else if (e.key === 'Enter' && !running) {
       e.preventDefault();
       void run();
     }

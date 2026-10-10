@@ -17,7 +17,7 @@
   import { currentLevel, keepSend, playMarks, recordSend, saveSession, sendInput } from '../../lib/train/session';
   import { items, type Material } from '../../lib/train/generate';
   import { analyseFist, type FistReport } from '../../lib/train/fist';
-  import { compareCopy, oneNote, spacingIssues, type SendIssue } from '../../lib/train/scoring';
+  import { compareCopy, describeIssue, oneNote, spacingIssues, type SendIssue } from '../../lib/train/scoring';
   import { buildSchedule } from '../../lib/morse/schedule';
   import { textTokens, align } from '../../lib/util/text';
   import { mulberry32, randomSeed } from '../../lib/util/random';
@@ -36,7 +36,7 @@
   let report = $state<FistReport | null>(null);
   let note = $state('');
   let rhythm = $state<RhythmRow[]>([]);
-  let liveMarks = $state<{ start: number; end: number }[]>([]);
+  let liveRows = $state<RhythmRow[]>([]);
   let inspecting = $state<{ start: number; end: number }[] | null>(null);
   let n = $state(0);
   let correctTotal = 0;
@@ -63,7 +63,7 @@
     }
     nextPrompt();
     liveTokens = [];
-    liveMarks = [];
+    liveRows = [];
     inspecting = null;
     stage = 'sending';
     live?.stop();
@@ -77,7 +77,12 @@
       onKey: (down) => {
         lastKey = performance.now();
         signal.wpm = live?.decoder.wpm ?? 0;
-        if (!down && live) liveMarks = live.marks.slice(-30);
+        if (!down && live) {
+          const r = live.recentRhythm(30);
+          liveRows = r.standard.length
+            ? [{ label: 'yours', marks: r.yours }, { label: 'standard', marks: r.standard, style: 'outline' }]
+            : [{ label: 'yours', marks: r.yours }];
+        }
       },
     });
     await live.start();
@@ -102,7 +107,7 @@
     report = analyseFist(live.outputs);
     lastFist = report ?? lastFist;
     note = oneNote(report, issues, settings.sendTolerance);
-    void recordSend(prompt, received, issues);
+    void recordSend(prompt, received, issues, chars);
     void keepSend(received, live.marks);
     receivedTokens = markReceived(prompt, received);
     rhythm = buildRhythm();
@@ -231,13 +236,13 @@
         <span class="label">Decoded so far</span>
         {#if liveTokens.length}<TokenText tokens={liveTokens} size="l" />{:else}<p class="muted">Nothing yet.</p>{/if}
       </div>
-      {#if liveMarks.length}<RhythmView rows={[{ label: 'yours', marks: liveMarks }]} />{/if}
+      {#if liveRows.length && liveRows[0].marks.length}<RhythmView rows={liveRows} />{/if}
     {/if}
   {:else}
     <div class="block">
       <span class="label">Received</span>
       {#if receivedTokens.length}<TokenText tokens={receivedTokens} size="xl" />{:else}<p class="muted">Nothing decoded.</p>{/if}
-      {#each issues as i (i.at + i.kind)}<p class="issue muted">{i.detail}</p>{/each}
+      {#each issues as i (i.at + i.kind)}<p class="issue muted">{describeIssue(i)}</p>{/each}
     </div>
     <div class="block">
       <span class="label">Intended</span>

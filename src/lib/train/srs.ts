@@ -14,7 +14,15 @@ export interface ItemStat {
   /** Last N outcomes, newest last (1 right, 0 wrong). */
   recent: number[];
   lastSeen: number;
+  /**
+   * Timestamped answers, newest last, for 7- and 30-day figures:
+   * [time ms, 1 right / 0 wrong, value]. The value is the answer time in ms
+   * for copying, and the timing error in thousandths for sending.
+   */
+  log?: [number, number, number][];
 }
+
+const LOG_SIZE = 120;
 
 export const NEW_HEAT = 3;
 const MAX_HEAT = 10;
@@ -30,6 +38,7 @@ export function newStat(key: string): ItemStat {
  */
 export function recordAnswer(s: ItemStat, right: boolean, ms: number, slowMs: number, now = Date.now()): ItemStat {
   const next = { ...s, recent: [...s.recent, right ? 1 : 0].slice(-10) };
+  next.log = [...(s.log ?? []), [now, right ? 1 : 0, Math.round(ms)] as [number, number, number]].slice(-LOG_SIZE);
   next.seen += 1;
   next.lastSeen = now;
   if (right) {
@@ -47,6 +56,22 @@ export function recordAnswer(s: ItemStat, right: boolean, ms: number, slowMs: nu
 export function accuracy(s: ItemStat): number | null {
   if (!s.recent.length) return null;
   return s.recent.reduce((a, b) => a + b, 0) / s.recent.length;
+}
+
+/**
+ * Accuracy and mean value (answer time, or timing error) over answers since
+ * `since`; the value averages right answers only. Null when there are none.
+ */
+export function windowStats(s: ItemStat | undefined, since: number): { n: number; accuracy: number; value: number | null } | null {
+  const rows = (s?.log ?? []).filter(([t]) => t >= since);
+  if (!rows.length) return null;
+  const right = rows.filter(([, ok]) => ok);
+  const vals = right.map(([, , v]) => v).filter((v) => v > 0);
+  return {
+    n: rows.length,
+    accuracy: right.length / rows.length,
+    value: vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null,
+  };
 }
 
 /** Picks the next item: weighted by heat, avoiding the last few asked. */

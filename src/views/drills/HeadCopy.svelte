@@ -163,6 +163,16 @@
   {/snippet}
 </DrillFrame>
 
+<svelte:window
+  onkeydown={(e) => {
+    if (e.key === 'Enter' && (stage === 'ready' || stage === 'done') && !(e.target instanceof HTMLButtonElement) && !(e.target instanceof HTMLInputElement)) {
+      e.preventDefault();
+      void start();
+    }
+  }}
+/>
+
+
 <style>
   .intro {
     display: flex;

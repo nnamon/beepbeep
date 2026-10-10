@@ -39,11 +39,16 @@ class DetectorProcessor extends AudioWorkletProcessor {
     };
   }
 
+  private lastPost = 0;
+
   process(inputs: Float32Array[][]): boolean {
     const channel = inputs[0]?.[0];
     if (channel && channel.length) {
       const events = this.detector.process(channel);
-      if (events.length) {
+      // Post at least every 10 ms, even with no events, so the decoder can
+      // close a character as soon as the gap after it is long enough.
+      if (events.length || this.detector.time - this.lastPost >= 0.01) {
+        this.lastPost = this.detector.time;
         this.port.postMessage({ type: 'events', events, time: this.detector.time } satisfies WorkletMessage);
       }
     }

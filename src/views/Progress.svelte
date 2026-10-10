@@ -8,7 +8,7 @@
   import { settings, strict } from '../lib/state/settings.svelte';
   import { href } from '../lib/state/router.svelte';
   import { currentLevel, playCw, playMarks, wait, type SlipCounts } from '../lib/train/session';
-  import { accuracy, type ItemStat } from '../lib/train/srs';
+  import { windowStats, type ItemStat } from '../lib/train/srs';
   import { displayToken, isProsign } from '../lib/morse/code';
   import { FORMATS } from '../lib/qso/bot';
 
@@ -20,6 +20,8 @@
   let slips = $state<SlipCounts | null>(null);
   let sends = $state<{ at: number; text: string; marks: { start: number; end: number }[] }[]>([]);
   let heatOf = $state<'rx' | 'tx'>('rx');
+  let days = $state<7 | 30>(30);
+  let charTable = $state(false);
   let loaded = $state(false);
 
   onMount(async () => {
@@ -49,7 +51,17 @@
   const lastFist = $derived([...list].reverse().find((s) => s.fist)?.fist ?? null);
 
   const level = $derived(currentLevel());
-  const chars = $derived(level.known.map((t) => ({ t, s: (heatOf === 'rx' ? rx : tx).get(`${heatOf}:${t}`) })));
+  const since = $derived(Date.now() - days * 864e5);
+  const chars = $derived(
+    level.known.map((t) => {
+      const r = windowStats(rx.get(`rx:${t}`), since);
+      const x = windowStats(tx.get(`tx:${t}`), since);
+      const w = heatOf === 'rx' ? r : x;
+      return { t, r, x, a: w?.accuracy ?? null, n: w?.n ?? 0 };
+    }),
+  );
+  const charRows = $derived(chars.filter((c) => c.r || c.x));
+  const pct = (v: number | null | undefined) => (v === null || v === undefined ? '–' : `${Math.round(v * 100)}%`);
   const SLIPS: { kind: Exclude<keyof SlipCounts, 'pairs'>; label: string }[] = [
     { kind: 'merged-words', label: 'Words ran together' },
     { kind: 'merged-letters', label: 'Letters ran together' },
@@ -113,21 +125,46 @@
   <div class="block">
     <div class="head">
       <h2>Accuracy by character</h2>
-      <Segmented label="Accuracy of" bind:value={heatOf} options={[{ value: 'rx', label: 'Copying' }, { value: 'tx', label: 'Sending' }]} />
+      <div class="controls">
+        <Segmented label="Accuracy of" bind:value={heatOf} options={[{ value: 'rx', label: 'Copying' }, { value: 'tx', label: 'Sending' }]} />
+        <Segmented label="Period" bind:value={days} options={[{ value: 7, label: '7 days' }, { value: 30, label: '30 days' }]} />
+      </div>
     </div>
     <p class="muted small">
-      {heatOf === 'rx' ? 'Characters you copied.' : 'Characters you sent, as the decoder received them.'} Last 10 each. Stronger
-      colour is more accurate. Blank cells have none yet.
+      {heatOf === 'rx' ? 'Characters you copied' : 'Characters you sent, as the decoder received them'}, last {days} days. Stronger colour
+      is more accurate. Blank cells have none yet.
+      {#if charRows.length}<button type="button" class="tbtn" onclick={() => (charTable = !charTable)}>{charTable ? 'Heatmap' : 'Table'}</button>{/if}
     </p>
-    <ul class="heat">
-      {#each chars as c (c.t)}
-        {@const a = c.s ? accuracy(c.s) : null}
-        <li style:--a={shade(a)} class:strong={shade(a) > 0.45} title={a === null ? 'No answers yet' : `${Math.round(a * 100)}% of ${c.s!.recent.length}`}>
-          <span class="mono ch" class:prosign={isProsign(c.t)}>{displayToken(c.t)}</span>
-          <span class="pc num">{a === null ? '' : `${Math.round(a * 100)}`}</span>
-        </li>
-      {/each}
-    </ul>
+    {#if charTable && charRows.length}
+      <!-- A region that scrolls sideways must take keyboard focus (WCAG 2.1.1). -->
+      <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+      <div class="scroll" tabindex="0" role="region" aria-label="Accuracy by character, scrolls sideways">
+        <table class="chars">
+          <thead><tr><th>Character</th><th>Copied</th><th>Answer time</th><th>Sent</th><th>Timing error</th></tr></thead>
+          <tbody>
+            {#each charRows as c (c.t)}
+              <tr>
+                <td class="mono" class:prosign={isProsign(c.t)}>{displayToken(c.t)}</td>
+                <td class="num">{pct(c.r?.accuracy)} <span class="muted">{c.r ? `of ${c.r.n}` : ''}</span></td>
+                <td class="num">{c.r?.value ? `${(c.r.value / 1000).toFixed(1)} s` : '–'}</td>
+                <td class="num">{pct(c.x?.accuracy)} <span class="muted">{c.x ? `of ${c.x.n}` : ''}</span></td>
+                <td class="num">{c.x?.value ? `${Math.round(c.x.value / 10)}%` : '–'}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+      <p class="muted small">Answer time runs from the end of the sound to your first key. Timing error is how far elements and gaps inside the character were from standard, on average.</p>
+    {:else}
+      <ul class="heat">
+        {#each chars as c (c.t)}
+          <li style:--a={shade(c.a)} class:strong={shade(c.a) > 0.45} title={c.a === null ? 'None yet' : `${Math.round(c.a * 100)}% of ${c.n}`}>
+            <span class="mono ch" class:prosign={isProsign(c.t)}>{displayToken(c.t)}</span>
+            <span class="pc num">{c.a === null ? '' : `${Math.round(c.a * 100)}`}</span>
+          </li>
+        {/each}
+      </ul>
+    {/if}
   </div>
 
   {#if pairs.length}
@@ -203,14 +240,17 @@
   <div class="block">
     <h2>QSO log</h2>
     {#if log.length}
-      <div class="scroll">
+      <!-- A region that scrolls sideways must take keyboard focus (WCAG 2.1.1). -->
+      <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+      <div class="scroll" tabindex="0" role="region" aria-label="QSO log, scrolls sideways">
         <table>
-          <thead><tr><th>Date</th><th>Format</th><th>Call</th><th>Name</th><th>QTH</th><th>RST rcvd</th><th>Copied</th><th>Received you</th></tr></thead>
+          <thead><tr><th>Date</th><th>Format</th><th>Call</th><th>Name</th><th>QTH</th><th>RST sent</th><th>RST rcvd</th><th>Time</th><th>Copied</th><th>Received you</th></tr></thead>
           <tbody>
             {#each [...log].reverse() as q (q.id)}
               <tr>
                 <td>{day(q.at)}</td><td>{fmtName(q.format)}</td><td class="mono">{q.call}</td><td class="mono">{q.name}</td>
-                <td class="mono">{q.qth} {q.state}</td><td class="num">{q.rstRcvd}</td>
+                <td class="mono">{q.qth} {q.state}</td><td class="num">{q.rstSent || '–'}</td><td class="num">{q.rstRcvd}</td>
+                <td class="num">{Math.floor(q.seconds / 60)}:{String(q.seconds % 60).padStart(2, '0')}</td>
                 <td class="num">{Math.round(q.copyScore * 100)}%</td><td class="num">{Math.round(q.sendScore * 100)}%</td>
               </tr>
             {/each}
@@ -267,6 +307,27 @@
   .unit {
     font-size: var(--size-s);
     font-weight: normal;
+  }
+
+  .controls {
+    display: flex;
+    gap: var(--s-1);
+    flex-wrap: wrap;
+  }
+
+  .tbtn {
+    border: 0;
+    background: none;
+    color: var(--muted);
+    font-size: var(--size-s);
+    text-decoration: underline;
+    padding: 0;
+    margin-left: var(--s-1);
+    min-height: 32px;
+  }
+
+  table.chars {
+    min-width: 0;
   }
 
   .head {
@@ -412,6 +473,11 @@
 
   .scroll {
     overflow-x: auto;
+  }
+
+  .scroll:focus-visible {
+    outline: 2px solid var(--signal);
+    outline-offset: 2px;
   }
 
   table {

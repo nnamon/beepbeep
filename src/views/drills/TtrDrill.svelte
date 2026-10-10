@@ -144,8 +144,10 @@
 
 <svelte:window
   onkeydown={(e) => {
-    if (e.key === 'Escape' && running) stop();
-    else if (e.key === 'Enter' && !running) {
+    if (e.key === 'Escape' && running) {
+      e.preventDefault();
+      stop();
+    } else if (e.key === 'Enter' && !running) {
       e.preventDefault();
       void run();
     }

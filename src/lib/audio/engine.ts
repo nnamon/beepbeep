@@ -56,6 +56,8 @@ class AudioEngine {
   private active = new Set<AudioBufferSourceNode>();
   private unmuteTimer: ReturnType<typeof setTimeout> | null = null;
   volume = 0.7;
+  /** Mute the mic while the app plays, so it cannot decode itself. Off with headphones, for break-in. */
+  muteWhilePlaying = true;
   /** What is playing now, for the optional visual cue. */
   cue: { start: number; marks: { start: number; end: number }[] } | null = null;
 
@@ -96,7 +98,7 @@ class AudioEngine {
     if (this.master && this.ctx) this.master.gain.setTargetAtTime(this.volume, this.ctx.currentTime, 0.02);
   }
 
-  /** Plays samples; the mic is muted while they play so the app cannot hear itself. */
+  /** Plays samples; the mic is muted while they play (unless on headphones) so the app cannot hear itself. */
   async play(samples: Float32Array, opts: { schedule?: Schedule; delay?: number } = {}): Promise<Playback> {
     const ctx = await this.ensure();
     const buffer = ctx.createBuffer(1, samples.length, ctx.sampleRate);
@@ -106,7 +108,7 @@ class AudioEngine {
     src.connect(this.master!);
     const startTime = ctx.currentTime + (opts.delay ?? 0.05);
     const duration = samples.length / ctx.sampleRate;
-    this.muteInput(true);
+    if (this.muteWhilePlaying) this.muteInput(true);
     let resolve!: () => void;
     const done = new Promise<void>((r) => (resolve = r));
     src.onended = () => {

@@ -53,6 +53,8 @@ export interface Settings {
   chirp: boolean;
   /** Raise effective speed toward character speed after good sessions. */
   autoTaper: boolean;
+  /** App audio goes to headphones: the mic stays open while the app sends, for break-in. */
+  headphones: boolean;
 }
 
 const DEFAULTS: Settings = {
@@ -89,6 +91,7 @@ const DEFAULTS: Settings = {
   vibrate: false,
   chirp: false,
   autoTaper: false,
+  headphones: false,
 };
 
 const KEY = 'beepbeep.settings.v1';

@@ -13,6 +13,13 @@
   import Specimen from './views/Specimen.svelte';
   import { settings } from './lib/state/settings.svelte';
   import { notify } from './lib/state/signal.svelte';
+  import { engine } from './lib/audio/engine';
+
+  // The audio engine follows the saved volume and headphone setting.
+  $effect(() => {
+    engine.setVolume(settings.volume);
+    engine.muteWhilePlaying = !settings.headphones;
+  });
 
   // Alt+Up / Alt+Down: receive speed. On touch screens the same is in Settings.
   function onKey(e: KeyboardEvent) {

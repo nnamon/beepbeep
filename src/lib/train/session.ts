@@ -10,6 +10,8 @@ import { addConfusion, addSession, getItems, getKv, putItem, setKv, type Session
 import { newStat, recordAnswer, type ItemStat } from './srs';
 import { randomSeed } from '../util/random';
 import { align, textTokens } from '../util/text';
+import { charTimingError } from './fist';
+import type { DecodedChar } from '../decoder/decoder';
 
 export function currentLevel(): Level {
   return levelById(settings.level[settings.track]) ?? TRACKS[settings.track].levels[0];
@@ -179,13 +181,27 @@ export interface SlipCounts {
   pairs: Record<string, number>;
 }
 
-/** Records what a listener received for each character you sent, and spacing slips. */
-export async function recordSend(intended: string, received: string, issues: { kind: string; detail: string }[]) {
+/**
+ * Records what a listener received for each character you sent, its timing
+ * error (from the decoded characters, when given), and spacing slips.
+ */
+export async function recordSend(
+  intended: string,
+  received: string,
+  issues: { kind: string; detail: string }[],
+  chars: DecodedChar[] = [],
+) {
   try {
     const map = await getItems('tx:');
-    for (const o of align(textTokens(intended), textTokens(received))) {
-      if (o.op === 'match' && o.want !== ' ') await answer(map, `tx:${o.want}`, true, 0, 1);
-      else if ((o.op === 'sub' || o.op === 'del') && o.want !== ' ') await answer(map, `tx:${o.want}`, false, 0, 1);
+    const got = textTokens(received);
+    // Received tokens other than spaces line up one to one with the decoded characters.
+    const charAt = (gi: number) => chars[got.slice(0, gi).filter((t) => t !== ' ').length];
+    for (const o of align(textTokens(intended), got)) {
+      if (o.op === 'match' && o.want !== ' ') {
+        const c = charAt(o.gi);
+        const err = c ? charTimingError(c) : null;
+        await answer(map, `tx:${o.want}`, true, err === null ? 0 : Math.max(1, Math.round(err * 1000)), 1);
+      } else if ((o.op === 'sub' || o.op === 'del') && o.want !== ' ') await answer(map, `tx:${o.want}`, false, 0, 1);
     }
     const slips = await getKv<SlipCounts>('sendSlips', { 'merged-words': 0, 'merged-letters': 0, 'split-letter': 0, 'split-word': 0, pairs: {} });
     for (const i of issues) {

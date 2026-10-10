@@ -11,7 +11,7 @@
   import { say } from '../lib/audio/speech';
   import { settings, strict } from '../lib/state/settings.svelte';
   import { signal } from '../lib/state/signal.svelte';
-  import { href } from '../lib/state/router.svelte';
+  import { go, href } from '../lib/state/router.svelte';
   import { answer, currentLevel, playCw, receiveSpeeds, saveSession, stats, wait } from '../lib/train/session';
   import { pickNext, type ItemStat } from '../lib/train/srs';
   import { items, type Material } from '../lib/train/generate';
@@ -42,6 +42,7 @@
   let last = $state<{ item: string; got: string; ok: boolean; rows: RhythmRow[] } | null>(null);
   let log = $state<{ item: string; got: string; ok: boolean; ms: number; replays: number }[]>([]);
   let replays = 0;
+  let holding = $state(false);
   // LICW learn: tap each time the new character plays.
   let learnTaps = $state(0);
   let learnPlays = $state(0);
@@ -171,8 +172,8 @@
     const got = typed.join('');
     const ok = textTokens(got).join('') === textTokens(item).join('');
     const slow = single ? 1500 : 2500 + 300 * item.length;
-    // An answer after a replay counts as slow for scheduling.
-    const ms = replays ? Math.max(firstKey, slow + 1) : firstKey || 2000;
+    // Replays are counted, not penalised: timing runs from the end of the last play.
+    const ms = firstKey || 2000;
     if (stage !== 'callsigns' && stage !== 'phrases') {
       await answer(map, `${prefix}${item}`, ok, ms, slow, !ok && single ? { want: item, got } : undefined);
     }
@@ -185,8 +186,11 @@
       rows.push({ label: 'It was', marks: a.marks }, { label: 'Your pick', marks: b.marks, style: 'outline' });
     }
     last = { item, got, ok, rows };
+    // Strict mode: the answer is spoken before it is shown.
+    holding = strict();
     phase = 'reveal';
     if (strict()) await say(item);
+    holding = false;
     if (!ok) {
       await (await playCw(item, { plain: true })).done;
       if (single && got && textTokens(got).length === 1) {
@@ -235,6 +239,11 @@
     if (phase === 'learn' && e.code === 'Space' && !e.repeat) {
       e.preventDefault();
       learnTap();
+    } else if (e.key === 'Escape') {
+      go('pocket');
+    } else if (e.key === 'Enter' && (phase === 'ready' || phase === 'wrap') && !(e.target instanceof HTMLButtonElement)) {
+      e.preventDefault();
+      void begin();
     }
   }}
 />
@@ -290,7 +299,9 @@
       <button type="button" class="play" onclick={replay} aria-label="Play again" disabled={phase !== 'quiz'}>
         <Icon name="play" size={40} />
       </button>
-      {#if phase === 'reveal' && last}
+      {#if phase === 'reveal' && holding}
+        <span class="muted">Listen</span>
+      {:else if phase === 'reveal' && last}
         <span class="label">It was</span>
         <TokenText tokens={textTokens(last.item).map((t) => ({ t }))} size="xl" />
         {#if !last.ok}<span class="muted">You typed {last.got || 'nothing'}</span>{/if}

@@ -9,6 +9,15 @@
   let { marks, onclose }: { marks: { start: number; end: number }[]; onclose: () => void } = $props();
 </script>
 
+<svelte:window
+  onkeydown={(e) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      onclose();
+    }
+  }}
+/>
+
 <div class="inspect" role="group" aria-label="Unrecognised character">
   <span class="label">Unrecognised character</span>
   {#if !strict()}<RhythmView rows={[{ label: 'sent', marks }]} labelWidth={48} />{/if}

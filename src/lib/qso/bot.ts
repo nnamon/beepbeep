@@ -44,7 +44,16 @@ export interface BotIdentity extends Operator {
   verbosity: number;
   /** 1 or 2: how often key items are repeated. */
   repeats: number;
+  /** Speed offset from the set station speed, wpm (-2..+2). */
+  pace: number;
+  /** 0..1: low values write words out (THANKS FOR) instead of abbreviating (TNX FER). */
+  abbrev: number;
 }
+
+/** Abbreviations a plain-spoken operator writes out in a ragchew. */
+const PLAIN: Record<string, string> = {
+  TNX: 'THANKS', FER: 'FOR', ES: 'AND', HR: 'HERE', ABT: 'ABOUT', HPE: 'HOPE', WX: 'WEATHER', ANT: 'ANTENNA', SRI: 'SORRY',
+};
 
 export interface BotTurn {
   who: string;
@@ -95,6 +104,8 @@ export function makeIdentity(rng: Rng, pitchOffset = 0): BotIdentity {
     pitchOffset,
     verbosity: rng(),
     repeats: rng() < 0.6 ? 2 : 1,
+    pace: Math.round((rng() - 0.5) * 4),
+    abbrev: rng(),
   };
 }
 
@@ -170,8 +181,9 @@ export class QsoBot {
 
     // Requests that apply at any stage.
     if (p.qrs || p.qrq) {
+      const before = this.wpm;
       this.wpm = Math.max(5, Math.min(45, this.wpm + (p.qrs ? -4 : 4)));
-      if (this.last.length && p.words.length <= 3) return this.repeatLast();
+      if (this.last.length && p.words.length <= 3) return this.repeatLast(this.wpm - before);
     }
     if (this.stage === 'done') return [];
 
@@ -473,8 +485,9 @@ export class QsoBot {
     if (this.stage === 'done') this.endedAt = Date.now();
   }
 
-  private repeatLast(): BotTurn[] {
-    const again = this.last.map((t) => ({ ...t, wpm: this.wpm }));
+  /** Sends the last transmission again, each turn at its own speed plus `delta` (QRS/QRQ). */
+  private repeatLast(delta = 0): BotTurn[] {
+    const again = this.last.map((t) => ({ ...t, wpm: Math.max(5, t.wpm + delta) }));
     for (const t of again) this.transcript.push({ from: 'bot', who: t.who, text: t.text });
     return again;
   }
@@ -484,15 +497,28 @@ export class QsoBot {
   }
 
   private sayMany(list: { s: BotIdentity; text: string }[]): BotTurn[] {
+    const cap = this.format === 'sst' ? 20 : 45;
     const turns = list.map(({ s, text }) => ({
       who: s.call,
-      text: text.replace(/\s+/g, ' ').trim(),
-      wpm: this.format === 'pileup' ? Math.max(8, this.wpm + Math.round((this.rng() - 0.5) * 6)) : this.wpm,
+      text: this.style(s, text.replace(/\s+/g, ' ').trim()),
+      wpm:
+        this.format === 'pileup'
+          ? Math.max(8, this.wpm + Math.round((this.rng() - 0.5) * 6))
+          : Math.max(5, Math.min(cap, this.wpm + s.pace)),
       pitchOffset: s.pitchOffset,
     }));
     this.last = turns;
     for (const t of turns) this.transcript.push({ from: 'bot', who: t.who, text: t.text });
     return turns;
+  }
+
+  /** Ragchew stations that rarely abbreviate write some words out. */
+  private style(s: BotIdentity, text: string): string {
+    if ((this.format !== 'ragchew' && this.format !== 'licw') || s.abbrev >= 0.35) return text;
+    return text
+      .split(' ')
+      .map((w) => (PLAIN[w] && this.rng() < 0.7 ? PLAIN[w] : w))
+      .join(' ');
   }
 
   private rep(x: string, n: number): string {
