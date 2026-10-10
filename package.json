@@ -1,0 +1,40 @@
+{
+  "name": "beepbeep",
+  "private": true,
+  "version": "0.1.0",
+  "description": "A browser CW trainer that listens to your key through the microphone.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 7373",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 7373",
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "lint:css": "stylelint \"src/**/*.{css,svelte}\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@sveltejs/vite-plugin-svelte": "^7.3.1",
+    "@tsconfig/svelte": "^5.0.8",
+    "@types/node": "^26.6.5",
+    "fake-indexeddb": "^6.2.5",
+    "jsdom": "^30.1.2",
+    "postcss-html": "^1.8.0",
+    "stylelint": "^17.16.0",
+    "stylelint-config-standard": "^40.0.0",
+    "svelte": "^5.57.2",
+    "svelte-check": "^4.7.6",
+    "typescript": "^6.0.3",
+    "vite": "^8.3.4",
+    "vite-plugin-pwa": "^2.0.0",
+    "vitest": "^5.0.3",
+    "workbox-window": "^7.4.1"
+  },
+  "dependencies": {
+    "@fontsource/atkinson-hyperlegible-mono": "^5.3.0",
+    "@fontsource/atkinson-hyperlegible-next": "^5.3.0",
+    "idb": "^8.0.4"
+  }
+}
