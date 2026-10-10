@@ -82,6 +82,18 @@ export function vibrateRhythm(pb: Playback) {
   navigator.vibrate(pattern.map((x) => Math.round(x)));
 }
 
+/** Receive score that opens the next lesson: 90% on the Koch track, 80% on LICW. */
+export function advanceThreshold(): number {
+  return settings.track === 'licw' ? 0.8 : 0.9;
+}
+
+/** The lesson a receive score opens, or null (below the threshold, or the last lesson). */
+export function lessonOpenedBy(accuracy: number): Level | null {
+  if (accuracy < advanceThreshold()) return null;
+  const levels = TRACKS[settings.track].levels;
+  return levels[levels.findIndex((l) => l.id === currentLevel().id) + 1] ?? null;
+}
+
 /** True when beginner sending should use the straight key only (LICW strict, BC lessons). */
 export function straightOnly(): boolean {
   return strict() && currentLevel().id.includes('-bc');
@@ -89,7 +101,8 @@ export function straightOnly(): boolean {
 
 /** The keying input to use, honouring straight-key-first in strict beginner lessons. */
 export function sendInput() {
-  return straightOnly() && settings.input !== 'mic' ? 'straight' : settings.input;
+  // The touch key is a straight key, so strict beginner lessons keep it.
+  return straightOnly() && (settings.input === 'iambicA' || settings.input === 'iambicB') ? 'straight' : settings.input;
 }
 
 /**

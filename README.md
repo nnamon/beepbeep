@@ -18,7 +18,7 @@ Desktop and phone browsers (Safari on iOS 16.4+, current Chrome on Android). Ins
 
 Two course tracks: the classic Koch order (K M R S U…) and the LICW Beginners Carousel (BC1, BC2). LICW strict mode applies the LICW Method Guide's guardrails: no rhythm visuals, decoded sending after each over, receive answers at the end of a drill.
 
-Input is the microphone, or the keyboard as a straight key (Space) or iambic paddles (`[`/`]` or `Z`/`X`).
+Input is the microphone, an on-screen touch key for phones and tablets, or the keyboard as a straight key (Space) or iambic paddles (`[`/`]` or `Z`/`X`). The in-app Guide (`#/guide`) shows where to start with or without a key.
 
 ## How decoding works
 

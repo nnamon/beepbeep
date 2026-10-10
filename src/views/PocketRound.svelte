@@ -12,11 +12,13 @@
   import { settings, strict } from '../lib/state/settings.svelte';
   import { signal } from '../lib/state/signal.svelte';
   import { go, href } from '../lib/state/router.svelte';
-  import { answer, currentLevel, playCw, receiveSpeeds, saveSession, stats, wait } from '../lib/train/session';
+  import { advanceThreshold, answer, currentLevel, lessonOpenedBy, playCw, receiveSpeeds, saveSession, stats, wait } from '../lib/train/session';
+  import type { Level } from '../lib/train/courses';
   import { pickNext, type ItemStat } from '../lib/train/srs';
   import { items, type Material } from '../lib/train/generate';
   import { CHUNKS, COMMON_WORDS, QSO_WORDS, wordsFromKnown } from '../lib/train/words';
   import { buildSchedule } from '../lib/morse/schedule';
+  import { displayToken } from '../lib/morse/code';
   import { textTokens } from '../lib/util/text';
   import { mulberry32, randomSeed } from '../lib/util/random';
   import { keepAwake } from '../lib/util/wakelock';
@@ -29,8 +31,10 @@
 
   const ROUND = 20;
   const rng = mulberry32(randomSeed());
-  const level = currentLevel();
-  const known = new Set(level.known);
+  // Re-read at the start of each round, so a lesson opened at the wrap-up applies to the next one.
+  let level = $state.raw(currentLevel());
+  let known = new Set(currentLevel().known);
+  let opened = $state<Level | null>(null);
   const single = $derived(stage === 'characters' || (stage === 'custom' && !customSet.words.length));
   signal.receiving = true;
 
@@ -74,6 +78,9 @@
 
 
   async function begin() {
+    level = currentLevel();
+    known = new Set(level.known);
+    opened = null;
     n = 0;
     log = [];
     last = null;
@@ -207,15 +214,27 @@
   function wrap() {
     phase = 'wrap';
     void keepAwake(false);
+    const accuracy = log.filter((l) => l.ok).length / Math.max(1, log.length);
     void saveSession({
       mode: `pocket-${stage}`,
       seconds: Math.round((Date.now() - startedAt) / 1000),
       sending: false,
       items: log.length,
-      accuracy: log.filter((l) => l.ok).length / Math.max(1, log.length),
+      accuracy,
       wpm: receiveSpeeds().charWpm,
     });
+    // Same rule as the copy drill: 90% (Koch) or 80% (LICW) opens the next lesson.
+    opened = stage === 'characters' ? lessonOpenedBy(accuracy) : null;
   }
+
+  /** Moves to the opened lesson and starts a round in it. */
+  function nextLesson() {
+    if (!opened) return;
+    settings.level[settings.track] = opened.id;
+    void begin();
+  }
+
+  const threshold = $derived(advanceThreshold());
 
   onDestroy(() => {
     signal.receiving = false;
@@ -279,6 +298,11 @@
       <div><dt class="label">Average answer</dt><dd class="num big">{(avgMs / 1000).toFixed(1)} s</dd></div>
       <div><dt class="label">Replayed</dt><dd class="num big">{replayed.length}</dd></div>
     </dl>
+    {#if opened}
+      <p class="opened">Above {Math.round(threshold * 100)}%: {opened.name} is open. It adds <span class="mono">{opened.added.map(displayToken).join(' ')}</span>.</p>
+    {:else if stage === 'characters'}
+      <p class="muted">{Math.round(threshold * 100)}% or more in a round opens the next lesson.</p>
+    {/if}
     {#if replayed.length}
       <p class="muted">Replayed: <span class="mono">{[...new Set(replayed.map((l) => l.item))].join(' ')}</span></p>
     {/if}
@@ -291,7 +315,8 @@
       </ul>
     {/if}
     <div class="actions">
-      <Button kind="primary" onclick={begin}>Another round</Button>
+      {#if opened}<Button kind="primary" onclick={nextLesson}>Next lesson</Button>{/if}
+      <Button kind={opened ? 'secondary' : 'primary'} onclick={begin}>{opened ? `Stay on ${level.name}` : 'Another round'}</Button>
       <Button href={href('pocket')}>Stages</Button>
     </div>
   {:else}
@@ -403,6 +428,11 @@
     flex-direction: column;
     gap: var(--s-1);
     margin-top: auto;
+  }
+
+  .opened {
+    border-left: 2px solid var(--signal);
+    padding-left: var(--s-1);
   }
 
   .facts {

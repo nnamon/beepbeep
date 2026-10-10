@@ -7,12 +7,20 @@
   import { getKv, setKv } from '../lib/state/db';
   import { ALL_TOKENS, displayToken, isProsign } from '../lib/morse/code';
   import Button from '../ui/Button.svelte';
+  import Icon from '../ui/Icon.svelte';
+  import { TRACKS } from '../lib/train/courses';
   import PocketRound from './PocketRound.svelte';
 
   const sub = $derived(route.path[1] ?? '');
   const stageId = $derived(route.path[2] ?? 'characters');
   const level = $derived(currentLevel());
   const known = $derived(new Set(level.known));
+  const levels = $derived(TRACKS[settings.track].levels);
+  const idx = $derived(levels.findIndex((l) => l.id === level.id));
+
+  function step(d: number) {
+    settings.level[settings.track] = levels[Math.max(0, Math.min(levels.length - 1, idx + d))].id;
+  }
 
   let custom = $state<{ chars: string[]; words: string[] }>({ chars: [], words: [] });
   let wordsText = $state('');
@@ -79,9 +87,17 @@
   <section class="home">
     <div class="head">
       <h1>Pocket</h1>
-      <span class="muted">{settings.track === 'licw' ? 'LICW' : 'Koch'} · {level.name}</span>
+      <div class="lesson">
+        <span class="muted">{settings.track === 'licw' ? 'LICW' : 'Koch'}</span>
+        <Button kind="secondary" label="Previous lesson" disabled={idx <= 0} onclick={() => step(-1)}><Icon name="back" size={18} /></Button>
+        <strong>{level.name}</strong>
+        <Button kind="secondary" label="Next lesson" disabled={idx >= levels.length - 1} onclick={() => step(1)}><Icon name="forward" size={18} /></Button>
+      </div>
     </div>
-    <p class="muted lead">20-item rounds. Every key is on the keyboard; the quiz only plays what you have learned.</p>
+    <p class="muted lead">
+      Learn and quiz by ear, no key needed. 20-item rounds; the quiz only plays what this lesson has taught. A Characters round at
+      {settings.track === 'licw' ? '80' : '90'}% or better opens the next lesson.
+    </p>
     <ul class="stages">
       {#each STAGES as s (s.id)}
         <li>
@@ -116,6 +132,21 @@
 
   .lead {
     max-width: var(--reading);
+  }
+
+  .lesson {
+    display: flex;
+    align-items: center;
+    gap: var(--s-1);
+  }
+
+  .lesson :global(.btn) {
+    padding: 0 var(--s-1);
+  }
+
+  .lesson strong {
+    min-width: 9ch;
+    text-align: center;
   }
 
   .stages {

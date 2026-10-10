@@ -3,6 +3,8 @@
   import SignalBar from './ui/SignalBar.svelte';
   import Icon from './ui/Icon.svelte';
   import VisualCue from './ui/VisualCue.svelte';
+  import TouchKey from './ui/TouchKey.svelte';
+  import Guide from './views/Guide.svelte';
   import Practice from './views/Practice.svelte';
   import Pocket from './views/Pocket.svelte';
   import Qso from './views/Qso.svelte';
@@ -12,7 +14,7 @@
   import Reference from './views/Reference.svelte';
   import Specimen from './views/Specimen.svelte';
   import { settings } from './lib/state/settings.svelte';
-  import { notify } from './lib/state/signal.svelte';
+  import { notify, signal } from './lib/state/signal.svelte';
   import { engine } from './lib/audio/engine';
 
   // The audio engine follows the saved volume and headphone setting.
@@ -39,7 +41,7 @@
   const top = $derived(route.path[0] ?? 'practice');
 </script>
 
-<div class="shell">
+<div class="shell" class:keying={signal.touchKey}>
   <header class="head">
     <a class="mark" href={href('practice')}>BeepBeep</a>
     <nav class="nav" aria-label="Main">
@@ -47,8 +49,10 @@
         <a href={href(t.id)} class:on={top === t.id} aria-current={top === t.id ? 'page' : undefined}>{t.label}</a>
       {/each}
       <a href={href('settings')} class:on={top === 'settings'} aria-current={top === 'settings' ? 'page' : undefined}>Settings</a>
+      <a href={href('guide')} class:on={top === 'guide'} aria-current={top === 'guide' ? 'page' : undefined}>Guide</a>
     </nav>
     <div class="signal"><SignalBar /></div>
+    <a class="guide-link" href={href('guide')} class:on={top === 'guide'}>Guide</a>
     <a class="gear" href={href('settings')} aria-label="Settings"><Icon name="settings" /></a>
   </header>
   {#if top !== 'pocket'}<div class="signal-strip"><SignalBar compact /></div>{/if}
@@ -70,6 +74,8 @@
       <Reference />
     {:else if top === 'specimen'}
       <Specimen />
+    {:else if top === 'guide'}
+      <Guide />
     {:else}
       <Practice />
     {/if}
@@ -85,6 +91,7 @@
 <svelte:window onkeydown={onKey} />
 
 {#if settings.visualCue}<VisualCue />{/if}
+{#if signal.touchKey}<TouchKey />{/if}
 
 <style>
   .shell {
@@ -162,15 +169,43 @@
     display: none;
   }
 
+  .guide-link {
+    display: none;
+  }
+
+  /* Room for the touch key pad (96 px plus its padding) under the content. */
+  .shell.keying .main {
+    padding-bottom: calc(96px + var(--s-6) + env(safe-area-inset-bottom));
+  }
+
   @media (max-width: 760px) {
     .nav,
     .signal {
       display: none;
     }
 
+    .guide-link {
+      display: inline-flex;
+      align-items: center;
+      margin-left: auto;
+      min-height: var(--target);
+      padding: 0 var(--s-1);
+      color: var(--muted);
+      text-decoration: none;
+      font-size: var(--size-s);
+    }
+
+    .guide-link.on {
+      color: var(--ink);
+    }
+
     .gear {
       display: inline-flex;
-      margin-left: auto;
+    }
+
+    /* While the touch key is out, it takes the tab bar's place. */
+    .shell.keying .tabbar {
+      display: none;
     }
 
     .head {

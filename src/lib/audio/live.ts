@@ -7,7 +7,16 @@ import type { DetectorEvent } from '../dsp/detector';
 import { signal } from '../state/signal.svelte';
 import { buildSchedule } from '../morse/schedule';
 
-export type InputSource = 'mic' | 'straight' | 'iambicA' | 'iambicB';
+/** Mic, keyboard straight key (Space), keyboard paddles, or the on-screen touch key. */
+export type InputSource = 'mic' | 'straight' | 'iambicA' | 'iambicB' | 'touch';
+
+// The decoder the on-screen touch key drives, if one is listening.
+let touchTarget: LiveDecoder | null = null;
+
+/** Presses or releases the on-screen touch key. */
+export function touchKey(down: boolean) {
+  touchTarget?.pressStraight(down);
+}
 
 export interface LiveStatus {
   level: number;
@@ -61,7 +70,7 @@ export class LiveDecoder {
       engine.command({ type: 'dit', dit: this.decoder.ditEstimate });
     } else {
       this.keyer = new Keyer({
-        mode: this.opts.source,
+        mode: this.opts.source === 'touch' ? 'straight' : this.opts.source,
         dit: 1.2 / this.opts.charWpm,
         now: () => engine.now,
         tone: {
@@ -72,6 +81,10 @@ export class LiveDecoder {
       });
       this.attachKeyboard();
       this.tickTimer = setInterval(() => this.push(this.decoder.tick(engine.now)), 20);
+      if (this.opts.source === 'touch') {
+        touchTarget = this;
+        signal.touchKey = true;
+      }
     }
   }
 
@@ -83,6 +96,11 @@ export class LiveDecoder {
     this.keyer?.stop();
     this.keyer = null;
     this.detachKeyboard();
+    if (touchTarget === this) {
+      touchTarget = null;
+      signal.touchKey = false;
+      signal.keyDown = false;
+    }
   }
 
   /** Ends the current over: emits any pending character. */
@@ -203,7 +221,7 @@ export class LiveDecoder {
       t instanceof HTMLElement && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
     const down = (e: KeyboardEvent) => {
       if (isField(e.target) || e.repeat) return;
-      if (this.opts.source === 'straight' && e.code === 'Space') {
+      if (this.straightKeyed && e.code === 'Space') {
         e.preventDefault();
         this.keyer?.straight(true);
       } else if (e.code === 'BracketLeft' || e.code === 'Comma' || e.code === 'KeyZ') {
@@ -215,13 +233,18 @@ export class LiveDecoder {
       }
     };
     const up = (e: KeyboardEvent) => {
-      if (this.opts.source === 'straight' && e.code === 'Space') this.keyer?.straight(false);
+      if (this.straightKeyed && e.code === 'Space') this.keyer?.straight(false);
       else if (e.code === 'BracketLeft' || e.code === 'Comma' || e.code === 'KeyZ') this.keyer?.paddle('dit', false);
       else if (e.code === 'BracketRight' || e.code === 'Period' || e.code === 'KeyX') this.keyer?.paddle('dah', false);
     };
     window.addEventListener('keydown', down);
     window.addEventListener('keyup', up);
     this.keyHandlers = { down, up };
+  }
+
+  /** Space keys a straight key for the keyboard and touch sources alike. */
+  private get straightKeyed(): boolean {
+    return this.opts.source === 'straight' || this.opts.source === 'touch';
   }
 
   private detachKeyboard() {

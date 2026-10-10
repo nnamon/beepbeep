@@ -185,7 +185,21 @@
 
   <div class="group">
     <h2>Input</h2>
-    <p><a href={href('setup')}>Microphone and keyboard keyer setup</a></p>
+    <div class="field">
+      <span class="label">Key with</span>
+      <Segmented
+        label="Key with"
+        bind:value={settings.input}
+        options={[
+          { value: 'mic', label: 'Microphone' },
+          { value: 'touch', label: 'Touch key' },
+          { value: 'straight', label: 'Keyboard straight key' },
+          { value: 'iambicA', label: 'Paddles A' },
+          { value: 'iambicB', label: 'Paddles B' },
+        ]}
+      />
+    </div>
+    <p class="muted small">Touch key: a pad at the bottom of the screen while a drill or QSO listens. <a href={href('setup')}>Setup</a> has the mic, calibration and spectrum.</p>
     <Toggle
       bind:checked={settings.headphones}
       label="Headphones"

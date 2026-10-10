@@ -6,7 +6,7 @@ import AxeBuilder from '@axe-core/playwright';
 const ROUTES = [
   'practice', 'practice/live', 'practice/send', 'practice/hear-send', 'practice/copy', 'practice/ttr',
   'practice/ifr', 'practice/head-copy', 'practice/sprint', 'pocket', 'pocket/custom', 'pocket/round/characters',
-  'qso', 'progress', 'settings', 'setup', 'reference', 'specimen',
+  'qso', 'progress', 'settings', 'setup', 'reference', 'specimen', 'guide',
 ];
 
 // Screens that only show on the LICW track.

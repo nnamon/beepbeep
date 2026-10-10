@@ -18,7 +18,7 @@
 
 <a class="bar" class:compact href={href('setup')} aria-label="Signal: open input setup">
   {#if keyboard}
-    <span class="cell muted">Keyboard {settings.input === 'straight' ? 'straight key' : settings.input === 'iambicA' ? 'iambic A' : 'iambic B'}</span>
+    <span class="cell muted">{settings.input === 'touch' ? 'Touch key' : `Keyboard ${settings.input === 'straight' ? 'straight key' : settings.input === 'iambicA' ? 'iambic A' : 'iambic B'}`}</span>
     {#if !hide}<span class="led" class:on={signal.keyDown} aria-hidden="true"></span>{/if}
   {:else if !signal.micOn}
     <span class="cell muted">Mic off</span>

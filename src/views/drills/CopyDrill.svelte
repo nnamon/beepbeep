@@ -11,8 +11,7 @@
   import { engine } from '../../lib/audio/engine';
   import { settings, strict } from '../../lib/state/settings.svelte';
   import { signal } from '../../lib/state/signal.svelte';
-  import { TRACKS } from '../../lib/train/courses';
-  import { answer, currentLevel, maybeTaper, playCw, receiveSpeeds, saveSession, stats } from '../../lib/train/session';
+  import { advanceThreshold, answer, currentLevel, lessonOpenedBy, maybeTaper, playCw, receiveSpeeds, saveSession, stats } from '../../lib/train/session';
   import { route } from '../../lib/state/router.svelte';
   import { pickNext, type ItemStat } from '../../lib/train/srs';
   import { compareCopy } from '../../lib/train/scoring';
@@ -156,9 +155,7 @@
     return all;
   }
 
-  const threshold = settings.track === 'licw' ? 0.8 : 0.9;
-  const levels = TRACKS[settings.track].levels;
-  const nextLevel = levels[levels.findIndex((l) => l.id === level.id) + 1];
+  const threshold = advanceThreshold();
 
   function levelUp() {
     if (nextLevel) settings.level[settings.track] = nextLevel.id;
@@ -178,6 +175,7 @@
       .map((o) => ({ t: o.op === 'del' ? o.want : o.want, state: o.op === 'match' ? 'ok' : 'miss' }));
   }
   const result = $derived(stage === 'done' ? summary() : null);
+  const nextLevel = $derived(result ? lessonOpenedBy(result.accuracy) : null);
   const speedOverride = session ? { charWpm: settings[`${session}Wpm`], effectiveWpm: settings[`${session}Wpm`] } : null;
   const speeds = speedOverride ?? receiveSpeeds();
 </script>
@@ -215,7 +213,7 @@
           <li><TokenText tokens={marked(l.want, l.got)} size="m" /><span class="muted mono">{l.got || '–'}</span></li>
         {/each}
       </ul>
-      {#if result.accuracy >= threshold && nextLevel && !session}
+      {#if nextLevel && !session}
         <p>Above {Math.round(threshold * 100)}%: {nextLevel.name} is open.</p>
       {/if}
       {#if tapered}<p>Effective speed raised to {tapered} wpm.</p>{/if}
@@ -246,7 +244,7 @@
       <Button kind="primary" onclick={start} hint="Enter">Start</Button>
     {:else if stage === 'done'}
       <Button kind="primary" onclick={start}>Another round</Button>
-      {#if result && result.accuracy >= threshold && nextLevel && !session}<Button onclick={levelUp}>Next lesson</Button>{/if}
+      {#if nextLevel && !session}<Button onclick={levelUp}>Next lesson</Button>{/if}
     {:else if stage === 'shown'}
       <Button kind="primary" onclick={advance} hint="Enter">Next</Button>
       <Button onclick={replay}>Replay</Button>

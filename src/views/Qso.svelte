@@ -182,7 +182,7 @@
       if (['Space', 'BracketLeft', 'BracketRight', 'KeyZ', 'KeyX', 'Comma', 'Period'].includes(e.code)) pb.stop();
     };
     if (settings.input !== 'mic') window.addEventListener('keydown', breakIn, true);
-    else if (settings.headphones) onBotKey = () => pb.stop();
+    if (settings.input === 'touch' || (settings.input === 'mic' && settings.headphones)) onBotKey = () => pb.stop();
     await pb.done;
     onBotKey = null;
     window.removeEventListener('keydown', breakIn, true);

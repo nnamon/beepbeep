@@ -112,3 +112,20 @@ describe('fist analysis', () => {
     expect(oneNote(analyseFist(decodeOutputs(TEXT, 18, { dahRatio: 2.3 }))!)).toMatch(/Dahs short/);
   });
 });
+
+describe('lesson advance', () => {
+  it('opens the next lesson at 90% on Koch and 80% on LICW', async () => {
+    const { settings } = await import('../state/settings.svelte');
+    const { lessonOpenedBy, advanceThreshold } = await import('./session');
+    settings.track = 'koch';
+    settings.level.koch = 'koch-1';
+    expect(advanceThreshold()).toBe(0.9);
+    expect(lessonOpenedBy(0.85)).toBeNull();
+    expect(lessonOpenedBy(0.9)?.id).toBe('koch-2');
+    settings.track = 'licw';
+    settings.level.licw = 'licw-bc1-1';
+    expect(lessonOpenedBy(0.8)?.id).toBe('licw-bc1-2');
+    settings.level.licw = TRACKS.licw.levels.at(-1)!.id;
+    expect(lessonOpenedBy(1)).toBeNull();
+  });
+});

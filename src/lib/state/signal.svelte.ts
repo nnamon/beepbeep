@@ -19,6 +19,8 @@ export const signal = $state({
   lastKeyDown: 0,
   /** A short message such as a speed change, cleared after a moment. */
   notice: '',
+  /** A decoder is listening to the on-screen touch key: show the pad. */
+  touchKey: false,
 });
 
 let noticeTimer: ReturnType<typeof setTimeout> | null = null;

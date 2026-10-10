@@ -33,7 +33,7 @@ export default defineConfig({
     { name: 'pixel', use: { ...devices['Pixel 7'] }, testMatch: /screens\.spec/ },
     // Small Android phones: 360 px is the narrowest common width.
     { name: 'small', use: { ...devices['Pixel 7'], viewport: { width: 360, height: 740 } }, testMatch: /screens\.spec/ },
-    { name: 'mic', testMatch: /(decode|flows|voice)\.spec/, use: { ...devices['Desktop Chrome'], ...fakeMic } },
-    { name: 'mic-pixel', testMatch: /decode\.spec/, use: { ...devices['Pixel 7'], ...fakeMic } },
+    { name: 'mic', testMatch: /(decode|flows|voice|touch)\.spec/, use: { ...devices['Desktop Chrome'], ...fakeMic } },
+    { name: 'mic-pixel', testMatch: /(decode|touch)\.spec/, use: { ...devices['Pixel 7'], ...fakeMic } },
   ],
 });

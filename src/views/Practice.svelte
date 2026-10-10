@@ -147,6 +147,13 @@
         />
       </div>
 
+      {#if !settings.guideSeen}
+        <p class="first">
+          New here? The <a href={href('guide')}>guide</a> shows where to start, with or without a key.
+          <button type="button" class="dismiss" onclick={() => (settings.guideSeen = true)}>Dismiss</button>
+        </p>
+      {/if}
+
       {#if settings.track === 'licw' && !settings.licwAsked}
         <div class="ask" role="group" aria-labelledby="ask-h">
           <h2 id="ask-h">LICW strict mode</h2>
@@ -272,6 +279,26 @@
     justify-content: space-between;
     gap: var(--s-2);
     flex-wrap: wrap;
+  }
+
+  .first {
+    border-left: 2px solid var(--signal);
+    padding-left: var(--s-1);
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-half) var(--s-2);
+    align-items: baseline;
+    max-width: var(--reading);
+  }
+
+  .dismiss {
+    border: 0;
+    background: none;
+    padding: 0;
+    color: var(--muted);
+    text-decoration: underline;
+    font-size: var(--size-s);
+    min-height: 32px;
   }
 
   .ask {

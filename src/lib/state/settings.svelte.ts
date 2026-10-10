@@ -10,6 +10,8 @@ export interface Settings {
   licwStrict: boolean;
   /** Whether we've asked about strict mode since the LICW track was chosen. */
   licwAsked: boolean;
+  /** The guide has been opened; hides the pointer to it on Practice. */
+  guideSeen: boolean;
   level: Record<TrackId, string>;
   /** On the LICW track, use the lesson's speeds (12/8, 12/10) for receive drills. */
   useCourseSpeeds: boolean;
@@ -62,6 +64,7 @@ const DEFAULTS: Settings = {
   track: 'koch',
   licwStrict: false,
   licwAsked: false,
+  guideSeen: false,
   level: { koch: 'koch-1', licw: 'licw-bc1-1' },
   useCourseSpeeds: true,
   charWpm: 20,

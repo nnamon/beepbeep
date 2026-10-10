@@ -134,6 +134,7 @@
       bind:value={settings.input}
       options={[
         { value: 'mic' as InputSource, label: 'Microphone' },
+        { value: 'touch' as InputSource, label: 'Touch key' },
         { value: 'straight' as InputSource, label: 'Keyboard straight key' },
         ...(straightOnly()
           ? []
