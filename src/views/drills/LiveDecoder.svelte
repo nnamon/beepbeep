@@ -18,9 +18,9 @@
 
   let live: LiveDecoder | null = null;
   let running = $state(false);
-  let tokens: Tok[] = $state([]);
+  let tokens = $state<Tok[]>([]);
   let marks: { start: number; end: number }[] = $state([]);
-  let report: FistReport | null = $state(null);
+  let report = $state<FistReport | null>(null);
   let note = $state('');
   let startedAt = 0;
 
@@ -92,12 +92,12 @@
   });
 </script>
 
-<DrillFrame title="Live decoder" eyebrow="Free practice · your sending, decoded as you key">
+<DrillFrame title="Live decoder" eyebrow="Your sending, decoded live">
   <div class="screen" aria-live="polite">
     {#if tokens.length}
       <TokenText {tokens} size="xl" label="Decoded sending" />
     {:else}
-      <p class="muted placeholder">{running ? 'Start sending. Decoded text appears here.' : 'Press Start, then send anything.'}</p>
+      <p class="muted placeholder">{running ? 'Decoded text shows here.' : 'Press Start and send.'}</p>
     {/if}
   </div>
   {#if marks.length}

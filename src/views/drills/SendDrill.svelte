@@ -25,16 +25,16 @@
 
   type Stage = 'ready' | 'sending' | 'review';
 
-  let material: Material = $state('words');
-  let stage: Stage = $state('ready');
+  let material = $state<Material>('words');
+  let stage = $state<Stage>('ready');
   let prompt = $state('');
-  let liveTokens: Tok[] = $state([]);
+  let liveTokens = $state<Tok[]>([]);
   let received = $state('');
-  let receivedTokens: Tok[] = $state([]);
-  let issues: SendIssue[] = $state([]);
-  let report: FistReport | null = $state(null);
+  let receivedTokens = $state<Tok[]>([]);
+  let issues = $state<SendIssue[]>([]);
+  let report = $state<FistReport | null>(null);
   let note = $state('');
-  let rhythm: RhythmRow[] = $state([]);
+  let rhythm = $state<RhythmRow[]>([]);
   let n = $state(0);
   let correctTotal = 0;
   let tokenTotal = 0;
@@ -190,7 +190,7 @@
 
 <DrillFrame
   title="Send drill"
-  eyebrow="{currentLevel().name} · send at your own pace"
+  eyebrow={currentLevel().name}
   count={n ? `${n} sent` : ''}
 >
   {#if stage === 'ready'}
@@ -205,7 +205,7 @@
           { value: 'phrases', label: 'Phrases' },
         ]}
       />
-      <p class="muted">Send what appears. End the over with Done or by pausing for {settings.overTimeout} seconds.</p>
+      <p class="muted">Send the text shown. Press Done or pause {settings.overTimeout} s to end the over.</p>
       <InputHelp />
     </div>
   {:else if stage === 'sending'}
@@ -216,22 +216,22 @@
     {#if !strict()}
       <div class="block live" aria-live="polite">
         <span class="label">Decoded so far</span>
-        {#if liveTokens.length}<TokenText tokens={liveTokens} size="l" />{:else}<p class="muted">Waiting for your first character.</p>{/if}
+        {#if liveTokens.length}<TokenText tokens={liveTokens} size="l" />{:else}<p class="muted">Nothing yet.</p>{/if}
       </div>
     {/if}
   {:else}
     <div class="block">
       <span class="label">Received</span>
-      {#if receivedTokens.length}<TokenText tokens={receivedTokens} size="xl" />{:else}<p class="muted">Nothing was decoded.</p>{/if}
+      {#if receivedTokens.length}<TokenText tokens={receivedTokens} size="xl" />{:else}<p class="muted">Nothing decoded.</p>{/if}
       {#each issues as i (i.at + i.kind)}<p class="issue muted">{i.detail}</p>{/each}
     </div>
     <div class="block">
-      <span class="label">Intended, shown after</span>
+      <span class="label">Intended</span>
       <TokenText tokens={textTokens(prompt).map((t) => ({ t }))} size="m" />
     </div>
     {#if rhythm.length && !strict()}
       <div class="block">
-        <span class="label">Your rhythm beside the standard</span>
+        <span class="label">Rhythm</span>
         <RhythmView rows={rhythm} />
       </div>
     {/if}
@@ -249,7 +249,7 @@
     {:else}
       <Button kind="primary" onclick={begin} hint="Enter">Next</Button>
       <Button onclick={replayMine} hint="R">Replay mine</Button>
-      <Button onclick={hearStandard} hint="S">Hear the standard</Button>
+      <Button onclick={hearStandard} hint="S">Play standard</Button>
     {/if}
   {/snippet}
 </DrillFrame>

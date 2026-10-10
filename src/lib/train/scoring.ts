@@ -96,21 +96,23 @@ export function spacingIssues(intended: string, received: string): SendIssue[] {
   return issues;
 }
 
-/** One actionable adjustment, the most important first. */
+/** One actionable adjustment, the most important first, with its measurement. */
 export function oneNote(report: FistReport | null, issues: SendIssue[] = []): string {
   const has = (k: SendIssue['kind']) => issues.some((i) => i.kind === k);
-  if (has('merged-words')) return 'Word gaps ran short. Leave more room between words.';
-  if (has('merged-letters')) return 'Letters ran together. Leave a full three-dit gap between letters.';
-  if (has('split-letter')) return 'A gap inside a letter ran long, so it was heard as two. Keep letters tight.';
-  if (has('split-word')) return 'A gap inside a word ran long. Keep letters of a word closer together.';
-  if (!report) return 'Send a little more so there is enough to measure.';
-  if (report.weighting > 1.45) return 'Heavy weighting: marks long and gaps short. Lift off a little sooner.';
-  if (report.weighting < 0.7) return 'Light weighting: marks short and gaps long. Hold each mark a little longer.';
-  if (report.dahRatio < 2.5) return 'Dahs ran short. Hold each one about three dits long.';
-  if (report.dahRatio > 3.8) return 'Dahs ran long. Aim for three dits.';
-  if (report.wordGap !== null && report.wordGap < 5.5) return 'Word gaps ran a little short. Leave more room between words.';
-  if (report.charGap < 2.4) return 'Letters ran close together. Leave a full three-dit gap.';
-  if (report.ditSpread > 0.25) return 'Dit lengths varied a lot. Aim for an even rhythm.';
-  if (Math.abs(report.drift) > 3) return report.drift > 0 ? 'You sped up as you went. Hold a steady pace.' : 'You slowed down as you went. Hold a steady pace.';
-  return 'Clean, even sending.';
+  if (has('merged-words')) return 'Word gap too short: two words ran together.';
+  if (has('merged-letters')) return 'Letter gap too short: two letters ran together.';
+  if (has('split-letter')) return 'Gap inside a letter too long: it split in two.';
+  if (has('split-word')) return 'Gap inside a word too long: it split in two.';
+  if (!report) return 'Not enough sending to measure.';
+  const f = (x: number) => x.toFixed(1);
+  if (report.weighting > 1.45) return `Heavy weighting: ${report.weighting.toFixed(2)}, aim 1.0.`;
+  if (report.weighting < 0.7) return `Light weighting: ${report.weighting.toFixed(2)}, aim 1.0.`;
+  if (report.dahRatio < 2.5) return `Dahs short: ${f(report.dahRatio)} dits, aim 3.`;
+  if (report.dahRatio > 3.8) return `Dahs long: ${f(report.dahRatio)} dits, aim 3.`;
+  if (report.wordGap !== null && report.wordGap < 5.5) return `Word gaps short: ${f(report.wordGap)} units, aim 7.`;
+  if (report.charGap < 2.4) return `Letter gaps short: ${f(report.charGap)} units, aim 3.`;
+  if (report.ditSpread > 0.25) return `Dit length varies by ${Math.round(report.ditSpread * 100)}%.`;
+  if (Math.abs(report.drift) > 3)
+    return `Speed ${report.drift > 0 ? 'rose' : 'fell'} ${Math.abs(report.drift).toFixed(0)} wpm per minute.`;
+  return 'Timing within range.';
 }

@@ -20,7 +20,7 @@
 <div class="panel">
   <div>
     <h3>One note</h3>
-    <p class="note">{note || 'Send a few words, then end the over.'}</p>
+    <p class="note">{note || 'No sending measured yet.'}</p>
   </div>
   {#if report}
     <div>

@@ -77,7 +77,7 @@ describe('scoring', () => {
     expect(spacingIssues('TNX FER CALL ES 73', 'TNX FER CALLES 73').map((i) => i.kind)).toEqual(['merged-words']);
     expect(spacingIssues('ET', 'A').map((i) => i.kind)).toEqual(['merged-letters']);
     expect(spacingIssues('R', 'EN').map((i) => i.kind)).toEqual(['split-letter']);
-    expect(oneNote(null, spacingIssues('CALL ES', 'CALLES'))).toMatch(/Word gaps ran short/);
+    expect(oneNote(null, spacingIssues('CALL ES', 'CALLES'))).toMatch(/Word gap too short/);
   });
 });
 
@@ -103,10 +103,10 @@ describe('fist analysis', () => {
     expect(f.charGap).toBeCloseTo(3, 1);
     expect(f.wordGap!).toBeCloseTo(7, 0);
     expect(f.weighting).toBeCloseTo(1, 1);
-    expect(oneNote(f)).toBe('Clean, even sending.');
+    expect(oneNote(f)).toBe('Timing within range.');
   });
   it('spots heavy weighting and short dahs', () => {
     expect(oneNote(analyseFist(decodeOutputs(TEXT, 18, { weight: 0.35 }))!)).toMatch(/Heavy weighting/);
-    expect(oneNote(analyseFist(decodeOutputs(TEXT, 18, { dahRatio: 2.3 }))!)).toMatch(/Dahs ran short/);
+    expect(oneNote(analyseFist(decodeOutputs(TEXT, 18, { dahRatio: 2.3 }))!)).toMatch(/Dahs short/);
   });
 });

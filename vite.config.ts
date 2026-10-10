@@ -14,9 +14,9 @@ export default defineConfig({
       injectRegister: 'auto',
       includeAssets: ['favicon.svg', 'apple-touch-icon-180x180.png'],
       manifest: {
-        name: 'BeepBeep CW Trainer',
+        name: 'BeepBeep',
         short_name: 'BeepBeep',
-        description: 'Learn and practise Morse code by ear, with your own key heard through the microphone.',
+        description: 'CW trainer that decodes your key through the microphone.',
         theme_color: '#0F1113',
         background_color: '#0F1113',
         display: 'standalone',

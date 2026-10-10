@@ -10,15 +10,14 @@
     {#if signal.error}
       {signal.error} <a href={href('setup')}>Open setup</a>
     {:else if signal.info?.bluetooth}
-      A Bluetooth headset is the input; it may reduce the mic to call quality. Wired earphones or the built-in mic work
-      better.
+      Bluetooth input: audio drops to call quality. Wired earphones or the built-in mic decode better.
     {:else}
-      Listening through the microphone. Keep your sidetone near the mic and use headphones for the app's own audio.
+      Input: microphone. Use headphones so the mic doesn't pick up the app.
     {/if}
   {:else if settings.input === 'straight'}
-    Keyboard straight key: hold Space.
+    Straight key: hold Space.
   {:else}
-    Keyboard paddles: [ or Z for dit, ] or X for dah ({settings.input === 'iambicA' ? 'iambic A' : 'iambic B'}).
+    Paddles: [ or Z dit, ] or X dah. {settings.input === 'iambicA' ? 'Iambic A' : 'Iambic B'}.
   {/if}
 </p>
 

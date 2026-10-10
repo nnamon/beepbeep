@@ -33,20 +33,20 @@
 
   const MODES = [
     { group: 'Send', items: [
-      { id: 'live', name: 'Live decoder', text: 'Key anything and watch your own sending decoded, with its rhythm.' },
-      { id: 'send', name: 'Send drill', text: 'Send prompted text; see what a listener received, then one note.' },
+      { id: 'live', name: 'Live decoder', text: 'Decodes your sending as you key.' },
+      { id: 'send', name: 'Send drill', text: 'Send the text shown. Shows what was received.' },
     ] },
     { group: 'Both', items: [
-      { id: 'hear-send', name: 'Hear it, send it', text: 'The app sends; you send it straight back, by ear.' },
-      { id: 'qso', name: 'QSO simulator', text: 'Work a bot station: ragchew, SKCC, SST, POTA, contest, pileup.', href: href('qso') },
+      { id: 'hear-send', name: 'Hear it, send it', text: 'Copy a character or word, then send it.' },
+      { id: 'qso', name: 'QSO simulator', text: 'Ragchew, SKCC, SST, POTA, contest or pileup with a simulated station.', href: href('qso') },
     ] },
     { group: 'Receive', items: [
-      { id: 'copy', name: 'Copy drill', text: 'Type what you hear from your current lesson’s characters.' },
-      { id: 'familiarity', name: 'Familiarity', text: 'A new sound plays unnamed among known ones; tap each time you hear it.' },
-      { id: 'ttr', name: 'TTR drill', text: 'Recognise each character before its name is spoken; the delay tightens.' },
-      { id: 'ifr', name: 'Sound surfing (IFR)', text: 'Copy a continuous stream with no pauses; stay in step after misses.' },
-      { id: 'head-copy', name: 'Head copy', text: 'No typing while it plays; answer questions about meaning afterwards.' },
-      { id: 'sprint', name: 'Callsign and word sprint', text: 'Copy at rising speed; see where copy stays steady.' },
+      { id: 'copy', name: 'Copy drill', text: 'Type groups or words from your lesson.' },
+      { id: 'familiarity', name: 'Familiarity', text: 'Tap each time the new character plays.' },
+      { id: 'ttr', name: 'TTR drill', text: 'Name each character before the voice does.' },
+      { id: 'ifr', name: 'Sound surfing (IFR)', text: 'Copy a continuous stream without stopping.' },
+      { id: 'head-copy', name: 'Head copy', text: 'Listen without writing, then answer questions.' },
+      { id: 'sprint', name: 'Callsign and word sprint', text: 'Callsigns or words at rising speed.' },
     ] },
   ];
 </script>
@@ -87,15 +87,14 @@
 
       {#if settings.track === 'licw' && !settings.licwAsked}
         <div class="ask" role="group" aria-labelledby="ask-h">
-          <h2 id="ask-h">Turn on LICW strict mode?</h2>
+          <h2 id="ask-h">LICW strict mode</h2>
           <p class="muted">
-            Strict mode applies the LICW Method Guide's guardrails: no rhythm visuals or character chart, your decoded
-            sending shown only after each over, receive answers only at the end of a drill, and speed shown as context
-            rather than the headline. You can change it any time in Settings.
+            Hides rhythm bars and the character reference. Decoded sending shows after each over; receive answers show
+            at the end of a drill. Change it later in Settings.
           </p>
           <div class="ask-actions">
-            <Button kind="primary" onclick={() => { settings.licwStrict = true; settings.licwAsked = true; }}>Turn on strict mode</Button>
-            <Button onclick={() => { settings.licwStrict = false; settings.licwAsked = true; }}>Keep visuals</Button>
+            <Button kind="primary" onclick={() => { settings.licwStrict = true; settings.licwAsked = true; }}>Turn on</Button>
+            <Button onclick={() => { settings.licwStrict = false; settings.licwAsked = true; }}>Not now</Button>
           </div>
         </div>
       {/if}
@@ -126,12 +125,13 @@
     </section>
 
     <section class="today" aria-labelledby="today-h">
-      <h2 id="today-h">Today</h2>
-      <p class="muted">
-        A {settings.sessionMinutes}-minute session with one to three objectives works best, with at least a quarter of
-        it sending. Comfort at <span class="num">{settings.comfortWpm}</span> wpm, stretch at
-        <span class="num">{settings.stretchWpm}</span> wpm.
-      </p>
+      <h2 id="today-h">Plan</h2>
+      <dl class="facts">
+        <div><dt class="label">Session</dt><dd class="num">{settings.sessionMinutes} min</dd></div>
+        <div><dt class="label">Sending</dt><dd class="num">25% or more</dd></div>
+        <div><dt class="label">Comfort</dt><dd class="num">{settings.comfortWpm} wpm</dd></div>
+        <div><dt class="label">Stretch</dt><dd class="num">{settings.stretchWpm} wpm</dd></div>
+      </dl>
     </section>
 
     {#each MODES as g (g.group)}
@@ -229,10 +229,25 @@
 
   .today {
     grid-column: 1 / -1;
-    max-width: var(--reading);
     display: flex;
     flex-direction: column;
     gap: var(--s-1);
+  }
+
+  .facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-2) var(--s-5);
+    margin: 0;
+  }
+
+  .facts div {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .facts dd {
+    margin: 0;
   }
 
   .modes ul {
