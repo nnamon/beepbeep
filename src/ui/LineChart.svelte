@@ -83,10 +83,10 @@
   <figcaption>
     <span class="title">{title}</span>
     <span class="muted unit">{unit}{lowerIsBetter ? ', lower is better' : ''}</span>
-    <button type="button" class="tbtn" onclick={() => (table = !table)}>{table ? 'Chart' : 'Table'}</button>
+    {#if points.length}<button type="button" class="tbtn" onclick={() => (table = !table)}>{table ? 'Chart' : 'Table'}</button>{/if}
   </figcaption>
   {#if !points.length}
-    <p class="muted empty">No sessions yet.</p>
+    <p class="muted empty">No data yet.</p>
   {:else if table}
     <table>
       <thead><tr><th>Date</th><th>{unit}</th></tr></thead>

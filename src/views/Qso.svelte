@@ -82,8 +82,11 @@
       onOutput: (o) => {
         if (turn !== 'you') return;
         overTokens.push(o.kind === 'space' ? { t: ' ' } : { t: o.char.token ?? '⁇', state: o.char.token ? 'ok' : 'unknown' });
-        const p = parse(overText());
-        if (p.handover || p.signoff) setTimeout(() => endOver(), 500);
+        // Only a finished word can end the over: "K" may be the start of K1ABC.
+        if (o.kind === 'space') {
+          const p = parse(overText());
+          if (p.handover || p.signoff) setTimeout(() => endOver(), 300);
+        }
       },
       onKey: () => (lastKey = performance.now()),
     });

@@ -70,6 +70,7 @@
     <p class="muted">No sessions recorded yet.</p>
   {/if}
 
+  {#if list.length}
   <div class="charts">
     {#if strict()}
       <LineChart title="TTR voice delay" unit="s" digits={2} points={ttr} lowerIsBetter />
@@ -83,6 +84,7 @@
       <LineChart title="Recovery after misses" unit="chars" digits={1} points={recovery} lowerIsBetter />
     {/if}
   </div>
+  {/if}
 
   <div class="block">
     <h2>Receive accuracy by character</h2>

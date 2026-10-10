@@ -24,7 +24,7 @@
 <div class="slider">
   <div class="top">
     <label for={id}>{label}</label>
-    <span class="val"><span class="num">{format ? format(value) : value}</span>{#if unit}<span class="unit">{unit}</span>{/if}</span>
+    <span class="val"><span class:num={!format}>{format ? format(value) : value}</span>{#if unit}<span class="unit">{unit}</span>{/if}</span>
   </div>
   <input {id} type="range" {min} {max} {step} bind:value oninput={() => onchange?.(value)} />
 </div>

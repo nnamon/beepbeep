@@ -78,8 +78,10 @@ export function analyseFist(outputs: DecoderOutput[]): FistReport | null {
   const unit = (dit + eg) / 2;
 
   // Least-squares slope of per-character speed over time.
+  // A trend needs a real sample: at least 10 characters over 20 seconds.
   let drift = 0;
-  if (perChar.length >= 4) {
+  const spanSec = perChar.length ? perChar[perChar.length - 1].t - perChar[0].t : 0;
+  if (perChar.length >= 10 && spanSec >= 20) {
     const xs = perChar.map((p) => p.t);
     const ys = perChar.map((p) => 1.2 / p.dit);
     const mx = mean(xs);

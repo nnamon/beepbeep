@@ -22,7 +22,7 @@ export default defineConfig({
     { name: 'phone', use: { ...devices['iPhone 13'] }, testMatch: /screens\.spec/ },
     {
       name: 'mic',
-      testMatch: /decode\.spec/,
+      testMatch: /(decode|flows)\.spec/,
       use: {
         ...devices['Desktop Chrome'],
         permissions: ['microphone'],
