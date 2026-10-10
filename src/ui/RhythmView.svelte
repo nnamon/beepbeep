@@ -11,13 +11,17 @@
   // Morse drawn to scale: each mark is a bar as long as it lasted. Rows share
   // one time scale so "yours" and "standard" line up.
 
-  let { rows, height = 12, labelWidth = 72 }: { rows: RhythmRow[]; height?: number; labelWidth?: number } = $props();
+  let {
+    rows,
+    height = 12,
+    labelWidth = 72,
+    fixedSpan,
+  }: { rows: RhythmRow[]; height?: number; labelWidth?: number; fixedSpan?: number } = $props();
 
+  // Rows share one time scale; `fixedSpan` sets it explicitly so several views line up.
   const span = $derived(
-    Math.max(
-      0.05,
-      ...rows.map((r) => (r.marks.length ? r.marks[r.marks.length - 1].end - r.marks[0].start : 0)),
-    ),
+    fixedSpan ??
+      Math.max(0.05, ...rows.map((r) => (r.marks.length ? r.marks[r.marks.length - 1].end - r.marks[0].start : 0))),
   );
   const W = 600;
   const noteWidth = $derived(rows.some((r) => r.note) ? 130 : 0);

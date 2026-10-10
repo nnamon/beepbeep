@@ -1,4 +1,255 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
+  import Button from '../ui/Button.svelte';
+  import Segmented from '../ui/Segmented.svelte';
+  import Slider from '../ui/Slider.svelte';
+  import Toggle from '../ui/Toggle.svelte';
+  import VoiceRecorder from '../ui/VoiceRecorder.svelte';
+  import { settings, resetSettings } from '../lib/state/settings.svelte';
+  import { href } from '../lib/state/router.svelte';
+  import { engine } from '../lib/audio/engine';
+  import { voices } from '../lib/audio/speech';
+  import { clearAll, exportAll, importAll } from '../lib/state/db';
+  import type { TrackId } from '../lib/train/courses';
+
+  let voiceList = $state<SpeechSynthesisVoice[]>([]);
+  let showRecorder = $state(false);
+  let dataNote = $state('');
+
+  onMount(() => {
+    voiceList = voices();
+    if ('speechSynthesis' in window) speechSynthesis.onvoiceschanged = () => (voiceList = voices());
+  });
+
+  async function exportData() {
+    const data = await exportAll();
+    const blob = new Blob([JSON.stringify({ ...data, settings: $state.snapshot(settings) }, null, 1)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `beepbeep-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    dataNote = 'Exported.';
+  }
+
+  async function importData(e: Event) {
+    const file = (e.currentTarget as HTMLInputElement).files?.[0];
+    if (!file) return;
+    try {
+      const data = JSON.parse(await file.text());
+      await importAll(data);
+      if (data.settings) Object.assign(settings, data.settings);
+      dataNote = `Imported ${data.sessions?.length ?? 0} sessions and ${data.qsos?.length ?? 0} QSOs.`;
+    } catch (err) {
+      dataNote = (err as Error).message;
+    }
+  }
+
+  async function clearProgress() {
+    if (!confirm('Delete all progress, QSO log and recorded voice clips on this device?')) return;
+    await clearAll();
+    dataNote = 'Progress deleted.';
+  }
+
+  const tone = () => void engine.playText('VVV', { charWpm: 20, pitch: settings.pitch });
 </script>
 
-<p class="muted">Settings</p>
+<section class="settings">
+  <h1>Settings</h1>
+
+  <div class="group">
+    <h2>Appearance</h2>
+    <Segmented
+      label="Theme"
+      bind:value={settings.theme}
+      options={[
+        { value: 'system', label: 'System' },
+        { value: 'dark', label: 'Shack (dark)' },
+        { value: 'light', label: 'Paper (light)' },
+      ]}
+    />
+  </div>
+
+  <div class="group">
+    <h2>Course</h2>
+    <Segmented
+      label="Course"
+      bind:value={settings.track}
+      onchange={(v: TrackId) => (settings.track = v)}
+      options={[
+        { value: 'koch', label: 'Classic Koch order' },
+        { value: 'licw', label: 'LICW Beginners Carousel' },
+      ]}
+    />
+    <Toggle
+      bind:checked={settings.licwStrict}
+      onchange={() => (settings.licwAsked = true)}
+      label="LICW strict mode"
+      detail="LICW track only. Hides rhythm bars and the character reference; answers show at the end of a drill."
+    />
+    <Toggle
+      bind:checked={settings.useCourseSpeeds}
+      label="Use lesson speeds"
+      detail="LICW track: 12/8 in BC1, 12/10 in BC2."
+    />
+  </div>
+
+  <div class="group">
+    <h2>Speed</h2>
+    <div class="two">
+      <Slider label="Receive, character" bind:value={settings.charWpm} min={5} max={45} unit="wpm" />
+      <Slider label="Receive, effective" bind:value={settings.effectiveWpm} min={3} max={settings.charWpm} unit="wpm" />
+      <Slider label="Your sending" bind:value={settings.sendWpm} min={5} max={45} unit="wpm" />
+      <Slider label="Session" bind:value={settings.sessionMinutes} min={5} max={45} step={5} unit="min" />
+      <Slider label="Comfort" bind:value={settings.comfortWpm} min={5} max={45} unit="wpm" />
+      <Slider label="Stretch" bind:value={settings.stretchWpm} min={5} max={50} unit="wpm" />
+    </div>
+    {#if settings.effectiveWpm < settings.charWpm}
+      <p class="muted small">Farnsworth spacing is on. LICW treats extra spacing as temporary; raise effective speed toward character speed over time.</p>
+    {/if}
+  </div>
+
+  <div class="group">
+    <h2>Sound</h2>
+    <div class="two">
+      <Slider label="Pitch" bind:value={settings.pitch} min={400} max={1000} step={10} unit="Hz" />
+      <Slider label="Volume" bind:value={settings.volume} min={0} max={1} step={0.05} format={(v) => `${Math.round(v * 100)}%`} onchange={(v) => engine.setVolume(v)} />
+    </div>
+    <div><Button onclick={tone}>Play a test tone</Button></div>
+    <Segmented
+      label="Spoken answers"
+      bind:value={settings.voice}
+      options={[
+        { value: 'system', label: 'Device voice' },
+        { value: 'recorded', label: 'My recordings' },
+        { value: 'off', label: 'Off' },
+      ]}
+    />
+    {#if settings.voice === 'system' && voiceList.length}
+      <label class="select">
+        <span class="label">Voice</span>
+        <select bind:value={settings.voiceURI}>
+          <option value="">Default</option>
+          {#each voiceList as v (v.voiceURI)}<option value={v.voiceURI}>{v.name}</option>{/each}
+        </select>
+      </label>
+    {/if}
+    {#if settings.voice === 'recorded'}
+      <Button onclick={() => (showRecorder = !showRecorder)}>{showRecorder ? 'Hide recorder' : 'Record clips'}</Button>
+      {#if showRecorder}<VoiceRecorder />{/if}
+    {/if}
+    <Toggle
+      bind:checked={settings.visualCue}
+      label="Visual cue"
+      detail="A light pulses with the app's tone. For noisy rooms or hard-of-hearing operators. Off in LICW strict mode."
+    />
+  </div>
+
+  <div class="group">
+    <h2>Band conditions</h2>
+    <p class="muted small">Applied to receive drills and QSOs.</p>
+    <Segmented label="Noise" bind:value={settings.noise} options={[{ value: 0, label: 'No noise' }, { value: 1, label: 'Light' }, { value: 2, label: 'Moderate' }, { value: 3, label: 'Heavy' }]} />
+    <div class="two">
+      <Slider label="Fading (QSB)" bind:value={settings.qsb} min={0} max={3} format={(v) => ['Off', 'Light', 'Moderate', 'Deep'][v]} />
+      <Slider label="Interference (QRM)" bind:value={settings.qrm} min={0} max={2} format={(v) => ['Off', 'Weak', 'Strong'][v]} />
+      <Slider label="Static (QRN)" bind:value={settings.qrn} min={0} max={3} format={(v) => ['Off', 'Light', 'Moderate', 'Heavy'][v]} />
+    </div>
+    <Toggle bind:checked={settings.humanFist} label="Human fists" detail="Generated code has timing variation like hand sending." />
+  </div>
+
+  <div class="group">
+    <h2>Input</h2>
+    <p><a href={href('setup')}>Microphone and keyboard keyer setup</a></p>
+    <Slider label="End your over after" bind:value={settings.overTimeout} min={1.5} max={6} step={0.5} unit="s of silence" />
+  </div>
+
+  <div class="group">
+    <h2>Data</h2>
+    <p class="muted small">Progress is stored in this browser only. Export it to move between devices.</p>
+    <div class="row">
+      <Button onclick={exportData}>Export</Button>
+      <label class="file">
+        <span>Import</span>
+        <input type="file" accept="application/json,.json" onchange={importData} />
+      </label>
+      <Button kind="quiet" onclick={resetSettings}>Reset settings</Button>
+      <Button kind="quiet" onclick={clearProgress}>Delete progress</Button>
+    </div>
+    {#if dataNote}<p class="small">{dataNote}</p>{/if}
+  </div>
+
+  <p class="muted small">BeepBeep {__APP_VERSION__}. Character orders: classic Koch (K M R S U…) and LICW BC1/BC2. LICW is a trademark of the Long Island CW Club; BeepBeep is not affiliated with it.</p>
+</section>
+
+<style>
+  .settings {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-4);
+    max-width: 760px;
+  }
+
+  .group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-2);
+    padding-top: var(--s-2);
+    border-top: var(--hairline) solid var(--line);
+  }
+
+  .two {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: var(--s-2) var(--s-4);
+  }
+
+  .row {
+    display: flex;
+    gap: var(--s-1);
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .small {
+    font-size: var(--size-s);
+  }
+
+  .select {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-width: 320px;
+  }
+
+  select {
+    min-height: var(--target);
+    border: var(--hairline) solid var(--muted);
+    border-radius: var(--radius);
+    background: var(--surface);
+    padding: 0 var(--s-1);
+  }
+
+  .file {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--target);
+    padding: 0 var(--s-2);
+    border: var(--hairline) solid var(--muted);
+    border-radius: var(--radius);
+    cursor: pointer;
+    position: relative;
+  }
+
+  .file input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+
+  .file:focus-within {
+    outline: 2px solid var(--signal);
+    outline-offset: 2px;
+  }
+</style>
