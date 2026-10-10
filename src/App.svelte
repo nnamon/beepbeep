@@ -12,6 +12,16 @@
   import Reference from './views/Reference.svelte';
   import Specimen from './views/Specimen.svelte';
   import { settings } from './lib/state/settings.svelte';
+  import { notify } from './lib/state/signal.svelte';
+
+  // Alt+Up / Alt+Down: receive speed. On touch screens the same is in Settings.
+  function onKey(e: KeyboardEvent) {
+    if (!e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+    e.preventDefault();
+    settings.charWpm = Math.max(5, Math.min(45, settings.charWpm + (e.key === 'ArrowUp' ? 1 : -1)));
+    if (settings.effectiveWpm > settings.charWpm) settings.effectiveWpm = settings.charWpm;
+    notify(`Receive ${settings.charWpm} wpm`);
+  }
 
   const tabs = [
     { id: 'practice', label: 'Practice' },
@@ -64,6 +74,8 @@
     {/each}
   </nav>
 </div>
+
+<svelte:window onkeydown={onKey} />
 
 {#if settings.visualCue}<VisualCue />{/if}
 

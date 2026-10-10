@@ -15,7 +15,19 @@ export const signal = $state({
   wpm: 0,
   /** True during receive drills: the bar hides key and level in strict mode. */
   receiving: false,
+  /** Last time the key was down (ms, performance clock). */
+  lastKeyDown: 0,
+  /** A short message such as a speed change, cleared after a moment. */
+  notice: '',
 });
+
+let noticeTimer: ReturnType<typeof setTimeout> | null = null;
+
+export function notify(text: string) {
+  signal.notice = text;
+  if (noticeTimer) clearTimeout(noticeTimer);
+  noticeTimer = setTimeout(() => (signal.notice = ''), 1800);
+}
 
 let unsub: (() => void) | null = null;
 
@@ -35,6 +47,7 @@ export async function startMic(): Promise<MicInfo | null> {
           signal.pitch = e.pitch;
           signal.snr = e.snr;
           signal.keyDown = e.keyDown;
+          if (e.keyDown) signal.lastKeyDown = performance.now();
         } else if (e.type === 'lock') signal.pitch = e.hz;
       }
     });

@@ -12,7 +12,7 @@
   import { engine } from '../../lib/audio/engine';
   import { settings, strict } from '../../lib/state/settings.svelte';
   import { signal, startMic } from '../../lib/state/signal.svelte';
-  import { currentLevel, saveSession, wait } from '../../lib/train/session';
+  import { currentLevel, playMarks, recordSend, saveSession, sendInput, wait } from '../../lib/train/session';
   import { items } from '../../lib/train/generate';
   import { buildSchedule } from '../../lib/morse/schedule';
   import { textTokens } from '../../lib/util/text';
@@ -27,7 +27,7 @@
   let i = $state(0);
   let current = $state('');
   let lastResult: { want: string; got: string; ok: boolean; rows: RhythmRow[] } | null = $state(null);
-  let results: { want: string; got: string; ok: boolean; wpm: number }[] = $state([]);
+  let results = $state<{ want: string; got: string; ok: boolean; wpm: number; marks: { start: number; end: number }[] }[]>([]);
   let stopFlag = false;
   const rng = mulberry32(randomSeed());
   const startedAt = Date.now();
@@ -58,7 +58,8 @@
       if (stopFlag) break;
       const r = compareCopy(current, got.text);
       const ok = r.accuracy === 1 && textTokens(got.text).length === textTokens(current).length;
-      results.push({ want: current, got: got.text, ok, wpm });
+      results.push({ want: current, got: got.text, ok, wpm, marks: got.marks });
+      void recordSend(current, got.text, []);
       const std = buildSchedule(current, { charWpm: wpm, leadIn: 0, tail: 0 });
       lastResult = {
         want: current,
@@ -80,7 +81,7 @@
     let last = 0;
     const began = performance.now();
     const live = new LiveDecoder({
-      source: settings.input,
+      source: sendInput(),
       charWpm: wpm,
       pitch: settings.pitch,
       onKey: () => (last = performance.now()),
@@ -176,6 +177,10 @@
             <span class="num muted">{r.wpm}</span>
             <TokenText tokens={toks(r.want)} size="m" />
             <span class="muted">{r.ok ? 'matched' : `received ${r.got || 'nothing'}`}</span>
+            <span class="replays">
+              {#if r.marks.length}<button type="button" onclick={() => playMarks(r.marks)}>Mine</button>{/if}
+              <button type="button" onclick={() => engine.playText(r.want, { charWpm: r.wpm, pitch: settings.pitch })}>Standard</button>
+            </span>
           </li>
         {/each}
       </ul>
@@ -235,9 +240,23 @@
     gap: var(--s-half);
   }
 
+  .replays {
+    display: flex;
+    gap: var(--s-half);
+  }
+
+  .replays button {
+    min-height: 36px;
+    border: var(--hairline) solid var(--line);
+    border-radius: var(--radius);
+    background: transparent;
+    padding: 0 var(--s-1);
+    font-size: var(--size-s);
+  }
+
   .list li {
     display: grid;
-    grid-template-columns: 3ch 8ch 1fr;
+    grid-template-columns: 3ch 8ch 1fr auto;
     gap: var(--s-2);
     align-items: baseline;
     border-bottom: var(--hairline) solid var(--line);

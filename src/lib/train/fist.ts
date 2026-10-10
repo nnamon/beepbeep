@@ -21,6 +21,8 @@ export interface FistReport {
   drift: number;
   /** Spread of dit lengths, as a fraction of the mean. */
   ditSpread: number;
+  /** Share of characters whose element timings fit their classes cleanly (decoder confidence >= 0.5). */
+  clean: number;
 }
 
 const mean = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
@@ -106,5 +108,6 @@ export function analyseFist(outputs: DecoderOutput[]): FistReport | null {
     weighting: dit / eg,
     drift,
     ditSpread: dits.length > 1 ? sd(dits) / dit : 0,
+    clean: chars.filter((c) => c.confidence >= 0.5).length / chars.length,
   };
 }

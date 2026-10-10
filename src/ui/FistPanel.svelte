@@ -13,6 +13,7 @@
           { label: 'Letter gap, aim 3', value: report.charGap.toFixed(1), unit: 'units' },
           { label: 'Dah to dit, aim 3', value: report.dahRatio.toFixed(1), unit: '' },
           { label: 'Weighting, aim 1.0', value: report.weighting.toFixed(2), unit: '' },
+          { label: 'Clean characters', value: `${Math.round(report.clean * 100)}%`, unit: '' },
         ]
       : [],
   );

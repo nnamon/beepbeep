@@ -16,7 +16,7 @@ for (const theme of ['dark', 'light'] as const) {
       await page.addInitScript((t) => {
         localStorage.setItem('beepbeep.settings.v1', JSON.stringify({ theme: t, voice: 'off' }));
       }, theme);
-      await page.goto(`/#/${route}`);
+      await page.goto(`./#/${route}`);
       await page.waitForTimeout(600);
       const wide = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
       await page.screenshot({ path: `test-results/screens/${info.project.name}-${theme}-${route.replaceAll('/', '_')}.png`, fullPage: true });

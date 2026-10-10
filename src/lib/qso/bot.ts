@@ -160,6 +160,14 @@ export class QsoBot {
     this.overs++;
     const p = parse(trimmed);
 
+    // Mostly unreadable: ask for it again, slower, as a real operator would.
+    const unknown = (trimmed.match(/\u2047/g) ?? []).length;
+    const readable = p.calls.length || p.rst || p.name || p.qth || p.cq || p.signoff || p.agn || p.qrs;
+    if (unknown >= 2 && unknown / trimmed.replace(/\s/g, '').length > 0.25 && !readable) {
+      const who = this.active ?? this.stations[0];
+      return this.say(who, 'QRS PSE AGN?');
+    }
+
     // Requests that apply at any stage.
     if (p.qrs || p.qrq) {
       this.wpm = Math.max(5, Math.min(45, this.wpm + (p.qrs ? -4 : 4)));

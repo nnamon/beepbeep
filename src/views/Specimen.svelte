@@ -19,7 +19,8 @@
   let typed = $state('');
   const yours = buildSchedule('LE', { charWpm: 18, leadIn: 0, tail: 0, fist: { wordGapScale: 0.6, jitter: 0.06 } }).marks;
   const std = buildSchedule('L E', { charWpm: 18, leadIn: 0, tail: 0 }).marks;
-  const pts = Array.from({ length: 14 }, (_, i) => ({ t: Date.now() - (13 - i) * 864e5, y: 12 + Math.round(i * 0.6 + (i % 3)) }));
+  // Fixed dates so the page renders the same every time (screenshot baseline).
+  const pts = Array.from({ length: 14 }, (_, i) => ({ t: Date.UTC(2026, 8, 20 + i, 12), y: 12 + Math.round(i * 0.6 + (i % 3)) }));
   const TOKENS = ['--bg', '--surface', '--surface-2', '--line', '--ink', '--muted', '--signal', '--fault'];
 </script>
 
@@ -69,7 +70,7 @@
   </div>
 
   <div class="block two">
-    <FistPanel note="Word gaps short: 4.8 units, aim 7." report={{ chars: 12, wpm: 17.6, unit: 0.068, dahRatio: 2.9, elemGap: 1, charGap: 3.1, wordGap: 4.8, weighting: 1.05, drift: 0.4, ditSpread: 0.08 }} />
+    <FistPanel note="Word gaps short: 4.8 units, aim 7." report={{ chars: 12, wpm: 17.6, unit: 0.068, dahRatio: 2.9, elemGap: 1, charGap: 3.1, wordGap: 4.8, weighting: 1.05, drift: 0.4, ditSpread: 0.08, clean: 0.92 }} />
     <LineChart title="Receive speed" unit="wpm" points={pts} />
   </div>
 

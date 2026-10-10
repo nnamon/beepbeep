@@ -26,7 +26,7 @@ const SETTINGS = { input: 'straight', sendWpm: 18, voice: 'off', overTimeout: 2,
 
 test('send drill: key the prompt, see it received', async ({ page }) => {
   await page.addInitScript((s) => localStorage.setItem('beepbeep.settings.v1', JSON.stringify(s)), SETTINGS);
-  await page.goto('/#/practice/send');
+  await page.goto('./#/practice/send');
   await page.getByRole('radio', { name: 'Callsigns' }).click();
   await page.getByRole('button', { name: /Start/ }).click();
   const prompt = (await page.locator('.block').first().locator('p').innerText()).trim();
@@ -41,7 +41,7 @@ test('send drill: key the prompt, see it received', async ({ page }) => {
 test('contest QSO with the bot, start to log', async ({ page }) => {
   test.setTimeout(120_000);
   await page.addInitScript((s) => localStorage.setItem('beepbeep.settings.v1', JSON.stringify(s)), SETTINGS);
-  await page.goto('/#/qso');
+  await page.goto('./#/qso');
   await page.getByText('Contest', { exact: true }).click();
   await page.getByRole('button', { name: 'Start QSO' }).click();
   await expect(page.getByText('Your turn')).toBeVisible({ timeout: 30_000 });

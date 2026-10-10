@@ -4,6 +4,7 @@ import { engine } from './engine';
 import { Keyer, type KeyEvent } from './keyer';
 import { Decoder, type DecodedChar, type DecoderOutput } from '../decoder/decoder';
 import type { DetectorEvent } from '../dsp/detector';
+import { signal } from '../state/signal.svelte';
 
 export type InputSource = 'mic' | 'straight' | 'iambicA' | 'iambicB';
 
@@ -149,6 +150,12 @@ export class LiveDecoder {
       this.push(this.decoder.keyUp(e.t));
     }
     if (this.opts.source !== 'mic') {
+      // Keyboard keyer events can be scheduled slightly ahead; the LED follows them.
+      const delay = Math.max(0, (e.t - engine.now) * 1000);
+      setTimeout(() => {
+        signal.keyDown = e.down;
+        if (e.down) signal.lastKeyDown = performance.now();
+      }, delay);
       this.status = { ...this.status, keyDown: e.down, wpm: this.decoder.wpm };
       this.opts.onStatus?.(this.status);
     }

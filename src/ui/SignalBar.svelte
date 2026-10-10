@@ -10,6 +10,10 @@
   const bars = [-50, -40, -32, -25, -18];
   const keyboard = $derived(settings.input !== 'mic');
   const hide = $derived(strict() && signal.receiving);
+  // Locked, but nothing keyed for 15 s and the signal is down near the noise.
+  const toneLost = $derived(
+    signal.micOn && !!signal.pitch && signal.snr < 8 && performance.now() - signal.lastKeyDown > 15000 && signal.level > -200,
+  );
 </script>
 
 <a class="bar" class:compact href={href('setup')} aria-label="Signal: open input setup">
@@ -26,10 +30,11 @@
         {/each}
       </span>
     {/if}
-    <span class="cell num">{signal.pitch ? `${Math.round(signal.pitch)} Hz` : 'Listening'}</span>
+    <span class="cell num">{toneLost ? 'No tone' : signal.pitch ? `${Math.round(signal.pitch)} Hz` : 'Listening'}</span>
     {#if !hide}<span class="led" class:on={signal.keyDown} aria-hidden="true"></span>{/if}
   {/if}
-  {#if signal.wpm > 0 && !hide}<span class="cell num">{signal.wpm.toFixed(0)} wpm</span>{/if}
+  {#if signal.notice}<span class="cell">{signal.notice}</span>
+  {:else if signal.wpm > 0 && !hide}<span class="cell num">{signal.wpm.toFixed(0)} wpm</span>{/if}
 </a>
 
 <style>

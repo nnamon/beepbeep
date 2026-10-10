@@ -132,3 +132,11 @@ describe('you call CQ', () => {
     expect(bot.completed.map((s) => s.call)).toEqual([target]);
   });
 });
+
+describe('garbled sending', () => {
+  it('asks for QRS and a repeat when it cannot read you', () => {
+    const bot = new QsoBot({ format: 'ragchew', opener: 'bot', you: ME, wpm: 20, seed: 2 });
+    bot.start();
+    expect(bot.hear('⁇ ⁇ E ⁇ T')[0].text).toBe('QRS PSE AGN?');
+  });
+});

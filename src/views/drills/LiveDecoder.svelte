@@ -8,20 +8,22 @@
   import RhythmView from '../../ui/RhythmView.svelte';
   import FistPanel from '../../ui/FistPanel.svelte';
   import InputHelp from '../../ui/InputHelp.svelte';
+  import Inspect from '../../ui/Inspect.svelte';
   import { LiveDecoder } from '../../lib/audio/live';
   import { settings } from '../../lib/state/settings.svelte';
   import { signal, startMic } from '../../lib/state/signal.svelte';
   import { analyseFist, type FistReport } from '../../lib/train/fist';
   import { oneNote } from '../../lib/train/scoring';
   import { keepAwake } from '../../lib/util/wakelock';
-  import { saveSession } from '../../lib/train/session';
+  import { keepSend, saveSession, sendInput } from '../../lib/train/session';
 
   let live: LiveDecoder | null = null;
   let running = $state(false);
   let tokens = $state<Tok[]>([]);
-  let marks: { start: number; end: number }[] = $state([]);
+  let marks = $state<{ start: number; end: number }[]>([]);
   let report = $state<FistReport | null>(null);
   let note = $state('');
+  let inspecting = $state<{ start: number; end: number }[] | null>(null);
   let startedAt = 0;
 
   async function start() {
@@ -30,11 +32,16 @@
       if (!ok) return;
     }
     live = new LiveDecoder({
-      source: settings.input,
+      source: sendInput(),
       charWpm: settings.sendWpm,
       pitch: settings.pitch,
       onOutput: (o) => {
-        tokens.push(o.kind === 'space' ? { t: ' ' } : { t: o.char.token ?? '⁇', state: o.char.token ? 'ok' : 'unknown' });
+        if (o.kind === 'space') tokens.push({ t: ' ' });
+        else if (o.char.token) tokens.push({ t: o.char.token, state: 'ok' });
+        else {
+          const m = o.char.marks.map((x) => ({ start: x.start, end: x.end }));
+          tokens.push({ t: '⁇', state: 'unknown', onclick: () => (inspecting = m) });
+        }
         if (tokens.length > 400) tokens.splice(0, tokens.length - 400);
         signal.wpm = live?.decoder.wpm ?? 0;
       },
@@ -75,7 +82,8 @@
     if (!live) return;
     live.flush();
     report = analyseFist(live.outputs);
-    note = oneNote(report);
+    note = oneNote(report, [], settings.sendTolerance);
+    void keepSend(live.text, live.marks);
   }
 
   function clear() {
@@ -83,6 +91,7 @@
     marks = [];
     report = null;
     note = '';
+    inspecting = null;
     live?.resetOver();
   }
 
@@ -100,6 +109,7 @@
       <p class="muted placeholder">{running ? 'Decoded text shows here.' : 'Press Start and send.'}</p>
     {/if}
   </div>
+  {#if inspecting}<Inspect marks={inspecting} onclose={() => (inspecting = null)} />{/if}
   {#if marks.length}
     <div class="rhythm">
       <span class="label">Rhythm, last {marks.length} marks</span>

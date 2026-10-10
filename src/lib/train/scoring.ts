@@ -96,23 +96,27 @@ export function spacingIssues(intended: string, received: string): SendIssue[] {
   return issues;
 }
 
+export type Tolerance = 'tight' | 'normal' | 'loose';
+const TOL: Record<Tolerance, number> = { tight: 0.6, normal: 1, loose: 1.5 };
+
 /** One actionable adjustment, the most important first, with its measurement. */
-export function oneNote(report: FistReport | null, issues: SendIssue[] = []): string {
+export function oneNote(report: FistReport | null, issues: SendIssue[] = [], tolerance: Tolerance = 'normal'): string {
   const has = (k: SendIssue['kind']) => issues.some((i) => i.kind === k);
   if (has('merged-words')) return 'Word gap too short: two words ran together.';
   if (has('merged-letters')) return 'Letter gap too short: two letters ran together.';
   if (has('split-letter')) return 'Gap inside a letter too long: it split in two.';
   if (has('split-word')) return 'Gap inside a word too long: it split in two.';
   if (!report) return 'Not enough sending to measure.';
+  const t = TOL[tolerance];
   const f = (x: number) => x.toFixed(1);
-  if (report.weighting > 1.45) return `Heavy weighting: ${report.weighting.toFixed(2)}, aim 1.0.`;
-  if (report.weighting < 0.7) return `Light weighting: ${report.weighting.toFixed(2)}, aim 1.0.`;
-  if (report.dahRatio < 2.5) return `Dahs short: ${f(report.dahRatio)} dits, aim 3.`;
-  if (report.dahRatio > 3.8) return `Dahs long: ${f(report.dahRatio)} dits, aim 3.`;
-  if (report.wordGap !== null && report.wordGap < 5.5) return `Word gaps short: ${f(report.wordGap)} units, aim 7.`;
-  if (report.charGap < 2.4) return `Letter gaps short: ${f(report.charGap)} units, aim 3.`;
-  if (report.ditSpread > 0.25) return `Dit length varies by ${Math.round(report.ditSpread * 100)}%.`;
-  if (Math.abs(report.drift) > 3)
+  if (report.weighting > 1 + 0.45 * t) return `Heavy weighting: ${report.weighting.toFixed(2)}, aim 1.0.`;
+  if (report.weighting < 1 - 0.3 * t) return `Light weighting: ${report.weighting.toFixed(2)}, aim 1.0.`;
+  if (report.dahRatio < 3 - 0.5 * t) return `Dahs short: ${f(report.dahRatio)} dits, aim 3.`;
+  if (report.dahRatio > 3 + 0.8 * t) return `Dahs long: ${f(report.dahRatio)} dits, aim 3.`;
+  if (report.wordGap !== null && report.wordGap < 7 - 1.5 * t) return `Word gaps short: ${f(report.wordGap)} units, aim 7.`;
+  if (report.charGap < 3 - 0.6 * t) return `Letter gaps short: ${f(report.charGap)} units, aim 3.`;
+  if (report.ditSpread > 0.25 * t) return `Dit length varies by ${Math.round(report.ditSpread * 100)}%.`;
+  if (Math.abs(report.drift) > 3 * t)
     return `Speed ${report.drift > 0 ? 'rose' : 'fell'} ${Math.abs(report.drift).toFixed(0)} wpm per minute.`;
   return 'Timing within range.';
 }

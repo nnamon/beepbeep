@@ -15,7 +15,9 @@
   import { parse } from '../lib/qso/parse';
   import { buildSchedule } from '../lib/morse/schedule';
   import { renderSchedule } from '../lib/morse/render';
-  import { conditions } from '../lib/train/session';
+  import { conditions, sendInput } from '../lib/train/session';
+  import { analyseFist } from '../lib/train/fist';
+  import { oneNote } from '../lib/train/scoring';
   import { addQso } from '../lib/state/db';
   import { textTokens } from '../lib/util/text';
   import { randomSeed } from '../lib/util/random';
@@ -37,6 +39,8 @@
   let format = $state<Format>('ragchew');
   let opener = $state<Opener>('bot');
   let botWpm = $state(Math.min(30, settings.sendWpm + 2));
+  let botEff = $state(Math.min(30, settings.sendWpm + 2));
+  let sendNote = $state('');
   let crowd = $state(3);
   let transcriptOn = $state(!strict());
   let stage = $state<'setup' | 'running' | 'ended'>('setup');
@@ -75,8 +79,9 @@
     stage = 'running';
     started = Date.now();
     void keepAwake(true);
+    sendNote = '';
     live = new LiveDecoder({
-      source: settings.input,
+      source: sendInput(),
       charWpm: settings.sendWpm,
       pitch: settings.pitch,
       onOutput: (o) => {
@@ -144,6 +149,7 @@
     const rendered = turns.map((t, i) => {
       const s = buildSchedule(t.text, {
         charWpm: t.wpm,
+        effectiveWpm: Math.min(t.wpm, botEff + (t.wpm - botWpm)),
         fist: settings.humanFist ? { jitter: 0.06, seed: randomSeed() } : undefined,
         leadIn: 0.2 + (turns.length > 1 ? Math.random() * 0.9 : 0),
       });
@@ -161,7 +167,13 @@
     for (const r of rendered) for (let k = 0; k < r.length; k++) mix[k] += r[k];
     lastAudio = mix;
     const pb = await engine.play(mix);
+    // Break-in with the keyboard key: keying stops the station and starts your over.
+    const breakIn = (e: KeyboardEvent) => {
+      if (['Space', 'BracketLeft', 'BracketRight', 'KeyZ', 'KeyX', 'Comma', 'Period'].includes(e.code)) pb.stop();
+    };
+    if (settings.input !== 'mic') window.addEventListener('keydown', breakIn, true);
     await pb.done;
+    window.removeEventListener('keydown', breakIn, true);
     if (transcriptOn) for (const t of turns) lines.push({ from: 'bot', who: t.who, text: t.text });
     if (bot?.done) return finish();
     yourTurn();
@@ -178,6 +190,11 @@
   async function finish() {
     if (stage !== 'running' || !bot) return;
     stage = 'ended';
+    if (live) {
+      live.flush();
+      const rep = analyseFist(live.outputs);
+      sendNote = rep ? oneNote(rep, [], settings.sendTolerance) : '';
+    }
     live?.stop();
     if (watch) clearInterval(watch);
     void keepAwake(false);
@@ -301,7 +318,8 @@
         {:else}
           <Slider label="Stations calling" bind:value={crowd} min={2} max={4} />
         {/if}
-        <Slider label="Station speed" bind:value={botWpm} min={8} max={40} unit="wpm" />
+        <Slider label="Station speed" bind:value={botWpm} min={8} max={40} unit="wpm" onchange={() => (botEff = Math.min(botEff, botWpm))} />
+        <Slider label="Station spacing" bind:value={botEff} min={5} max={botWpm} unit="wpm effective" />
         {#if format === 'sst'}<p class="muted small">SST runs at 20 wpm or slower.</p>{/if}
         <Toggle bind:checked={transcriptOn} label="Show transcript" detail="Each over appears after it ends" />
         <div class="field">
@@ -369,6 +387,7 @@
               </tbody>
             </table>
           {/each}
+          {#if sendNote}<p><span class="label">Your sending</span><br />{sendNote}</p>{/if}
           {#if bot}
             <p class="muted small">
               Station received your call as <span class="mono">{bot.copied.call ?? 'nothing'}</span>{bot.copied.name ? `, name ${bot.copied.name}` : ''}{bot.copied.state ? `, state ${bot.copied.state}` : ''}.

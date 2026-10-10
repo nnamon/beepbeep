@@ -10,8 +10,9 @@ export default defineConfig({
   fullyParallel: true,
   reporter: [['list']],
   globalSetup: './e2e/global-setup.ts',
-  use: { baseURL: 'http://localhost:4173' },
-  webServer: {
+  // BASE_URL runs the suite against a deployed copy, e.g. https://nnamon.github.io/beepbeep/
+  use: { baseURL: process.env.BASE_URL ?? 'http://localhost:4173/' },
+  webServer: process.env.BASE_URL ? undefined : {
     command: 'npm run build && npx vite preview --port 4173 --strictPort',
     url: 'http://localhost:4173',
     timeout: 180_000,

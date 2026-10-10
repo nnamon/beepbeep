@@ -43,6 +43,16 @@ export interface Settings {
   sessionMinutes: number;
   /** Seconds of silence after which your over is handed to the bot. */
   overTimeout: number;
+  /** How strict the timing notes are. */
+  sendTolerance: 'tight' | 'normal' | 'loose';
+  /** Keep the timing of your last few sends for replay (timing only, no audio). */
+  keepSends: boolean;
+  /** Vibrate the rhythm while the app sends (Android browsers). */
+  vibrate: boolean;
+  /** Chirp and slow drift on generated signals. */
+  chirp: boolean;
+  /** Raise effective speed toward character speed after good sessions. */
+  autoTaper: boolean;
 }
 
 const DEFAULTS: Settings = {
@@ -74,6 +84,11 @@ const DEFAULTS: Settings = {
   stretchWpm: 19,
   sessionMinutes: 15,
   overTimeout: 3,
+  sendTolerance: 'normal',
+  keepSends: false,
+  vibrate: false,
+  chirp: false,
+  autoTaper: false,
 };
 
 const KEY = 'beepbeep.settings.v1';

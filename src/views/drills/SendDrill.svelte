@@ -9,11 +9,12 @@
   import RhythmView, { type RhythmRow } from '../../ui/RhythmView.svelte';
   import FistPanel from '../../ui/FistPanel.svelte';
   import InputHelp from '../../ui/InputHelp.svelte';
+  import Inspect from '../../ui/Inspect.svelte';
   import { LiveDecoder } from '../../lib/audio/live';
   import { engine } from '../../lib/audio/engine';
   import { settings, strict } from '../../lib/state/settings.svelte';
   import { signal, startMic } from '../../lib/state/signal.svelte';
-  import { currentLevel, playMarks, saveSession } from '../../lib/train/session';
+  import { currentLevel, keepSend, playMarks, recordSend, saveSession, sendInput } from '../../lib/train/session';
   import { items, type Material } from '../../lib/train/generate';
   import { analyseFist, type FistReport } from '../../lib/train/fist';
   import { compareCopy, oneNote, spacingIssues, type SendIssue } from '../../lib/train/scoring';
@@ -35,6 +36,8 @@
   let report = $state<FistReport | null>(null);
   let note = $state('');
   let rhythm = $state<RhythmRow[]>([]);
+  let liveMarks = $state<{ start: number; end: number }[]>([]);
+  let inspecting = $state<{ start: number; end: number }[] | null>(null);
   let n = $state(0);
   let correctTotal = 0;
   let tokenTotal = 0;
@@ -60,18 +63,21 @@
     }
     nextPrompt();
     liveTokens = [];
+    liveMarks = [];
+    inspecting = null;
     stage = 'sending';
     live?.stop();
     live = new LiveDecoder({
-      source: settings.input,
+      source: sendInput(),
       charWpm: settings.sendWpm,
       pitch: settings.pitch,
       onOutput: (o) => {
         liveTokens.push(o.kind === 'space' ? { t: ' ' } : { t: o.char.token ?? '⁇', state: o.char.token ? 'ok' : 'unknown' });
       },
-      onKey: () => {
+      onKey: (down) => {
         lastKey = performance.now();
         signal.wpm = live?.decoder.wpm ?? 0;
+        if (!down && live) liveMarks = live.marks.slice(-30);
       },
     });
     await live.start();
@@ -95,7 +101,9 @@
     issues = spacingIssues(prompt, received);
     report = analyseFist(live.outputs);
     lastFist = report ?? lastFist;
-    note = oneNote(report, issues);
+    note = oneNote(report, issues, settings.sendTolerance);
+    void recordSend(prompt, received, issues);
+    void keepSend(received, live.marks);
     receivedTokens = markReceived(prompt, received);
     rhythm = buildRhythm();
     n++;
@@ -103,11 +111,16 @@
   }
 
   function markReceived(want: string, got: string): Tok[] {
+    const unknownChars = chars.filter((c) => !c.token);
     const ops = align(textTokens(want), textTokens(got));
     const out: Tok[] = [];
     for (const o of ops) {
       if (o.op === 'del') continue;
-      out.push({ t: o.got, state: o.op === 'match' ? 'ok' : o.got === '⁇' ? 'unknown' : 'miss' });
+      if (o.got === '\u2047') {
+        const c = unknownChars.shift();
+        const m = c ? c.marks.map((x) => ({ start: x.start, end: x.end })) : [];
+        out.push({ t: o.got, state: 'unknown', onclick: () => (inspecting = m) });
+      } else out.push({ t: o.got, state: o.op === 'match' ? 'ok' : 'miss' });
     }
     return out;
   }
@@ -218,6 +231,7 @@
         <span class="label">Decoded so far</span>
         {#if liveTokens.length}<TokenText tokens={liveTokens} size="l" />{:else}<p class="muted">Nothing yet.</p>{/if}
       </div>
+      {#if liveMarks.length}<RhythmView rows={[{ label: 'yours', marks: liveMarks }]} />{/if}
     {/if}
   {:else}
     <div class="block">
@@ -229,7 +243,8 @@
       <span class="label">Intended</span>
       <TokenText tokens={textTokens(prompt).map((t) => ({ t }))} size="m" />
     </div>
-    {#if rhythm.length && !strict()}
+    {#if inspecting}<Inspect marks={inspecting} onclose={() => (inspecting = null)} />{/if}
+    {#if rhythm.length}
       <div class="block">
         <span class="label">Rhythm</span>
         <RhythmView rows={rhythm} />
