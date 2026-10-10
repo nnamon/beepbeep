@@ -29,6 +29,8 @@ Input is the microphone, or the keyboard as a straight key (Space) or iambic pad
 
 Steps 1 to 3 run in an AudioWorklet. The same code runs in the tests, which decode synthetic audio with noise, fading, interference, static, chirp, drift, room echo and hand-sent timing. See `src/lib/decoder/accuracy.test.ts` for the conditions and limits.
 
+A character shows once the silence after it is longer than a gap inside a character, about 1.7 dits. Measured from key-up (90th percentile, `src/lib/decoder/latency.test.ts`): 184 ms at 12 wpm, 153 ms at 15, 115 ms at 20, 81 ms at 30.
+
 ## Development
 
 All tooling runs in containers. Nothing is installed on the host.
@@ -39,7 +41,7 @@ docker compose run --rm dev npm test                          # unit and decoder
 docker compose run --rm dev npm run check                     # svelte-check
 docker compose run --rm dev npm run lint:css                  # colour values only in tokens.css
 docker compose run --rm --service-ports dev npm run dev       # http://localhost:7373
-docker compose run --rm e2e                                   # Playwright: screens, fake-mic decode, flows, visual
+docker compose run --rm e2e                                   # Playwright: screens, axe, fake-mic decode, flows, visual
 docker compose run --rm voice                                 # regenerate public/voice/ (Kokoro TTS)
 ```
 
