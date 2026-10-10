@@ -130,3 +130,11 @@ export function buildSchedule(text: string, opts: ScheduleOptions): Schedule {
 export function scheduleDuration(text: string, opts: ScheduleOptions): number {
   return buildSchedule(text, opts).duration;
 }
+
+/** A schedule from measured marks (e.g. your own sending), re-based to start at `leadIn`. */
+export function scheduleFromMarks(marks: { start: number; end: number }[], leadIn = 0.15, tail = 0.3): Schedule {
+  if (!marks.length) return { marks: [], chars: [], duration: leadIn + tail, dit: 0.08, text: '' };
+  const t0 = marks[0].start - leadIn;
+  const out: Mark[] = marks.map((m) => ({ start: m.start - t0, end: m.end - t0, kind: 'dit', charIndex: 0 }));
+  return { marks: out, chars: [], duration: out[out.length - 1].end + tail, dit: 0.08, text: '' };
+}

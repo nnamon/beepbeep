@@ -1,0 +1,48 @@
+name: Test and deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # Tooling runs in a container, never on the runner directly.
+    container: node:24-slim
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install
+        run: npm ci --no-audit --no-fund
+      - name: Unit and decoder accuracy tests
+        run: npm test
+      - name: Type check
+        run: npm run check
+      - name: Lint CSS
+        run: npm run lint:css
+      - name: Build
+        run: npm run build
+        env:
+          BASE_PATH: /beepbeep/
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

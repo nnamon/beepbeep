@@ -1,0 +1,144 @@
+<script lang="ts">
+  // Free practice scope: key anything and watch your own sending decoded live,
+  // with its rhythm drawn to scale. Shows text while you key in every mode.
+  import { onDestroy } from 'svelte';
+  import DrillFrame from '../../ui/DrillFrame.svelte';
+  import Button from '../../ui/Button.svelte';
+  import TokenText, { type Tok } from '../../ui/TokenText.svelte';
+  import RhythmView from '../../ui/RhythmView.svelte';
+  import FistPanel from '../../ui/FistPanel.svelte';
+  import InputHelp from '../../ui/InputHelp.svelte';
+  import { LiveDecoder } from '../../lib/audio/live';
+  import { settings } from '../../lib/state/settings.svelte';
+  import { signal, startMic } from '../../lib/state/signal.svelte';
+  import { analyseFist, type FistReport } from '../../lib/train/fist';
+  import { oneNote } from '../../lib/train/scoring';
+  import { keepAwake } from '../../lib/util/wakelock';
+  import { saveSession } from '../../lib/train/session';
+
+  let live: LiveDecoder | null = null;
+  let running = $state(false);
+  let tokens: Tok[] = $state([]);
+  let marks: { start: number; end: number }[] = $state([]);
+  let report: FistReport | null = $state(null);
+  let note = $state('');
+  let startedAt = 0;
+
+  async function start() {
+    if (settings.input === 'mic' && !signal.micOn) {
+      const ok = await startMic();
+      if (!ok) return;
+    }
+    live = new LiveDecoder({
+      source: settings.input,
+      charWpm: settings.sendWpm,
+      pitch: settings.pitch,
+      onOutput: (o) => {
+        tokens.push(o.kind === 'space' ? { t: ' ' } : { t: o.char.token ?? '⁇', state: o.char.token ? 'ok' : 'unknown' });
+        if (tokens.length > 400) tokens.splice(0, tokens.length - 400);
+        signal.wpm = live?.decoder.wpm ?? 0;
+      },
+      onKey: (down) => {
+        if (!down && live) {
+          marks = live.marks.slice(-30);
+          signal.wpm = live.decoder.wpm;
+        }
+      },
+    });
+    await live.start();
+    running = true;
+    startedAt = Date.now();
+    void keepAwake(true);
+  }
+
+  function stop() {
+    if (live) {
+      endOver();
+      live.stop();
+      void saveSession({
+        mode: 'live',
+        seconds: Math.round((Date.now() - startedAt) / 1000),
+        sending: true,
+        items: live.chars.length,
+        accuracy: null,
+        wpm: settings.sendWpm,
+        sentWpm: report?.wpm,
+        fist: report,
+      });
+    }
+    live = null;
+    running = false;
+    void keepAwake(false);
+  }
+
+  function endOver() {
+    if (!live) return;
+    live.flush();
+    report = analyseFist(live.outputs);
+    note = oneNote(report);
+  }
+
+  function clear() {
+    tokens = [];
+    marks = [];
+    report = null;
+    note = '';
+    live?.resetOver();
+  }
+
+  onDestroy(() => {
+    live?.stop();
+    void keepAwake(false);
+  });
+</script>
+
+<DrillFrame title="Live decoder" eyebrow="Free practice · your sending, decoded as you key">
+  <div class="screen" aria-live="polite">
+    {#if tokens.length}
+      <TokenText {tokens} size="xl" label="Decoded sending" />
+    {:else}
+      <p class="muted placeholder">{running ? 'Start sending. Decoded text appears here.' : 'Press Start, then send anything.'}</p>
+    {/if}
+  </div>
+  {#if marks.length}
+    <div class="rhythm">
+      <span class="label">Rhythm, last {marks.length} marks</span>
+      <RhythmView rows={[{ label: 'yours', marks }]} />
+    </div>
+  {/if}
+  <InputHelp />
+
+  {#snippet side()}
+    <FistPanel {report} {note} />
+  {/snippet}
+
+  {#snippet footer()}
+    {#if running}
+      <Button kind="primary" onclick={stop} hint="Esc">Stop</Button>
+      <Button onclick={endOver}>End over</Button>
+    {:else}
+      <Button kind="primary" onclick={start} disabled={signal.starting}>Start</Button>
+    {/if}
+    <Button kind="quiet" onclick={clear}>Clear</Button>
+  {/snippet}
+</DrillFrame>
+
+<svelte:window onkeydown={(e) => { if (e.key === 'Escape' && running) stop(); }} />
+
+<style>
+  .screen {
+    min-height: 160px;
+    padding: var(--s-2) 0;
+    border-bottom: var(--hairline) solid var(--line);
+  }
+
+  .placeholder {
+    font-size: var(--size-l);
+  }
+
+  .rhythm {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-1);
+  }
+</style>

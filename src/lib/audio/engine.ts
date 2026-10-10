@@ -56,6 +56,8 @@ class AudioEngine {
   private active = new Set<AudioBufferSourceNode>();
   private unmuteTimer: ReturnType<typeof setTimeout> | null = null;
   volume = 0.7;
+  /** What is playing now, for the optional visual cue. */
+  cue: { start: number; marks: { start: number; end: number }[] } | null = null;
 
   get supported(): boolean {
     return typeof window !== 'undefined' && 'AudioContext' in window;
@@ -114,6 +116,7 @@ class AudioEngine {
     };
     this.active.add(src);
     src.start(startTime);
+    if (opts.schedule) this.cue = { start: startTime, marks: opts.schedule.marks };
     return {
       startTime,
       duration,
@@ -239,9 +242,9 @@ class AudioEngine {
     return {
       label: track.label || 'Microphone',
       bluetooth: BLUETOOTH.test(track.label),
-      echoCancellation: s.echoCancellation ?? null,
-      noiseSuppression: s.noiseSuppression ?? null,
-      autoGainControl: s.autoGainControl ?? null,
+      echoCancellation: typeof s.echoCancellation === 'boolean' ? s.echoCancellation : null,
+      noiseSuppression: typeof s.noiseSuppression === 'boolean' ? s.noiseSuppression : null,
+      autoGainControl: typeof s.autoGainControl === 'boolean' ? s.autoGainControl : null,
       sampleRate: ctx.sampleRate,
     };
   }

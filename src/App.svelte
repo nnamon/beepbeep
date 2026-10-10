@@ -1,0 +1,202 @@
+<script lang="ts">
+  import { route, href } from './lib/state/router.svelte';
+  import SignalBar from './ui/SignalBar.svelte';
+  import Icon from './ui/Icon.svelte';
+  import VisualCue from './ui/VisualCue.svelte';
+  import Practice from './views/Practice.svelte';
+  import Pocket from './views/Pocket.svelte';
+  import Qso from './views/Qso.svelte';
+  import Progress from './views/Progress.svelte';
+  import Settings from './views/Settings.svelte';
+  import Setup from './views/Setup.svelte';
+  import Reference from './views/Reference.svelte';
+  import Specimen from './views/Specimen.svelte';
+  import { settings } from './lib/state/settings.svelte';
+
+  const tabs = [
+    { id: 'practice', label: 'Practice' },
+    { id: 'pocket', label: 'Pocket' },
+    { id: 'qso', label: 'QSO' },
+    { id: 'progress', label: 'Progress' },
+  ];
+  const top = $derived(route.path[0] ?? 'practice');
+</script>
+
+<div class="shell">
+  <header class="head">
+    <a class="mark" href={href('practice')}>BeepBeep</a>
+    <nav class="nav" aria-label="Main">
+      {#each tabs as t (t.id)}
+        <a href={href(t.id)} class:on={top === t.id} aria-current={top === t.id ? 'page' : undefined}>{t.label}</a>
+      {/each}
+      <a href={href('settings')} class:on={top === 'settings'} aria-current={top === 'settings' ? 'page' : undefined}>Settings</a>
+    </nav>
+    <div class="signal"><SignalBar /></div>
+    <a class="gear" href={href('settings')} aria-label="Settings"><Icon name="settings" /></a>
+  </header>
+  <div class="signal-strip"><SignalBar compact /></div>
+
+  <main class="main">
+    {#if top === 'practice'}
+      <Practice />
+    {:else if top === 'pocket'}
+      <Pocket />
+    {:else if top === 'qso'}
+      <Qso />
+    {:else if top === 'progress'}
+      <Progress />
+    {:else if top === 'settings'}
+      <Settings />
+    {:else if top === 'setup'}
+      <Setup />
+    {:else if top === 'reference'}
+      <Reference />
+    {:else if top === 'specimen'}
+      <Specimen />
+    {:else}
+      <Practice />
+    {/if}
+  </main>
+
+  <nav class="tabbar" aria-label="Main">
+    {#each tabs as t (t.id)}
+      <a href={href(t.id)} class:on={top === t.id} aria-current={top === t.id ? 'page' : undefined}>{t.label}</a>
+    {/each}
+  </nav>
+</div>
+
+{#if settings.visualCue}<VisualCue />{/if}
+
+<style>
+  .shell {
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .head {
+    display: flex;
+    align-items: center;
+    gap: var(--s-4);
+    padding: var(--s-2) var(--s-3);
+    padding-top: max(var(--s-2), env(safe-area-inset-top));
+    border-bottom: var(--hairline) solid var(--line);
+  }
+
+  .mark {
+    font-size: var(--size-m);
+    font-weight: var(--weight-strong);
+    text-decoration: none;
+    letter-spacing: 0.01em;
+  }
+
+  .nav {
+    display: flex;
+    gap: var(--s-3);
+  }
+
+  .nav a,
+  .tabbar a {
+    color: var(--muted);
+    text-decoration: none;
+    font-size: var(--size-m);
+    padding: var(--s-1) 0;
+    border-bottom: 2px solid transparent;
+  }
+
+  .nav a:hover {
+    color: var(--ink);
+  }
+
+  .nav a.on {
+    color: var(--ink);
+    font-weight: var(--weight-strong);
+    border-bottom-color: var(--signal);
+  }
+
+  .signal {
+    margin-left: auto;
+  }
+
+  .gear {
+    display: none;
+    color: var(--muted);
+    min-width: var(--target);
+    min-height: var(--target);
+    align-items: center;
+    justify-content: center;
+  }
+
+  .signal-strip {
+    display: none;
+  }
+
+  .main {
+    flex: 1;
+    width: 100%;
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: var(--s-4) var(--s-3) var(--s-8);
+  }
+
+  .tabbar {
+    display: none;
+  }
+
+  @media (max-width: 760px) {
+    .nav,
+    .signal {
+      display: none;
+    }
+
+    .gear {
+      display: inline-flex;
+      margin-left: auto;
+    }
+
+    .head {
+      padding: var(--s-1) var(--s-2);
+      padding-top: max(var(--s-1), env(safe-area-inset-top));
+    }
+
+    .signal-strip {
+      display: block;
+      padding: var(--s-1) var(--s-2) 0;
+    }
+
+    .main {
+      padding: var(--s-2) var(--s-2) calc(var(--s-8) + var(--s-6) + env(safe-area-inset-bottom));
+    }
+
+    .tabbar {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      justify-content: space-around;
+      background: var(--bg);
+      border-top: var(--hairline) solid var(--line);
+      padding-bottom: env(safe-area-inset-bottom);
+      z-index: 10;
+    }
+
+    .tabbar a {
+      flex: 1;
+      text-align: center;
+      min-height: var(--target);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: var(--size-s);
+      border-bottom: 0;
+      border-top: 2px solid transparent;
+    }
+
+    .tabbar a.on {
+      color: var(--ink);
+      font-weight: var(--weight-strong);
+      border-top-color: var(--signal);
+    }
+  }
+</style>
