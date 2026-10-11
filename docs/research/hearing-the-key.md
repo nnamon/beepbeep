@@ -82,7 +82,7 @@ Public noise and speech, by licence: MUSAN (music, speech, noise; CC BY 4.0, per
 
 ## 6a. Benchmark results
 
-Tooling: `bench/` (run with `docker compose run --rm dev npm run bench -- <name>`). Scenes are synthetic keyed sidetones (600 Hz, sine or square-wave spectrum, simulated fists) mixed into DEMAND environments, three laptop room takes and synthetic speech; SNR is the fundamental against the noise within one ERB. Results in `bench/results/`.
+Tooling: `bench/` (run with `docker compose run --rm dev npm run bench -- <name>`). Scenes are synthetic keyed sidetones (600 Hz unless stated; sine or square-wave spectrum; simulated fists) mixed into DEMAND environments, three laptop room takes and synthetic speech; SNR is the fundamental against the noise within one ERB. Results in `bench/results/`.
 
 **Ceilings** (`ceiling`). On clean scenes both the detector before 11 Oct and today's reproduce the true marks exactly (recall 1.00). Decoding the true marks of the four benchmark keyings gives 0, 17, 17 and 33% letter error: the decoder's own limit on these fists, separate from detection. All benchmark error figures below are against the decoding of the true marks, so they count only what noise adds.
 
@@ -168,6 +168,48 @@ Next:
 - Thump-aware onsets: the evidence at a mark's start should not depend on the first 10–20 ms.
 - A decision layer that can use both detectors' strengths, measured on real takes only after it wins on the synthetic benchmark.
 
+## 6b. Generalization: pitch, keys, and the paddle takes (11 Oct, evening)
+
+Everything above was measured at 600 Hz, the pitch of the one operator who recorded the real takes. The app is for any sidetone and any key, so E0 now runs every scene at 400, 600, 800 and 1000 Hz, and with four keyings: a fair straight key, a rushed beginner, a slow touch-key beginner, and paddles through an electronic keyer (elements and the gaps inside a letter machine-timed to 1%, letter and word spacing by hand). 22 beds, sine and square tones, band SNR 0 to +20 dB; split over processes with `PART` and joined by `e0merge`. Results: `bench/results/e0-wide-merged.json` (shipping detector), `e0-first-merged.json` (soft-evidence detector with the kept evidence model), `e0-flank-merged.json`.
+
+Letter error added by noise, averaged over beds, timbres and keyings:
+
+| pitch | 11 Oct detector, +6 / +10 / +15 / +20 dB | soft-evidence, +6 / +10 / +15 / +20 dB |
+|---|---|---|
+| 400 Hz | 88 / 70 / 33 / 11 | 75 / 59 / 38 / 23 |
+| 600 Hz | 81 / 54 / 21 / 11 | 67 / 50 / 32 / 23 |
+| 800 Hz | 74 / 43 / 16 / 7 | 65 / 45 / 28 / 20 |
+| 1000 Hz | 72 / 33 / 11 / 5 | 56 / 40 / 23 / 19 |
+
+- Neither detector is tuned to 600 Hz: both improve steadily with pitch. Part of that is the measure. Band SNR is taken in one ERB, which widens with pitch (68 Hz at 400, 133 Hz at 1000), while the detectors' lock-in bandwidth follows the speed, not the pitch, so at a high pitch less of the band's noise reaches them. The shipping detector's slope is steeper (+10 dB: 70 to 33, against 59 to 40).
+- Not the room gate's flanks: for a 400 Hz tone the lower flank sits at 200 Hz, in the room's rumble. Moving both flanks above the tone changed nothing (400 Hz, +10 dB: 70 against 73; 500 Hz: 63 and 63).
+- Paddles: as good as a fair straight key above +10 dB (11 Oct detector, +15 dB: 20 against 19; +20 dB: 7 against 5), worse at +6 to +10 dB (+10: 59 against 51). Its 1-dit gaps inside letters are the shortest any fist makes, and a burst of noise bridges them.
+- The slow touch-key fist (9 wpm, word gaps of 1.7 s) stays at 44% under the soft-evidence detector at +15 and +20 dB, precision 90%: strays in its long gaps. The shipping detector: 18% and 14%.
+- The soft-evidence detector still wins at 0 to +6 dB at every pitch and loses from +15 dB, with 6-7 stray letters a minute on the beds alone against 1-2. Synthetic speech defeats it (100-105% added error at every SNR, 44 stray letters a minute). It lacks what the shipping detector uses against voices: contrast with the flanks, a whole-mark pitch check, the timbre check.
+
+**How wide to train the evidence model.** Trained on scenes at 450-850 Hz and 10-24 wpm (the first model), then with each range widened. Real takes (listener with gaps expected at 1.2 dits; 16 scored takes, all at 600 Hz), and E0:
+
+| evidence model, training scenes | real takes, summed letter error | stray letters | E0 +10 dB, 400 / 1000 Hz |
+|---|---|---|---|
+| A: 450-850 Hz, 10-24 wpm, no keyer (kept) | **308%** | 19 | **59 / 40** |
+| B: 300-1200 Hz | 470% | 18 | |
+| C: 450-850 Hz, 8-35 wpm, with keyer | 342% | 22 | |
+| 300-1200 Hz, 8-35 wpm, with keyer | 420% | 26 | 62 / 43 |
+| the same, another seed | 394% | 16 | |
+
+- The training seed alone moves the real-take total by 26 points: differences below about 30 are noise.
+- Widening the pitch range is the change that clearly hurts. Model A is as good or better at every pitch and SNR on E0, including 400 and 1000 Hz, outside its own training range. Its features (rise over a floor, steadiness as phase drift in hertz, fall below the last 40 ms) carry across pitch already; wider training only dilutes the model. A is kept; the others are in `bench/models/`.
+
+**New real takes.** A quiet paddle take (dits 70 ms, dahs 210 ms): 0% for both detectors. Playback through the laptop's speaker: 0%; with a video playing: 5% ("K1A QC" for K1ABC). Paddles while talking: the operator keyed CQ CQ CQ CQ DE (read from the keyer's 70 ms grid, not the text given at recording); 70% for the shipping detector, 60-70% for the soft-evidence detector.
+
+What goes wrong in that take:
+- Speech fills the 1-dit gaps inside letters. In one gap (7.13-7.18 s) the level at the tone falls only 6-14 dB, to 11 dB over the floor, while steadiness collapses (pitch offset 9 to 65 Hz) and the tone stands no higher than its flanks. The evidence model gives about -0.9 per millisecond there (+3 to +5 in the marks): too weak, and the segmenter merges the two elements. Both merged marks last 350 ms, which is a dah, a gap and a dit: 5 dits exactly.
+- One dit (6.31 s) lies under speech louder than it at its own frequency (27 dB over the floor against the tone's 19), with its measured pitch pulled 25-48 Hz away. It is masked; only context can restore it (CQ, not KQ).
+
+Two hypotheses from these:
+- **H5 (ends under speech).** A tone's end shows as steadiness and contrast with the flanks collapsing together, even when the level stays up. Evidence that uses the contrast and the level against the current mark's own plateau keeps elements apart across speech-filled gaps.
+- **H6 (rhythm).** A keyer sends elements of exactly 1 and 3 dits with 1-dit gaps. Once the sender's regularity is known, a mark of about 5 or 7 dits is two elements with a lost gap, and the decoder should weigh both readings with the language model: induction in time, as listeners restore a masked gap.
+
 ## 7. Open risks
 
 - iOS Safari: older WebKit bugs (2017, 2018) on processing that stayed on with the getUserMedia constraints set to false are resolved; per a WebKit engineer in 2023, Safari no longer uses voice processing when echoCancellation is false. An open 2026 report describes degraded playback (lower sample rate, mono) on iPhone and iPad while the microphone is open, with or without echo cancellation, which matters when the app plays audio during capture. iPhone recordings are needed before conclusions.
@@ -182,6 +224,8 @@ Next:
 - **E3, soft-evidence decoding (H3).** Per-frame likelihood ratio and mask flag into a Morse timing model (hidden Markov or beam), joined with the existing language model; masked frames marginalised.
 - **E4, learned front end (H4).** Small convolutional-recurrent network for per-frame presence, trained on semi-synthetic data, evaluated on real and playback takes against E2.
 - **E5, devices.** iPhone, Android, laptops; the effect of each platform's forced processing.
+- **E6, ends under speech (H5).** Add contrast with the flanks and the level against the current mark's plateau to the evidence; train with speech beds over keyer-tight gaps; score merges on E0's keyer keying in the speech beds and on the paddle takes.
+- **E7, rhythm (H6).** Learn how regular the sender is; where marks of about 5 or 7 dits break that regularity, decode both splits and let the language model choose. Score on the keyer keying and the paddle takes; check that straight-key fists, whose long dahs are real, do not get worse.
 
 ## References
 

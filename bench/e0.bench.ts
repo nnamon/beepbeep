@@ -9,6 +9,8 @@
 //
 //   docker compose run --rm dev npm run bench -- e0
 //   BEDS=DLIVING,laptop DETECTORS=now,listener ... to narrow it
+//   PART=0/6 ... PART=5/6, TAG=x: a sixth of the beds each, in parallel;
+//   then FILES=bench/results/e0-x-* npm run bench -- e0merge for the tables.
 //
 // Beds: data/demand/*.wav (DEMAND, CC BY 4.0, channel 1, 16 kHz), room-only
 // takes in samples/ (local, not committed), synthetic speech. Results go to
@@ -23,6 +25,7 @@ import { Detector as Before } from './baselines/detector-3e97a7c';
 import { Listener } from '../src/lib/dsp/listener';
 import { FS, loadBed, mix, renderTone, segment, type Timbre } from './lib/scene';
 import { decodeMarks, letterError, letters, read, scoreMarks, type MakeDetector } from './lib/run';
+import { e0Report, type E0Row } from './lib/e0report';
 
 const ALL_DETECTORS: Record<string, MakeDetector> = {
   before: (fs, o) => new Before(fs, o),
@@ -32,7 +35,7 @@ const ALL_DETECTORS: Record<string, MakeDetector> = {
 const DETECTORS = Object.fromEntries(Object.entries(ALL_DETECTORS).filter(([k]) => (process.env.DETECTORS ?? 'now,listener').split(',').includes(k)));
 
 const SNRS = [0, 6, 10, 15, 20];
-const PITCHES = [400, 600, 800, 1000];
+const PITCHES = process.env.PITCHES ? process.env.PITCHES.split(',').map(Number) : [400, 600, 800, 1000];
 const TIMBRES: Timbre[] = ['sine', 'square'];
 const fist = (name: string) => FISTS.find((f) => f.name === name)!;
 /** Paddles through an electronic keyer: elements and the gaps inside a letter machine-timed, letter and word spacing by hand. */
@@ -44,22 +47,24 @@ const KEYINGS = [
   { text: 'UR RST 579 579 73', fist: KEYER, seed: 14 },
 ];
 
-function beds(): { name: string; samples: Float32Array }[] {
-  const out: { name: string; samples: Float32Array }[] = [];
+/** The beds by name; each loaded only when its turn comes. */
+function beds(): { name: string; load: () => Float32Array }[] {
+  const out: { name: string; load: () => Float32Array }[] = [];
   if (existsSync('data/demand')) {
-    for (const f of readdirSync('data/demand').filter((f) => f.endsWith('.wav')).sort()) out.push({ name: f.slice(0, -4), samples: loadBed(`data/demand/${f}`) });
+    for (const f of readdirSync('data/demand').filter((f) => f.endsWith('.wav')).sort()) out.push({ name: f.slice(0, -4), load: () => loadBed(`data/demand/${f}`) });
   }
   if (existsSync('samples')) {
     for (const f of readdirSync('samples').filter((f) => f.endsWith('.json') && f.startsWith('2026')).sort()) {
       const meta = JSON.parse(readFileSync(`samples/${f}`, 'utf8'));
-      if (meta.kind === 'noise') out.push({ name: `laptop-${meta.notes || 'room'}-${f.slice(9, 15)}`, samples: loadBed(`samples/${f.slice(0, -5)}.wav`) });
+      if (meta.kind === 'noise') out.push({ name: `laptop-${meta.notes || 'room'}-${f.slice(9, 15)}`, load: () => loadBed(`samples/${f.slice(0, -5)}.wav`) });
     }
   }
-  out.push({ name: 'synthetic-speech', samples: roomNoise('speech', 60, FS, 0.05, 7) });
+  out.push({ name: 'synthetic-speech', load: () => roomNoise('speech', 60, FS, 0.05, 7) });
   return out;
 }
 
 const only = (process.env.BEDS ?? '').split(',').filter(Boolean);
+const [part, parts] = (process.env.PART ?? '0/1').split('/').map(Number);
 
 // What a perfect detector would give: the decoder's reading of the true marks.
 const refs = new Map<string, string>();
@@ -68,44 +73,26 @@ function reference(key: string, marks: { start: number; end: number }[]): string
   return refs.get(key)!;
 }
 
-interface Cell {
-  err: number[];
-  recall: number[];
-  precision: number[];
-  n: number;
-  stray: number[];
-}
-
 it('E0', () => {
-  const all = beds().filter((b) => !only.length || only.some((o) => b.name.includes(o)));
-  const results: Record<string, unknown>[] = [];
-  const cell = (): Cell => ({ err: SNRS.map(() => 0), recall: SNRS.map(() => 0), precision: SNRS.map(() => 0), n: 0, stray: [] });
-  const byPitch: Record<string, Record<string, Cell>> = {};
-  const byKeying: Record<string, Record<string, Cell>> = {};
-  const byBed: Record<string, Record<string, Cell>> = {};
-  const add = (c: Cell, si: number, err: number, rec: number, prec: number) => {
-    c.err[si] += err;
-    c.recall[si] += rec;
-    c.precision[si] += prec;
-    if (si === 0) c.n++;
-  };
-  for (const bed of all) {
+  const all = beds()
+    .filter((b) => !only.length || only.some((o) => b.name.includes(o)))
+    .filter((_, i) => i % parts === part);
+  const results: E0Row[] = [];
+  for (const { name, load } of all) {
+    const bed = { name, samples: load() };
     for (const [dname, make] of Object.entries(DETECTORS)) {
       for (const pitch of PITCHES) {
         const quiet = segment(bed.samples, 0, Math.min(bed.samples.length, 60 * FS));
         const stray = letters(read(make, quiet, FS, pitch, 15).text) / (quiet.length / FS / 60);
-        ((byPitch[dname] ??= {})[pitch] ??= cell()).stray.push(stray);
-        ((byBed[dname] ??= {})[bed.name] ??= cell()).stray.push(stray);
         for (const timbre of TIMBRES) {
           for (const [k, keying] of KEYINGS.entries()) {
             const tone = renderTone(keying, { pitch, timbre, amplitude: 0.05 });
             const noise = segment(bed.samples, 7 * k + (timbre === 'sine' ? 0 : 31) + pitch / 100, tone.samples.length);
             const ref = reference(`${keying.seed}|${timbre}|${pitch}`, tone.marks);
-            SNRS.forEach((snr, si) => {
+            SNRS.forEach((snr) => {
               const got = read(make, mix(tone.samples, noise, pitch, 0.05, snr), FS, pitch, 15);
               const err = letterError(ref, got.text);
               const m = scoreMarks(got.marks, tone.marks);
-              for (const c of [byPitch[dname][pitch], ((byKeying[dname] ??= {})[keying.fist.name] ??= cell()), byBed[dname][bed.name]]) add(c, si, err, m.recall, m.precision);
               results.push({ bed: bed.name, detector: dname, pitch, timbre, keying: keying.fist.name, snr, letterError: err, recall: m.recall, precision: m.precision, strayPerMin: stray });
             });
           }
@@ -113,30 +100,12 @@ it('E0', () => {
       }
     }
   }
-  const pct = (v: number[], n: number) => v.map((x) => ((x / n) * 100).toFixed(0).padStart(4)).join('');
-  const mean = (v: number[]) => v.reduce((a, x) => a + x, 0) / Math.max(1, v.length);
-  const table = (title: string, groups: Record<string, Record<string, Cell>>, keys: string[]) => {
-    const out = [title];
-    for (const key of keys) {
-      for (const d of Object.keys(DETECTORS)) {
-        const c = groups[d]?.[key];
-        if (!c) continue;
-        out.push(`${key.padEnd(24)} ${d.padEnd(9)} err ${pct(c.err, c.n)} | recall ${pct(c.recall, c.n)} | precision ${pct(c.precision, c.n)}${c.stray.length ? ` | stray/min ${mean(c.stray).toFixed(1)}` : ''}`);
-      }
-    }
-    return out.join('\n');
-  };
-  const report = [
-    `Columns: band SNR ${SNRS.join(' ')} dB`,
-    table(`By pitch (over ${all.length} beds)`, byPitch, PITCHES.map(String)),
-    table('By keying', byKeying, KEYINGS.map((k) => k.fist.name)),
-    table('By bed', byBed, all.map((b) => b.name)),
-  ].join('\n\n');
   mkdirSync('bench/results', { recursive: true });
   const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '');
+  const tag = process.env.TAG ? `${process.env.TAG}-${part}of${parts}-` : '';
   writeFileSync(
-    `bench/results/e0-${stamp}.json`,
+    `bench/results/e0-${tag}${stamp}.json`,
     JSON.stringify({ snrs: SNRS, pitches: PITCHES, timbres: TIMBRES, keyings: KEYINGS.map((k) => ({ text: k.text, fist: k.fist, seed: k.seed })), results }, null, 2),
   );
-  console.log(`\nE0: letter error added by noise, mark recall and precision (%)\n${report}\n`);
+  console.log(`\nE0: letter error added by noise, mark recall and precision (%)\n${e0Report(results, SNRS)}\n`);
 }, 24 * 3600 * 1000);

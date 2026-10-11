@@ -22,7 +22,7 @@
 import { FFT, hann } from './fft';
 import { Evidence, PER_HARMONIC, RICH, featureRow, mlpLogit, type Mlp } from './evidence';
 import { Segmenter } from './segmenter';
-import weights from './evidence-weights.json';
+import trained from './evidence-weights.json';
 import type { DetectorEvent, DetectorOptions } from './detector';
 
 const STATUS_INTERVAL = 0.05;
@@ -31,6 +31,8 @@ const FRAME = 0.005;
 const LAG = 40;
 /** Evidence scale per frame (frames are correlated, so each counts for less); chosen on the benchmark's training beds. Tests sweep it. */
 export const listenerTuning = { alpha: 0.4, combine: 'max' as 'pure' | 'replace' | 'max' };
+/** The evidence models in use; benchmarks swap in others to compare. */
+export const listenerModels: { pure: Mlp; rich: Mlp } = { pure: trained.pure as unknown as Mlp, rich: trained.rich as unknown as Mlp };
 /** A rich tone's 3rd harmonic, in its marks: risen this far over its floor (dB)... */
 const RICH_RISE = 10;
 /** ...and within this far of the fundamental (dB). Leakage of a pure tone through the filter is ~55 dB down. */
@@ -230,9 +232,9 @@ export class Listener {
     if (!f) return;
     const row = featureRow(f);
     // The fundamental always counts; a tone's harmonics, once known, can only add evidence.
-    const zPure = mlpLogit(row.slice(0, PER_HARMONIC), weights.pure as unknown as Mlp);
+    const zPure = mlpLogit(row.slice(0, PER_HARMONIC), listenerModels.pure);
     const mode = listenerTuning.combine;
-    let z = !this.rich || mode === 'pure' ? zPure : mode === 'replace' ? mlpLogit(row, weights.rich as unknown as Mlp) : Math.max(zPure, mlpLogit(row, weights.rich as unknown as Mlp));
+    let z = !this.rich || mode === 'pure' ? zPure : mode === 'replace' ? mlpLogit(row, listenerModels.rich) : Math.max(zPure, mlpLogit(row, listenerModels.rich));
     // The app's own sound is never a mark; below the squelch, neither is anything.
     if (this.muted) z = -8;
     else if (this.squelchDb !== null && Math.max(...f.rise) < this.squelchDb) z = Math.min(z, -4);

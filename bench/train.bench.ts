@@ -2,12 +2,14 @@
 // benchmark's training beds and writes src/lib/dsp/evidence-weights.json.
 //   pure: a sine sidetone, the fundamental's rise and steadiness
 //   rich: a tone with harmonics (square wave, buzzer), harmonics 1-5
-// Scenes vary pitch (300-1200 Hz, the app's search range), speed (8-35 wpm),
-// fist, timbre, key thump, room reverberation, mistuning and SNR, so the
-// models are not tied to one operator's setup. Reports ROC area on the
-// held-out beds.
+// Scenes vary pitch (450-850 Hz), speed (10-24 wpm), fist, timbre, key thump,
+// room reverberation, mistuning and SNR. Reports ROC area on the held-out beds.
+// Wider ranges were tried (bench/models/, docs/research/hearing-the-key.md 6b):
+// the features carry across pitch already, and training on 300-1200 Hz made the
+// models worse at every pitch, including the ones it added.
 //
 //   docker compose run --rm dev npm run bench -- train
+//   PITCH=300-1200 WPM=8-35 KEYER=1 SEED=5000 OUT=bench/models/x.json ... to vary it
 
 import { it } from 'vitest';
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -25,6 +27,12 @@ const FISTNAMES = ['straight key, fair', 'newbie, rushed letters', 'newbie, hesi
 /** Paddles through an electronic keyer: machine-timed elements, hand spacing between letters. */
 const KEYER = { name: 'paddles, keyer', wpm: 18, dah: 3, elem: 1, char: 3.4, word: 7.5, jitter: 0.01, gapJitter: 0.2, elemJitter: 0.01, perChar: 0, drift: 0, hesitate: 0.05 };
 const SNRS = [-6, -3, 0, 3, 6, 10, 15, 20, 30];
+const range = (v: string | undefined, d: [number, number]) => (v ? (v.split('-').map(Number) as [number, number]) : d);
+const PITCH = range(process.env.PITCH, [450, 850]);
+const WPM = range(process.env.WPM, [10, 24]);
+const fistNames = process.env.KEYER === '1' ? FISTNAMES : FISTNAMES.filter((n) => n !== KEYER.name);
+const SEED = Number(process.env.SEED ?? 1000);
+const OUT = process.env.OUT ?? 'src/lib/dsp/evidence-weights.json';
 
 export function benchBeds(): { name: string; samples: Float32Array }[] {
   const out: { name: string; samples: Float32Array }[] = [];
@@ -50,9 +58,9 @@ interface Scene {
 function scene(bed: { name: string; samples: Float32Array }, timbre: Timbre, snr: number, seed: number): Scene {
   const rng = mulberry32(seed);
   // The app's whole search range of pitches, and speeds from a slow beginner to a quick operator.
-  const pitch = 300 + Math.floor(rng() * 900);
-  const fist = [...FISTS, KEYER].find((f) => f.name === FISTNAMES[Math.floor(rng() * FISTNAMES.length)])!;
-  const wpm = 8 + Math.floor(rng() * 28);
+  const pitch = PITCH[0] + Math.floor(rng() * (PITCH[1] - PITCH[0]));
+  const fist = [...FISTS, KEYER].find((f) => f.name === fistNames[Math.floor(rng() * fistNames.length)])!;
+  const wpm = WPM[0] + Math.floor(rng() * (WPM[1] - WPM[0] + 1));
   const keying = { text: TEXTS[Math.floor(rng() * TEXTS.length)], fist: { ...fist, wpm }, seed };
   // Half the scenes with a key's thump at the edges, half in a reverberant room.
   const thump = rng() < 0.5 ? { level: -10 + rng() * 15 } : undefined;
@@ -75,7 +83,7 @@ it('train', () => {
   const beds = benchBeds();
   const train = beds.filter((_, i) => i % 2 === 0).map((b) => b.name);
   const scenes: Scene[] = [];
-  let seed = 1000;
+  let seed = SEED;
   for (const bed of beds) for (const timbre of ['sine', 'square', 'buzzer'] as Timbre[]) for (const snr of SNRS) scenes.push(scene(bed, timbre, snr, seed++));
   const fit = (pick: (s: Scene) => boolean) => {
     const rows: number[][] = [];
@@ -105,8 +113,8 @@ it('train', () => {
     lines.push(`${timbre.padEnd(7)} ${parts.join('  ')}`);
   }
   writeFileSync(
-    'src/lib/dsp/evidence-weights.json',
-    JSON.stringify({ note: 'Trained by bench/train.bench.ts; do not edit by hand.', trainedOn: train, pure, rich }, null, 2) + '\n',
+    OUT,
+    JSON.stringify({ note: 'Trained by bench/train.bench.ts; do not edit by hand.', trainedOn: train, scenes: { pitch: PITCH, wpm: WPM, fists: fistNames, seed: SEED }, pure, rich }, null, 2) + '\n',
   );
   console.log(`\nEvidence models (trained on ${train.length} beds). Held-out ROC area by SNR ${SNRS.join(' ')} dB\n${lines.join('\n')}\n`);
 }, 24 * 3600 * 1000);

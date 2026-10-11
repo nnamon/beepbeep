@@ -7,18 +7,31 @@
 import { it } from 'vitest';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { Detector } from '../src/lib/dsp/detector';
-import { Listener, listenerTuning } from '../src/lib/dsp/listener';
+import { Listener, listenerModels, listenerTuning } from '../src/lib/dsp/listener';
 import { segmenterTuning } from '../src/lib/dsp/segmenter';
 import { readWav } from '../src/lib/util/wav';
 import { Detector as Before } from './baselines/detector-3e97a7c';
 import { letterError, letters, read, type MakeDetector } from './lib/run';
 
+// Evidence models: as trained now (src/lib/dsp/evidence-weights.json), and each
+// one kept in bench/models/ for comparison (the first: 450-850 Hz, 10-24 wpm, no keyer).
+const trained = { ...listenerModels };
+const listener = (offDits: number, models: typeof trained): MakeDetector => (fs, o) => {
+  listenerTuning.combine = 'pure';
+  segmenterTuning.offDits = offDits;
+  // Read every millisecond, so they hold for this detector's whole run.
+  listenerModels.pure = models.pure;
+  listenerModels.rich = models.rich;
+  return new Listener(fs, o);
+};
+const stored = existsSync('bench/models') ? readdirSync('bench/models').filter((f) => f.endsWith('.json')).sort() : [];
+
 const DETECTORS: Record<string, MakeDetector> = {
   before: (fs, o) => new Before(fs, o),
   now: (fs, o) => new Detector(fs, o),
-  'off2.5': (fs, o) => ((listenerTuning.combine = 'pure'), (segmenterTuning.offDits = 2.5), new Listener(fs, o)),
-  'off1.2': (fs, o) => ((listenerTuning.combine = 'pure'), (segmenterTuning.offDits = 1.2), new Listener(fs, o)),
-  'off0.8': (fs, o) => ((listenerTuning.combine = 'pure'), (segmenterTuning.offDits = 0.8), new Listener(fs, o)),
+  'off2.5': listener(2.5, trained),
+  'off1.2': listener(1.2, trained),
+  ...Object.fromEntries(stored.map((f) => [f.replace(/^evidence-|\.json$/g, ''), listener(1.2, JSON.parse(readFileSync(`bench/models/${f}`, 'utf8')))])),
 };
 
 it('real', () => {
