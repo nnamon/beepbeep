@@ -3,7 +3,7 @@
   // explains one part, plays what the other station sends or shows what you
   // send, and checks it, so you can get it wrong and try again. Every run
   // meets a new station.
-  import { onDestroy } from 'svelte';
+  import { onDestroy, untrack } from 'svelte';
   import DrillFrame from '../ui/DrillFrame.svelte';
   import Button from '../ui/Button.svelte';
   import Segmented from '../ui/Segmented.svelte';
@@ -16,9 +16,10 @@
   import { signal, startMic, touchKeyArea } from '../lib/state/signal.svelte';
   import { getKv, setKv } from '../lib/state/db';
   import { LESSONS, newStation, type Me, type Step } from '../lib/qso/lessons';
+  import type { BotIdentity } from '../lib/qso/bot';
   import { checkField, checkSend, type FieldCheck, type Verdict } from '../lib/qso/check';
   import { words } from '../lib/qso/parse';
-  import { playCw, receiveSpeeds, saveSession, sendInput } from '../lib/train/session';
+  import { followInput, playCw, receiveSpeeds, saveSession, sendInput } from '../lib/train/session';
   import { textTokens } from '../lib/util/text';
   import { mulberry32, randomSeed } from '../lib/util/random';
   import { keepAwake } from '../lib/util/wakelock';
@@ -34,6 +35,7 @@
   void getKv<Record<string, number>>('qsoLessons', {}).then((d) => (done = d));
 
   // ---- A run of one lesson ----
+  let them = $state.raw<BotIdentity | null>(null);
   let steps = $state.raw<Step[]>([]);
   let idx = $state(0);
   let firstTry = $state(0);
@@ -55,15 +57,70 @@
   let showModel = $state(false);
   let sentText = $state('');
 
+  // A run in progress survives going to Setup and back (or a reload): same
+  // station, same step.
+  const RUN = 'beepbeep.qsoLearn.run';
+  interface Saved {
+    lesson: string;
+    them: BotIdentity;
+    idx: number;
+    firstTry: number;
+    at: number;
+  }
+
+  function saveRun() {
+    if (!lesson || !them) return;
+    try {
+      sessionStorage.setItem(RUN, JSON.stringify({ lesson: lesson.id, them, idx, firstTry, at: Date.now() } satisfies Saved));
+    } catch {
+      /* private mode: the run just isn't kept */
+    }
+  }
+
+  function clearRun() {
+    try {
+      sessionStorage.removeItem(RUN);
+    } catch {
+      /* nothing kept */
+    }
+  }
+
+  function savedRun(id: string): Saved | null {
+    try {
+      const s = JSON.parse(sessionStorage.getItem(RUN) ?? 'null') as Saved | null;
+      return s && s.lesson === id && Date.now() - s.at < 2 * 3600_000 ? s : null;
+    } catch {
+      return null;
+    }
+  }
+
+  // Opening a lesson: pick up a run in progress, or wait for Start.
+  $effect(() => {
+    const id = lessonId;
+    untrack(() => {
+      const l = LESSONS.find((x) => x.id === id);
+      const s = l ? savedRun(id) : null;
+      them = s?.them ?? null;
+      steps = s && l ? l.steps({ me, them: s.them }) : [];
+      idx = s?.idx ?? 0;
+      firstTry = s?.firstTry ?? 0;
+      finished = false;
+      startedAt = Date.now();
+      if (steps.length) enter();
+      else stopListening();
+    });
+  });
+
   function begin() {
     if (!lesson) return;
-    const them = newStation(mulberry32(randomSeed()), effectiveMix());
+    them = newStation(mulberry32(randomSeed()), effectiveMix());
     steps = lesson.steps({ me, them });
     idx = 0;
     firstTry = 0;
     finished = false;
     startedAt = Date.now();
     void keepAwake(true);
+    saveRun();
     enter();
   }
 
@@ -86,12 +143,14 @@
     if (!retried) firstTry++;
     if (idx < steps.length - 1) {
       idx++;
+      saveRun();
       enter();
     } else void finish();
   }
 
   async function finish() {
     finished = true;
+    clearRun();
     stopListening();
     void keepAwake(false);
     if (lesson) {
@@ -130,12 +189,27 @@
   let lastKey = 0;
   let watch: ReturnType<typeof setInterval> | null = null;
   let req = 0;
-  let untouch: (() => void) | null = null;
+
+  // The touch key stays available for the whole lesson, whatever input you start on.
+  $effect(() => {
+    if (steps.length && !finished) return touchKeyArea();
+  });
+  // Switching input mid-step (Use the touch key, Key with) moves the decoder
+  // over at once, or starts one if the microphone never did; typing stops it.
+  $effect(() => {
+    void settings.input;
+    void settings.qsoInput;
+    untrack(() => {
+      const keying = step?.kind === 'send' && settings.qsoInput === 'key' && !verdict;
+      if (!keying) return stopListening();
+      if (live) void followInput(live);
+      else void listen();
+    });
+  });
 
   async function listen() {
     if (settings.input === 'mic' && !signal.micOn && !(await startMic())) return;
     await engine.ensure();
-    if (settings.input === 'touch') untouch ??= touchKeyArea();
     if (!live) {
       live = new LiveDecoder({
         source: sendInput(),
@@ -163,8 +237,6 @@
     watch = null;
     live?.stop();
     live = null;
-    untouch?.();
-    untouch = null;
   }
 
   async function doneKeying() {
@@ -211,6 +283,12 @@
       begin();
     }
   }
+
+  const KEY_WITH = $derived([
+    { value: 'mic' as const, label: 'Microphone' },
+    { value: 'touch' as const, label: 'Touch key' },
+    { value: settings.input === 'iambicA' || settings.input === 'iambicB' ? settings.input : ('straight' as const), label: 'Keyboard' },
+  ]);
 
   const headline = (v: Verdict) => (v.result === 'pass' ? 'Right.' : v.result === 'almost' ? 'Almost.' : 'Not yet.');
 </script>
@@ -349,7 +427,20 @@
               <p class="muted">Send when you are ready. It shows after you stop.</p>
             {/if}
           </div>
-          {#if !verdict}<InputHelp />{/if}
+          {#if !verdict}
+            <div class="keywith">
+              <span class="label">Key with</span>
+              <Segmented label="Key with" bind:value={settings.input} options={KEY_WITH} />
+            </div>
+            {#if settings.input === 'mic'}
+              <p class="muted small">
+                The microphone listens for your key's tone. If nothing shows when you send, key with the touch key instead, or
+                calibrate in <a href={href('setup')}>Setup</a>; you come back to this step.
+              </p>
+            {:else}
+              <InputHelp />
+            {/if}
+          {/if}
         {/if}
 
         {#if verdict}
@@ -572,6 +663,12 @@
   .big {
     font-size: var(--size-l);
     font-weight: var(--weight-strong);
+  }
+
+  .keywith {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
   }
 
   .warn {

@@ -8,6 +8,7 @@
   import { engine } from '../lib/audio/engine';
   import { LiveDecoder, type InputSource } from '../lib/audio/live';
   import { settings } from '../lib/state/settings.svelte';
+  import { href, route } from '../lib/state/router.svelte';
   import { signal, touchKeyArea, startMic, stopMic } from '../lib/state/signal.svelte';
   import { textTokens } from '../lib/util/text';
   import { sendInput, straightOnly } from '../lib/train/session';
@@ -216,10 +217,28 @@
   }
 
   const ON = (v: boolean | null) => (v === null ? 'not reported' : v ? 'on' : 'off');
+
+  // A way back to the screen you came from: a lesson, a drill, a QSO.
+  const back = $derived.by(() => {
+    const p = route.prev;
+    if (!p || !p.length || p[0] === 'setup') return null;
+    const label =
+      p[0] === 'qso' && p[1] === 'learn' && p[2]
+        ? 'Back to the lesson'
+        : p[0] === 'qso'
+          ? 'Back to the QSO'
+          : p[0] === 'practice' && p[1]
+            ? 'Back to the drill'
+            : 'Back to where you were';
+    return { path: p, label };
+  });
 </script>
 
 <section class="setup">
-  <h1>Input setup</h1>
+  <div class="title">
+    <h1>Input setup</h1>
+    {#if back}<a class="back" href={href(...back.path)}>{back.label}</a>{/if}
+  </div>
 
   <div class="row">
     <Segmented
@@ -372,6 +391,18 @@
 </section>
 
 <style>
+  .title {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--s-1) var(--s-3);
+  }
+
+  .back {
+    font-size: var(--size-s);
+  }
+
   .setup {
     display: flex;
     flex-direction: column;

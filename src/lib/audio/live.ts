@@ -76,6 +76,14 @@ export class LiveDecoder {
     return this.opts.source;
   }
 
+  /** Moves to another way of keying (mic, touch key, keyboard), keeping what has been decoded. */
+  async switchSource(source: InputSource) {
+    if (source === this.opts.source) return;
+    this.stop();
+    this.opts = { ...this.opts, source };
+    await this.start();
+  }
+
   async start() {
     await engine.ensure();
     if (this.opts.source === 'mic') {

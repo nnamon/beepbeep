@@ -15,7 +15,7 @@
   import { parse } from '../lib/qso/parse';
   import { buildSchedule } from '../lib/morse/schedule';
   import { renderSchedule } from '../lib/morse/render';
-  import { conditions, sendInput } from '../lib/train/session';
+  import { conditions, followInput, sendInput } from '../lib/train/session';
   import { analyseFist, type FistReport } from '../lib/train/fist';
   import FistPanel from '../ui/FistPanel.svelte';
   import { oneNote } from '../lib/train/scoring';
@@ -27,6 +27,11 @@
   // The touch key pad stays in place from the start of a QSO to its log.
   $effect(() => {
     if (stage !== 'setup') return touchKeyArea();
+  });
+  // Switching input while sending (Use the touch key) moves the decoder over at once.
+  $effect(() => {
+    void settings.input;
+    void followInput(live);
   });
 
   type FieldKey = 'call' | 'rst' | 'name' | 'qth' | 'state' | 'skcc' | 'serial';

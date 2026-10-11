@@ -6,10 +6,12 @@ function current(): string[] {
   return path ? path.split('/').filter(Boolean) : ['practice'];
 }
 
-export const route = $state({ path: current() });
+/** Where you are, and the screen you came from (for a way back from Setup). */
+export const route = $state<{ path: string[]; prev: string[] | null }>({ path: current(), prev: null });
 
 if (typeof window !== 'undefined') {
   window.addEventListener('hashchange', () => {
+    route.prev = route.path;
     route.path = current();
     window.scrollTo({ top: 0 });
   });

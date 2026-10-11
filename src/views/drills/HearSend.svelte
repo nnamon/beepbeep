@@ -13,7 +13,7 @@
   import { engine } from '../../lib/audio/engine';
   import { settings, strict } from '../../lib/state/settings.svelte';
   import { signal, touchKeyArea, startMic } from '../../lib/state/signal.svelte';
-  import { currentLevel, playMarks, recordSend, saveSession, sendInput, wait } from '../../lib/train/session';
+  import { currentLevel, followInput, playMarks, recordSend, saveSession, sendInput, wait } from '../../lib/train/session';
   import { items } from '../../lib/train/generate';
   import { buildSchedule } from '../../lib/morse/schedule';
   import { textTokens } from '../../lib/util/text';
@@ -23,6 +23,12 @@
 
   // The touch key pad stays in place while this screen is open.
   $effect(() => touchKeyArea());
+  // The decoder listening now (one per item); switching input moves it over at once.
+  let listening: LiveDecoder | null = null;
+  $effect(() => {
+    void settings.input;
+    void followInput(listening);
+  });
 
   const SET = 10;
   let material = $state<'characters' | 'words'>('characters');
@@ -91,12 +97,14 @@
       onKey: () => (last = performance.now()),
     });
     await live.start();
+    listening = live;
     await waitUntil(
       () => stopFlag || (last > 0 && performance.now() - last > gapMs(wpm)) || performance.now() - began > 8000,
     );
     live.flush();
     await live.settle();
     live.stop();
+    listening = null;
     return { text: live.text, marks: live.marks, chars: live.chars };
   }
 

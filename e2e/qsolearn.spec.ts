@@ -100,3 +100,70 @@ test('your part keyed on the straight key is decoded and checked', async ({ page
   await expect(page.getByText('Right.')).toBeVisible({ timeout: 15_000 });
   await expect(page.locator('.keyed .text')).toHaveText(new RegExp(model.replace(/ /g, '\\s*')));
 });
+
+/** Keys text on the touch pad at 15 wpm, timed inside the page. */
+async function tap(page: Page, text: string) {
+  const dit = 1200 / 15;
+  const evs: [number, boolean][] = [];
+  let t = 200;
+  for (const tok of tokenize(text)) {
+    if (tok === ' ') {
+      t += dit * 4;
+      continue;
+    }
+    for (const el of patternOf(tok)!) {
+      evs.push([t, true]);
+      t += el === '.' ? dit : dit * 3;
+      evs.push([t, false]);
+      t += dit;
+    }
+    t += dit * 2;
+  }
+  await page.evaluate(async (evs) => {
+    const el = document.querySelector('.pad')!;
+    const ev = (type: string) => new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 3, pointerType: 'touch', isPrimary: true });
+    const t0 = performance.now();
+    for (const [at, down] of evs) {
+      const wait = t0 + at - performance.now();
+      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+      el.dispatchEvent(ev(down ? 'pointerdown' : 'pointerup'));
+    }
+  }, evs);
+}
+
+async function toTheAnswer(page: Page) {
+  await page.getByRole('button', { name: /Start/ }).click();
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await page.getByRole('button', { name: 'Check' }).click();
+  await page.getByRole('button', { name: 'Show what they sent' }).click();
+  await page.getByRole('button', { name: 'Next' }).click();
+  await expect(page.getByText('Step 2 of 3 · Answer it')).toBeVisible();
+}
+
+test('microphone not set up: switch to the touch key on the step and carry on', async ({ page }) => {
+  await open(page, 'qso/learn/answer-cq', { qsoInput: 'key', qsoHelp: 'text', input: 'mic', sendWpm: 15, overTimeout: 2 });
+  await toTheAnswer(page);
+  await expect(page.locator('.pad')).toHaveCount(0);
+  await expect(page.getByText(/key with the touch key instead/)).toBeVisible();
+  await page.getByRole('radiogroup', { name: 'Key with' }).getByRole('radio', { name: 'Touch key' }).click();
+  await expect(page.locator('.pad')).toBeVisible();
+  const model = (await page.locator('.model .text').innerText()).replace(/\s+/g, ' ').trim();
+  await tap(page, model);
+  await expect(page.getByText('Right.')).toBeVisible({ timeout: 15_000 });
+});
+
+test('go to Setup mid-lesson and come back to the same step', async ({ page }) => {
+  await open(page, 'qso/learn/answer-cq', { qsoInput: 'key', qsoHelp: 'text', input: 'mic', sendWpm: 15, overTimeout: 2 });
+  await toTheAnswer(page);
+  const model = (await page.locator('.model .text').innerText()).replace(/\s+/g, ' ').trim();
+  await page.getByRole('link', { name: 'Setup' }).first().click();
+  await expect(page.getByRole('heading', { name: 'Input setup' })).toBeVisible();
+  await page.getByRole('radio', { name: 'Touch key' }).first().click();
+  await page.getByRole('link', { name: 'Back to the lesson' }).click();
+  // Same step, same station.
+  await expect(page.getByText('Step 2 of 3 · Answer it')).toBeVisible();
+  await expect(page.locator('.model .text')).toHaveText(new RegExp(model.replace(/ /g, '\\s*')));
+  await expect(page.locator('.pad')).toBeVisible();
+  await tap(page, model);
+  await expect(page.getByText('Right.')).toBeVisible({ timeout: 15_000 });
+});

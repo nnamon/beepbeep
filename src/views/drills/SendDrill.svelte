@@ -14,7 +14,7 @@
   import { engine } from '../../lib/audio/engine';
   import { settings, strict } from '../../lib/state/settings.svelte';
   import { signal, touchKeyArea, startMic } from '../../lib/state/signal.svelte';
-  import { currentLevel, keepSend, playMarks, recordSend, saveSession, sendInput } from '../../lib/train/session';
+  import { currentLevel, followInput, keepSend, playMarks, recordSend, saveSession, sendInput } from '../../lib/train/session';
   import { href } from '../../lib/state/router.svelte';
   import { items, stationLine, type Material } from '../../lib/train/generate';
   import { analyseFist, type FistReport } from '../../lib/train/fist';
@@ -27,6 +27,11 @@
 
   // The touch key pad stays in place while this screen is open.
   $effect(() => touchKeyArea());
+  // Switching input while sending (Use the touch key) moves the decoder over at once.
+  $effect(() => {
+    void settings.input;
+    void followInput(live);
+  });
 
   type Stage = 'ready' | 'sending' | 'review';
 

@@ -5,6 +5,8 @@ import { engine, type Playback } from '../audio/engine';
 import { renderSchedule, type Conditions } from '../morse/render';
 import { scheduleFromMarks, type FistOptions } from '../morse/schedule';
 import { settings, strict } from '../state/settings.svelte';
+import { signal, startMic } from '../state/signal.svelte';
+import type { LiveDecoder } from '../audio/live';
 import { DEFAULT_CAROUSEL, KOCH_LEVELS, licwLevels, type Level, type TrackId } from './courses';
 import { addConfusion, addSession, getItems, getKv, putItem, setKv, type SessionRecord } from '../state/db';
 import { newStat, recordAnswer, type ItemStat } from './srs';
@@ -104,6 +106,18 @@ export function lessonOpenedBy(accuracy: number): Level | null {
   if (accuracy < advanceThreshold()) return null;
   const levels = trackLevels();
   return levels[levels.findIndex((l) => l.id === currentLevel().id) + 1] ?? null;
+}
+
+/**
+ * Keeps a running decoder on the input you choose while sending: switching to
+ * the touch key from a drill brings up a key that works at once. Call from an
+ * $effect that reads settings.input.
+ */
+export async function followInput(live: LiveDecoder | null) {
+  const src = sendInput();
+  if (!live || src === live.source) return;
+  if (src === 'mic' && !signal.micOn && !(await startMic())) return;
+  await live.switchSource(src);
 }
 
 /** True when beginner sending should use the straight key only (LICW strict, BC lessons). */

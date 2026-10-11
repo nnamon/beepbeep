@@ -17,10 +17,15 @@
   import { analyseFist, type FistReport } from '../../lib/train/fist';
   import { oneNote } from '../../lib/train/scoring';
   import { keepAwake } from '../../lib/util/wakelock';
-  import { keepSend, saveSession, sendInput } from '../../lib/train/session';
+  import { followInput, keepSend, saveSession, sendInput } from '../../lib/train/session';
 
   // The touch key pad stays in place while this screen is open.
   $effect(() => touchKeyArea());
+  // Switching input while sending (Use the touch key) moves the decoder over at once.
+  $effect(() => {
+    void settings.input;
+    void followInput(live);
+  });
 
   let live: LiveDecoder | null = null;
   let running = $state(false);
