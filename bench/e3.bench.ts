@@ -113,6 +113,41 @@ function viterbi(llr: Float64Array, dit: number, alpha: number): Mark[] {
   return marks;
 }
 
+/**
+ * Each HMM edge moved to where the envelope crosses half the mark's level
+ * (6 dB down from its median plateau), searched within ±25 ms: the HMM says
+ * whether the tone is there, the onset and offset say exactly when.
+ */
+function refine(marks: Mark[], perH: Features): Mark[] {
+  const rise = perH[0].rise;
+  const at = (t: number) => rise[Math.max(0, Math.min(rise.length - 1, Math.round(t * 1000)))];
+  return marks.map((m) => {
+    const inner: number[] = [];
+    for (let t = m.start + 0.01; t <= m.end - 0.01; t += 0.001) inner.push(at(t));
+    if (inner.length < 5) return m;
+    inner.sort((a, b) => a - b);
+    const half = inner[inner.length >> 1] - 6;
+    // The crossing nearest each HMM edge: rising for the start, falling for the end.
+    let start = m.start;
+    let end = m.end;
+    let bestS = Infinity;
+    let bestE = Infinity;
+    for (let t = m.start - 0.025; t <= m.start + 0.025; t += 0.001) {
+      if (at(t) < half && at(t + 0.001) >= half && Math.abs(t - m.start) < bestS) {
+        bestS = Math.abs(t - m.start);
+        start = t + 0.001;
+      }
+    }
+    for (let t = m.end - 0.025; t <= m.end + 0.025; t += 0.001) {
+      if (at(t) >= half && at(t + 0.001) < half && Math.abs(t - m.end) < bestE) {
+        bestE = Math.abs(t - m.end);
+        end = t + 0.001;
+      }
+    }
+    return end - start > 0.01 ? { start, end } : m;
+  });
+}
+
 it('E3', () => {
   const fair = FISTS.find((f) => f.name.startsWith('straight'))!;
   const beginner = FISTS.find((f) => f.name === 'newbie, rushed letters')!;
@@ -160,16 +195,44 @@ it('E3', () => {
   });
   const alpha = alphas[trainErr.indexOf(Math.min(...trainErr))];
   // Test beds: HMM against today's detector.
-  const agg: Record<string, { hmm: number[]; det: number[]; hr: number[]; hp: number[]; dr: number[]; dp: number[] }> = {};
+  let shown = false;
+  const perBed: string[] = [];
+  const merged: Record<Timbre, number> = { sine: 0, square: 0, buzzer: 0 };
+  const dropped: Record<Timbre, number> = { sine: 0, square: 0, buzzer: 0 };
+  const agg: Record<string, { hmm: number[]; ref: number[]; det: number[]; hr: number[]; hp: number[]; dr: number[]; dp: number[]; te: number[]; de: number[]; he: number[] }> = {};
   for (const sc of scenes.filter((s) => !train.includes(s.bed))) {
     const key = `${sc.timbre} ${String(sc.snr).padStart(3)} dB`;
-    agg[key] ??= { hmm: [], det: [], hr: [], hp: [], dr: [], dp: [] };
+    agg[key] ??= { hmm: [], ref: [], det: [], hr: [], hp: [], dr: [], dp: [], te: [], de: [], he: [] };
     const ref = decodeMarks(sc.marks);
     const hm = viterbi(logits(sc.perH, weights[sc.timbre]), dit, alpha);
+    const rf = refine(hm, sc.perH);
+    const sh0 = scoreMarks(hm, sc.marks);
+    if (sc.snr === 15) perBed.push(`${sc.bed.padEnd(24)} ${sc.timbre.padEnd(6)} ${sc.keying.fist.name.slice(0, 12).padEnd(12)} detector ${(letterError(ref, read((fs, o) => new Detector(fs, o), sc.x, FS, PITCH, 15).text) * 100).toFixed(0).padStart(4)}  hmm ${(letterError(ref, decodeMarks(hm)) * 100).toFixed(0).padStart(4)}  ref ${JSON.stringify(ref)} hmm ${JSON.stringify(decodeMarks(hm))}`);
+    if (process.env.SHOW && sc.snr === 15 && sc.timbre === 'sine' && !shown) {
+      shown = true;
+      const f = (m: Mark[]) => m.slice(0, 8).map((x) => `${(x.start * 1000).toFixed(0)}-${(x.end * 1000).toFixed(0)}`).join(' ');
+      console.log(`SHOW ${sc.bed}\ntruth ${f(sc.marks)}\nhmm   ${f(hm)}\nrefin ${f(rf)}\nrise  ${Array.from({ length: 60 }, (_, i) => sc.perH[0].rise[Math.round(sc.marks[0].start * 1000) - 20 + i].toFixed(0)).join(' ')}`);
+    }
+    agg[key].ref.push(letterError(ref, decodeMarks(rf)));
+    const sr = scoreMarks(rf, sc.marks);
+    agg[key].te.push((sr.startMs + sr.endMs) / 2);
+    agg[key].he.push((sh0.startMs + sh0.endMs) / 2);
     const d = read((fs, o) => new Detector(fs, o), sc.x, FS, PITCH, 15);
+    const sd0 = scoreMarks(d.marks, sc.marks);
+    agg[key].de.push((sd0.startMs + sd0.endMs) / 2);
     agg[key].hmm.push(letterError(ref, decodeMarks(hm)));
     agg[key].det.push(letterError(ref, d.text));
     const sh = scoreMarks(hm, sc.marks), sd = scoreMarks(d.marks, sc.marks);
+    if (sc.snr === 15) {
+      // Unmatched true marks: inside an HMM mark that also covers a neighbour (merged), or under none (dropped).
+      for (const t of sc.marks) {
+        const covering = hm.filter((h) => Math.min(h.end, t.end) - Math.max(h.start, t.start) > 0.3 * (t.end - t.start));
+        const matched = covering.some((h) => Math.min(h.end, t.end) - Math.max(h.start, t.start) >= 0.5 * Math.min(h.end - h.start, t.end - t.start));
+        if (matched) continue;
+        if (covering.length) merged[sc.timbre]++;
+        else dropped[sc.timbre]++;
+      }
+    }
     agg[key].hr.push(sh.recall);
     agg[key].hp.push(sh.precision);
     agg[key].dr.push(sd.recall);
@@ -177,9 +240,10 @@ it('E3', () => {
   }
   const mean = (v: number[]) => v.reduce((a, b) => a + b, 0) / v.length;
   const pc = (v: number[]) => (mean(v) * 100).toFixed(0).padStart(4);
-  const lines = Object.entries(agg).map(([k, v]) => `${k.padEnd(14)} added letter error: detector ${pc(v.det)}  HMM ${pc(v.hmm)}  | recall ${pc(v.dr)} vs ${pc(v.hr)}  precision ${pc(v.dp)} vs ${pc(v.hp)}`);
+  const ms = (v: number[]) => mean(v.filter((x) => Number.isFinite(x))).toFixed(0).padStart(3);
+  const lines = Object.entries(agg).map(([k, v]) => `${k.padEnd(14)} added letter error: detector ${pc(v.det)}  HMM ${pc(v.hmm)}  HMM+edges ${pc(v.ref)} | recall ${pc(v.dr)} vs ${pc(v.hr)}  precision ${pc(v.dp)} vs ${pc(v.hp)} | edge error ms: detector ${ms(v.de)} HMM ${ms(v.he)} HMM+edges ${ms(v.te)}`);
   mkdirSync('bench/results', { recursive: true });
   const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '');
   writeFileSync(`bench/results/e3-${stamp}.json`, JSON.stringify({ train, alpha, weights, agg }, null, 2));
-  console.log(`\nE3 (alpha ${alpha}; trained on ${train.length} beds, tested on ${all.length - train.length})\n${lines.join('\n')}\n`);
+  console.log(`\nE3 (alpha ${alpha}; trained on ${train.length} beds, tested on ${all.length - train.length})\n${lines.join('\n')}\n${process.env.PERBED ? perBed.join('\n') : ''}\nAt 15 dB, missed true marks: merged ${JSON.stringify(merged)}, dropped ${JSON.stringify(dropped)}\n`);
 }, 24 * 3600 * 1000);

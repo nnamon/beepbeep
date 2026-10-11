@@ -41,12 +41,18 @@ export function lockIn(x: Float32Array, hz: number, cutoff = 50): { re: Float64A
 
 const db = (re: number, im: number) => 20 * Math.log10(2 * Math.hypot(re, im) + 1e-9);
 
-/** Median-tracking floor of a dB series (10 dB/s steps), causal. */
+/**
+ * Median-tracking floor of a dB series, causal: starts at the median of the
+ * first 300 ms and settles in faster steps (50 dB/s) for the first second,
+ * then follows in 10 dB/s steps, like the detector's warm-up.
+ */
 export function floorOf(v: Float64Array): Float64Array {
   const f = new Float64Array(v.length);
-  let x = v.slice(0, 50).reduce((a, b) => a + b, 0) / 50;
+  const head = [...v.slice(0, 300)].sort((a, b) => a - b);
+  let x = head[head.length >> 1] ?? 0;
   for (let i = 0; i < v.length; i++) {
-    x += v[i] > x ? 0.01 : -0.01;
+    const step = i < 1000 ? 0.05 : 0.01;
+    x += v[i] > x ? step : -step;
     f[i] = x;
   }
   return f;

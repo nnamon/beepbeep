@@ -100,6 +100,37 @@ Tooling: `bench/` (run with `docker compose run --rm dev npm run bench -- <name>
 - Harmonics help when the tone has them and hurt when it does not: a front end must know the operator's timbre (H2 holds for harmonic tones).
 - Two flanking bands as a masker estimate add almost nothing (0.704 → 0.709). Comodulation is not refuted; this estimator is too crude.
 
+**E1, oracles** (11 Oct, 21 beds: 17 DEMAND environments, 3 laptop takes, synthetic speech; four keyings). Letter error added by noise, averaged over beds:
+
+| band SNR (dB) | −6 | −3 | 0 | +3 | +6 | +10 | +15 |
+|---|---|---|---|---|---|---|---|
+| ideal listener, fundamental only (sine) | 83 | 70 | 56 | 31 | 16 | 5 | 0 |
+| ideal listener, with harmonics (square) | 74 | 57 | 30 | 7 | 3 | 1 | 0 |
+| detector, 11 Oct (sine) | 95 | 94 | 92 | 89 | 83 | 61 | 28 |
+| detector, 11 Oct (square) | 96 | 95 | 93 | 92 | 83 | 59 | 25 |
+
+"Ideal listener": each true mark kept whole, with its true timing, if at least half of it is glimpsed (tone ahead of the noise in one ERB at the fundamental, or at harmonics 1, 3, 5), else lost; no inference across lost marks.
+
+- The bottleneck is detection, not masking. At +6 to +10 dB an ideal listener loses 1–16% of letters; the detector loses about 60–83%. The 11 Oct detector was tuned on 16 laptop takes and does not carry to other rooms; in the car (TCAR) it fails even at +15 dB.
+- H1 in its strong form is not supported at these SNRs: masking itself costs little above +3 dB with harmonics, +6 dB without. Inference across masked stretches matters below that.
+- Harmonics are worth about 3–6 dB at the same error (square vs sine rows), in line with E2.
+
+**E3, soft decisions** (11 Oct, 11 test beds, two keyings, logistic evidence per timbre trained on the other 11 beds, on/off HMM with minimum durations at 5 ms frames, offline Viterbi):
+
+| | detector, added error | HMM, added error | recall, detector → HMM | precision, detector → HMM |
+|---|---|---|---|---|
+| sine 0 dB | 92 | 87 | 13 → 43 | 86 → 96 |
+| sine +6 dB | 81 | 65 | 35 → 78 | 97 → 98 |
+| sine +15 dB | 17 | 34 | 96 → 91 | 99 → 98 |
+| square 0 dB | 92 | 66 | 14 → 72 | 86 → 98 |
+| square +3 dB | 90 | 50 | 18 → 85 | 90 → 99 |
+| square +6 dB | 77 | 33 | 37 → 93 | 98 → 99 |
+| square +15 dB | 14 | 20 | 97 → 95 | 99 → 99 |
+
+- H3 is supported where it matters: judging the stretch as a whole from soft evidence recovers most of the marks the rule-based detector throws away at 0 to +10 dB, without losing precision.
+- Above about +12 dB the prototype is worse than the detector. Not from timing (in the scenes examined, HMM edges are within 5–10 ms, and moving them to envelope crossings does not change the result), but from errors concentrated at the start of the over and from synthetic speech, a kind of masker absent from training. The prototype's features also lack the detector's floor freezing and warm-up.
+- Next: build the soft-evidence segmenter into the detector itself (causal, fixed lag), with the detector's floor handling, timbre-specific evidence (harmonics only when the tone has them), and edges from envelope crossings; then compare on E0 and on the real takes.
+
 ## 7. Open risks
 
 - iOS Safari: older WebKit bugs (2017, 2018) on processing that stayed on with the getUserMedia constraints set to false are resolved; per a WebKit engineer in 2023, Safari no longer uses voice processing when echoCancellation is false. An open 2026 report describes degraded playback (lower sample rate, mono) on iPhone and iPad while the microphone is open, with or without echo cancellation, which matters when the app plays audio during capture. iPhone recordings are needed before conclusions.
