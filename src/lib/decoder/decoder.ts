@@ -10,6 +10,7 @@
 import { tokenOf } from '../morse/code';
 import { kmeans2 } from './kmeans';
 import { gapClasses } from './breaks';
+import { LIVE, settleOver } from './settle';
 
 export interface DecodedMark {
   start: number;
@@ -145,16 +146,21 @@ export class Decoder {
    * over, so characters keyed before the fist was learned come out right too.
    */
   static redecode(model: DecoderModel, marks: { start: number; end: number }[], until?: number): DecoderOutput[] {
-    if (!marks.length) return [];
+    // The whole-over search (settle.ts): per-letter tempo, the fist refitted
+    // from the reading, and a light language model for what timing leaves open.
+    // While an over is still open (`until`), a quicker search: it runs on every letter.
+    const settled = settleOver(marks, model, until, until === undefined ? {} : LIVE);
+    if (settled.length || !marks.length) return settled;
+    // Should the search ever come back empty, the live reading stands.
+    return Decoder.greedy(model, marks, until);
+  }
+
+  /** One pass with a learned model and no search: the fallback. */
+  private static greedy(model: DecoderModel, marks: { start: number; end: number }[], until?: number): DecoderOutput[] {
     const d = new Decoder({ model });
-    // Gaps were all learned in the first pass; adding them again would count every gap twice.
     d.learnGaps = !model.gapModel;
     const out: DecoderOutput[] = [];
-    for (const m of marks) {
-      out.push(...d.keyDown(m.start));
-      out.push(...d.keyUp(m.end));
-    }
-    // With `until`, a character still open at that moment stays pending, as in live output.
+    for (const m of marks) out.push(...d.keyDown(m.start), ...d.keyUp(m.end));
     if (until === undefined) out.push(...d.flush(marks[marks.length - 1].end + 30));
     else out.push(...d.tick(until));
     return out;

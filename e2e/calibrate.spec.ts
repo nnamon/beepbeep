@@ -39,4 +39,7 @@ test('calibrates V V V keyed by hand on the touch key', async ({ page }) => {
   await expect(note).toContainText(/3 V\. \d+ wpm/, { timeout: 15_000 });
   await expect(note).not.toContainText('breaking up');
   await expect(note).toContainText('Gaps inside a letter run');
+  // The second pass ran in its worker, off the thread that times the key.
+  const worker = await page.evaluate(() => performance.getEntriesByType('resource').some((r) => r.name.includes('settle.worker')));
+  expect(worker).toBe(true);
 });

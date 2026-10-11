@@ -13,7 +13,7 @@
 
   let devices = $state<MediaDeviceInfo[]>([]);
   let spec = $state<{ hz: number[]; db: number[] }>({ hz: [], db: [] });
-  let cal = $state<'idle' | 'listening' | 'done'>('idle');
+  let cal = $state<'idle' | 'listening' | 'settling' | 'done'>('idle');
   let calText = $state('');
   let calNote = $state('');
   let poll: ReturnType<typeof setInterval> | null = null;
@@ -60,17 +60,25 @@
       source: sendInput(),
       charWpm: settings.sendWpm,
       pitch: settings.pitch,
-      onOutput: () => (calText = calLive ? outputsToText(calLive.settled()) : ''),
+      onOutput: () => {
+        const n = ++calReq;
+        void calLive?.settled().then((o) => {
+          if (n === calReq && cal === 'listening') calText = outputsToText(o);
+        });
+      },
     });
     await calLive.start();
     setTimeout(finishCal, 9000);
   }
 
-  function finishCal() {
+  let calReq = 0;
+
+  async function finishCal() {
     if (!calLive || cal !== 'listening') return;
+    cal = 'settling';
     calLive.flush();
     // The second pass: decoded again with the whole calibration's timing.
-    calLive.settle();
+    await calLive.settle();
     calLive.stop();
     calText = calLive.text;
     const mic = settings.input === 'mic';
@@ -245,7 +253,7 @@
     {/if}
     {#if calText}<TokenText tokens={textTokens(calText).map((t) => ({ t }))} size="l" />{/if}
     {#if calNote}<p>{calNote}</p>{/if}
-    <div><Button kind={cal === 'idle' ? 'primary' : 'secondary'} onclick={calibrate} disabled={cal === 'listening'}>Calibrate</Button></div>
+    <div><Button kind={cal === 'idle' ? 'primary' : 'secondary'} onclick={calibrate} disabled={cal === 'listening' || cal === 'settling'}>Calibrate</Button></div>
   </div>
 
   <div class="block notes">

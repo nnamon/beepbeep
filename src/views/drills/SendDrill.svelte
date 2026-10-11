@@ -71,9 +71,12 @@
       source: sendInput(),
       charWpm: settings.sendWpm,
       pitch: settings.pitch,
-      onOutput: (o) => {
+      onOutput: () => {
         // Re-decoded with what has been learned so far, so early letters settle.
-        if (live) liveTokens = live.settled().map((x) => (x.kind === 'space' ? { t: ' ' } : { t: x.char.token ?? '⁇', state: x.char.token ? 'ok' : 'unknown' }));
+        const n = ++liveReq;
+        void live?.settled().then((o) => {
+          if (n === liveReq && stage === 'sending') liveTokens = o.map((x) => (x.kind === 'space' ? { t: ' ' } : { t: x.char.token ?? '⁇', state: x.char.token ? 'ok' : 'unknown' }));
+        });
       },
       onKey: (down) => {
         lastKey = performance.now();
@@ -95,10 +98,16 @@
     }, 200);
   }
 
-  function finish() {
-    if (!live || stage !== 'sending') return;
+  let liveReq = 0;
+  let finishing = false;
+
+  async function finish() {
+    if (!live || stage !== 'sending' || finishing) return;
+    finishing = true;
     live.flush();
-    live.settle();
+    await live.settle();
+    finishing = false;
+    if (!live || stage !== 'sending') return;
     live.stop();
     chars = live.chars;
     received = live.text;

@@ -3,6 +3,7 @@
 import { engine } from './engine';
 import { Keyer, type KeyEvent } from './keyer';
 import { Decoder, type DecodedChar, type DecoderOutput } from '../decoder/decoder';
+import { redecodeAsync } from '../decoder/redecode';
 import type { DetectorEvent } from '../dsp/detector';
 import { signal } from '../state/signal.svelte';
 import { buildSchedule } from '../morse/schedule';
@@ -13,9 +14,20 @@ export type InputSource = 'mic' | 'straight' | 'iambicA' | 'iambicB' | 'touch';
 // The decoder the on-screen touch key drives, if one is listening.
 let touchTarget: LiveDecoder | null = null;
 
-/** Presses or releases the on-screen touch key. */
-export function touchKey(down: boolean) {
-  touchTarget?.pressStraight(down);
+/** Presses or releases the on-screen touch key; `timeStamp` is the input event's. */
+export function touchKey(down: boolean, timeStamp?: number) {
+  touchTarget?.pressStraight(down, timeStamp === undefined ? undefined : eventTime(timeStamp));
+}
+
+/**
+ * An input event's moment on the audio clock. Events carry their own
+ * timestamp (performance clock); handling may run late if the page is busy.
+ */
+function eventTime(timeStamp: number): number {
+  const late = performance.now() - timeStamp;
+  // A timestamp on another clock (some older browsers) or absurdly old: use now.
+  if (!(late >= 0 && late < 2000)) return engine.now;
+  return engine.now - late / 1000;
 }
 
 export interface LiveStatus {
@@ -115,6 +127,8 @@ export class LiveDecoder {
   resetOver() {
     this.marks = [];
     this.outputs = [];
+    this.head = [];
+    this.headMarks = 0;
   }
 
   setSpeed(charWpm: number) {
@@ -122,8 +136,8 @@ export class LiveDecoder {
   }
 
   /** Keys from an on-screen control (for touch use of the straight key). */
-  pressStraight(down: boolean) {
-    this.keyer?.straight(down);
+  pressStraight(down: boolean, at?: number) {
+    this.keyer?.straight(down, at);
   }
 
   /**
@@ -152,19 +166,36 @@ export class LiveDecoder {
     return { yours, standard: std.marks.map((m) => ({ start: m.start, end: m.end })) };
   }
 
+  /** Overs already settled (kept, not decoded again) and the marks they cover. */
+  private head: DecoderOutput[] = [];
+  private headMarks = 0;
+
   /**
    * The over so far, decoded again with everything learned about this fist:
    * characters keyed before it was learned come out right too. Characters
-   * still being keyed are left out, as in the live output.
+   * still being keyed are left out, as in the live output. Earlier overs stay
+   * as they were settled, so this costs one over however long the session.
    */
-  settled(): DecoderOutput[] {
+  async settled(): Promise<DecoderOutput[]> {
     const now = this.opts.source === 'mic' ? this.lastEventTime : engine.now;
-    return Decoder.redecode(this.decoder.model(), this.marks, now);
+    const head = [...this.head];
+    const over = await redecodeAsync(this.decoder.model(), this.marks.slice(this.headMarks), now);
+    return [...head, ...over];
   }
 
-  /** At the end of an over: replaces the outputs with the final second pass. */
-  settle(): DecoderOutput[] {
-    if (this.marks.length) this.outputs = Decoder.redecode(this.decoder.model(), this.marks);
+  /** At the end of an over: the final second pass replaces the outputs. */
+  async settle(): Promise<DecoderOutput[]> {
+    const from = this.headMarks;
+    const tail = this.marks.slice(from);
+    this.headMarks = this.marks.length;
+    if (tail.length) {
+      const over = await redecodeAsync(this.decoder.model(), tail);
+      if (this.head.length && this.head[this.head.length - 1].kind !== 'space') {
+        this.head.push({ kind: 'space', t: tail[0].start, gap: tail[0].start - this.marks[from - 1].end });
+      }
+      this.head.push(...over);
+    }
+    this.outputs = [...this.head];
     return this.outputs;
   }
 
@@ -239,7 +270,7 @@ export class LiveDecoder {
       if (isField(e.target) || e.repeat) return;
       if (this.straightKeyed && e.code === 'Space') {
         e.preventDefault();
-        this.keyer?.straight(true);
+        this.keyer?.straight(true, eventTime(e.timeStamp));
       } else if (e.code === 'BracketLeft' || e.code === 'Comma' || e.code === 'KeyZ') {
         e.preventDefault();
         this.keyer?.paddle('dit', true);
@@ -249,7 +280,7 @@ export class LiveDecoder {
       }
     };
     const up = (e: KeyboardEvent) => {
-      if (this.straightKeyed && e.code === 'Space') this.keyer?.straight(false);
+      if (this.straightKeyed && e.code === 'Space') this.keyer?.straight(false, eventTime(e.timeStamp));
       else if (e.code === 'BracketLeft' || e.code === 'Comma' || e.code === 'KeyZ') this.keyer?.paddle('dit', false);
       else if (e.code === 'BracketRight' || e.code === 'Period' || e.code === 'KeyX') this.keyer?.paddle('dah', false);
     };

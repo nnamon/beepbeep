@@ -38,12 +38,15 @@ export class Keyer {
     this.opts = { ...this.opts, ...o };
   }
 
-  /** Straight key down/up. */
-  straight(down: boolean) {
+  /**
+   * Straight key down/up. `at` is when it happened on the audio clock (from
+   * the input event's own timestamp), so a busy page cannot shift the timing.
+   */
+  straight(down: boolean, at?: number) {
     if (this.opts.mode !== 'straight' || down === this.straightDown) return;
     this.straightDown = down;
     this.opts.tone.on(down);
-    this.opts.emit({ down, t: this.opts.now() });
+    this.opts.emit({ down, t: at ?? this.opts.now() });
   }
 
   paddle(p: Paddle, down: boolean) {

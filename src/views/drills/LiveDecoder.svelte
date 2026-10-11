@@ -43,7 +43,10 @@
       pitch: settings.pitch,
       // Shown re-decoded with what has been learned so far, so early letters settle as you key.
       onOutput: () => {
-        if (live) tokens = render(live.settled());
+        const n = ++req;
+        void live?.settled().then((o) => {
+          if (n === req && live) tokens = render(o);
+        });
         signal.wpm = live?.decoder.wpm ?? 0;
       },
       onKey: (down) => {
@@ -62,9 +65,13 @@
     void keepAwake(true);
   }
 
-  function stop() {
+  let req = 0;
+
+  async function stop() {
     if (live) {
-      endOver();
+      const l = live;
+      await endOver();
+      if (live !== l) return;
       live.stop();
       void saveSession({
         mode: 'live',
@@ -102,12 +109,14 @@
     return out;
   }
 
-  function endOver() {
+  async function endOver() {
     if (overTimer) clearTimeout(overTimer);
     overTimer = null;
     if (!live) return;
     live.flush();
-    tokens = render(live.settle());
+    req++;
+    tokens = render(await live.settle());
+    if (!live) return;
     report = analyseFist(live.outputs);
     note = oneNote(report, [], settings.sendTolerance);
     revealed = tokens.length;

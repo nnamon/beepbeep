@@ -30,13 +30,13 @@
       /* no active pointer to capture (synthetic events) */
     }
     pressed = true;
-    touchKey(true);
+    touchKey(true, e.timeStamp);
   }
 
-  function up() {
+  function up(e: PointerEvent) {
     if (!pressed) return;
     pressed = false;
-    touchKey(false);
+    touchKey(false, e.timeStamp);
   }
 </script>
 
