@@ -3,11 +3,14 @@
 // Without workers (unit tests, a browser that refuses), it runs in place.
 
 import { Decoder, type DecoderModel, type DecoderOutput } from './decoder';
+import type { Kept } from './settle';
 
 interface Pending {
   model: DecoderModel;
   marks: { start: number; end: number }[];
   until?: number;
+  keep?: Kept[];
+  full?: boolean;
   resolve: (o: DecoderOutput[]) => void;
 }
 
@@ -19,7 +22,7 @@ function fallBack() {
   worker = null;
   for (const [id, p] of pending) {
     pending.delete(id);
-    p.resolve(Decoder.redecode(p.model, p.marks, p.until));
+    p.resolve(Decoder.redecode(p.model, p.marks, p.until, p.keep, p.full));
   }
 }
 
@@ -41,12 +44,12 @@ function getWorker(): Worker | null {
 }
 
 /** Decoder.redecode, off the main thread when possible. */
-export function redecodeAsync(model: DecoderModel, marks: { start: number; end: number }[], until?: number): Promise<DecoderOutput[]> {
+export function redecodeAsync(model: DecoderModel, marks: { start: number; end: number }[], until?: number, keep?: Kept[], full?: boolean): Promise<DecoderOutput[]> {
   const w = getWorker();
-  if (!w) return Promise.resolve(Decoder.redecode(model, marks, until));
+  if (!w) return Promise.resolve(Decoder.redecode(model, marks, until, keep, full));
   return new Promise((resolve) => {
     const id = ++seq;
-    pending.set(id, { model, marks, until, resolve });
-    w.postMessage({ id, model, marks, until });
+    pending.set(id, { model, marks, until, keep, full, resolve });
+    w.postMessage({ id, model, marks, until, keep, full });
   });
 }

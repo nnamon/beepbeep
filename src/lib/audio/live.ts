@@ -2,8 +2,9 @@
 
 import { engine } from './engine';
 import { Keyer, type KeyEvent } from './keyer';
-import { Decoder, type DecodedChar, type DecoderOutput } from '../decoder/decoder';
+import { Decoder, isGlitch, type DecodedChar, type DecoderOutput } from '../decoder/decoder';
 import { redecodeAsync } from '../decoder/redecode';
+import { StableReading } from '../decoder/stable';
 import type { DetectorEvent } from '../dsp/detector';
 import { signal } from '../state/signal.svelte';
 import { buildSchedule } from '../morse/schedule';
@@ -129,6 +130,7 @@ export class LiveDecoder {
     this.outputs = [];
     this.head = [];
     this.headMarks = 0;
+    this.reading.reset();
   }
 
   setSpeed(charWpm: number) {
@@ -169,27 +171,28 @@ export class LiveDecoder {
   /** Overs already settled (kept, not decoded again) and the marks they cover. */
   private head: DecoderOutput[] = [];
   private headMarks = 0;
+  /** The current over as shown: finished words stay as written. */
+  private reading = new StableReading(redecodeAsync);
 
   /**
-   * The over so far, decoded again with everything learned about this fist:
-   * characters keyed before it was learned come out right too. Characters
-   * still being keyed are left out, as in the live output. Earlier overs stay
-   * as they were settled, so this costs one over however long the session.
+   * The over so far, decoded again with everything learned about this fist.
+   * Words already finished stay as they were read; the word in progress is
+   * read again, and letters still being keyed are left out. Earlier overs
+   * stay as they were settled, so this costs one over however long the session.
    */
   async settled(): Promise<DecoderOutput[]> {
     const now = this.opts.source === 'mic' ? this.lastEventTime : engine.now;
-    const head = [...this.head];
-    const over = await redecodeAsync(this.decoder.model(), this.marks.slice(this.headMarks), now);
-    return [...head, ...over];
+    const over = await this.reading.update(this.decoder.model(), this.marks.slice(this.headMarks), now);
+    return [...this.head, ...over];
   }
 
-  /** At the end of an over: the final second pass replaces the outputs. */
+  /** At the end of an over: the last word read once more, and the over joins the settled ones. */
   async settle(): Promise<DecoderOutput[]> {
     const from = this.headMarks;
     const tail = this.marks.slice(from);
     this.headMarks = this.marks.length;
-    if (tail.length) {
-      const over = await redecodeAsync(this.decoder.model(), tail);
+    const over = await this.reading.finish(this.decoder.model(), tail);
+    if (over.length) {
       if (this.head.length && this.head[this.head.length - 1].kind !== 'space') {
         this.head.push({ kind: 'space', t: tail[0].start, gap: tail[0].start - this.marks[from - 1].end });
       }
@@ -241,7 +244,8 @@ export class LiveDecoder {
       this.downAt = e.t;
       this.push(this.decoder.keyDown(e.t));
     } else {
-      this.marks.push({ start: this.downAt, end: e.t });
+      // Glitches are dropped here once, so every later reading sees the same marks.
+      if (!isGlitch(e.t - this.downAt, this.decoder.ditEstimate)) this.marks.push({ start: this.downAt, end: e.t });
       this.push(this.decoder.keyUp(e.t));
     }
     if (this.opts.source !== 'mic') {

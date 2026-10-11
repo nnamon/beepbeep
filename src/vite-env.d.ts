@@ -4,3 +4,5 @@
 declare const __APP_VERSION__: string;
 /** Short commit of the build, or 'local'. */
 declare const __APP_BUILD__: string;
+/** Debug server: the sample recorder is shown. */
+declare const __DEBUG__: boolean;

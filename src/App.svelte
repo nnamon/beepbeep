@@ -240,13 +240,17 @@
     }
 
     .head {
-      gap: var(--s-2);
+      gap: var(--s-1);
       padding: var(--s-1) var(--s-2);
       padding-top: max(var(--s-1), env(safe-area-inset-top));
     }
 
+    /* The narrowest phones (360 px) cut the build short rather than overflow. */
     .ver {
-      margin-left: calc(-1 * var(--s-1));
+      margin-left: 0;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .signal-strip {

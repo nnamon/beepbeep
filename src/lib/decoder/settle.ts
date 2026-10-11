@@ -135,7 +135,13 @@ function gapScore(gap: number, cls: 'char' | 'word', h: Hyp, t: number, p: FistP
   return robust(Math.log(gap) - local - (cls === 'char' ? p.char : p.word), p.sdInter, true);
 }
 
-export function decodeOnce(marks: Mark[], p: FistParams, beam = tuning.beam): Item[] {
+/** A reading the search must follow for the first marks: dit or dah per mark, and per gap e (inside a letter), c (letter) or w (word). */
+export interface Fixed {
+  sym: string;
+  gap: string;
+}
+
+export function decodeOnce(marks: Mark[], p: FistParams, beam = tuning.beam, fixed: Fixed = { sym: '', gap: '' }): Item[] {
   const lm = languageModel();
   // Many readings share a letter (same marks, same pattern): score it once.
   const letters = new Map<string, { score: number; tempo: number }>();
@@ -202,6 +208,7 @@ export function decodeOnce(marks: Mark[], p: FistParams, beam = tuning.beam): It
       // Longer than any character: close it as unknown rather than lose the reading.
       if (h.pattern.length >= MAX_PATTERN) h = close(h, i - 1, false, marks[i].start - marks[i - 1].end);
       for (const sym of ['.', '-']) {
+        if (i < fixed.sym.length && sym !== fixed.sym[i]) continue;
         const pattern = h.pattern + sym;
         const open = letter(h.from, i, pattern);
         next.push({ ...h, pattern, open, score: h.base + open.score });
@@ -212,11 +219,12 @@ export function decodeOnce(marks: Mark[], p: FistParams, beam = tuning.beam): It
       // The gap after it: inside the letter, or the end of a letter or a word.
       const gap = marks[i + 1].start - marks[i].end;
       const after: Hyp[] = [];
+      const cls = fixed.gap[i];
       for (const h of hyps) {
         // Provisional until the next mark joins and the letter is scored again.
-        after.push({ ...h, score: h.score + robust(Math.log(gap) - h.open!.tempo - p.elem, p.sdGap, true) });
-        after.push(close(h, i, false, gap));
-        after.push(close(h, i, true, gap));
+        if (!cls || cls === 'e') after.push({ ...h, score: h.score + robust(Math.log(gap) - h.open!.tempo - p.elem, p.sdGap, true) });
+        if (!cls || cls === 'c') after.push(close(h, i, false, gap));
+        if (!cls || cls === 'w') after.push(close(h, i, true, gap));
       }
       hyps = prune(after);
     } else {
@@ -334,6 +342,14 @@ export interface SettleOptions {
   /** Refitting rounds (default 2) and the final search width; the live view uses a quick setting. */
   rounds?: number;
   beam?: number;
+  /** Letters already written down, from the start of the over: the reading begins with them. */
+  keep?: Kept[];
+}
+
+/** A letter already written down: its dits and dahs, and whether a word space follows. */
+export interface Kept {
+  pattern: string;
+  space: boolean;
 }
 
 /** The quick setting for re-reading on every letter while keying. */
@@ -345,10 +361,15 @@ export function settleOver(marks: Mark[], model: DecoderModel, until?: number, o
   let p = initialParams(model, ms);
   // Fitting rounds use a narrower search; the final reading the full one.
   const rounds = opts.rounds ?? tuning.rounds;
-  let items = decodeOnce(ms, p, tuning.fitBeam);
+  const fixed: Fixed = { sym: '', gap: '' };
+  for (const k of opts.keep ?? []) {
+    fixed.sym += k.pattern;
+    fixed.gap += 'e'.repeat(Math.max(0, k.pattern.length - 1)) + (k.space ? 'w' : 'c');
+  }
+  let items = decodeOnce(ms, p, tuning.fitBeam, fixed);
   for (let round = 0; round < rounds; round++) {
     p = refit(ms, items, p);
-    items = decodeOnce(ms, p, round === rounds - 1 ? (opts.beam ?? tuning.beam) : tuning.fitBeam);
+    items = decodeOnce(ms, p, round === rounds - 1 ? (opts.beam ?? tuning.beam) : tuning.fitBeam, fixed);
   }
   // A letter is still open while the silence after it is shorter than a letter gap.
   if (until !== undefined && items.length) {

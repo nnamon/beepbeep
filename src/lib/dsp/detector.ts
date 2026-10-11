@@ -2,9 +2,14 @@
 //
 // 1. A peak-hold FFT finds the strongest keyed tone in 300-1200 Hz and locks to it.
 // 2. An I/Q (lock-in) detector at that pitch, with a low-pass sized to the
-//    sending speed, gives a smooth tone envelope at ~1 kHz.
-// 3. An adaptive threshold halfway between the tracked noise floor and the
-//    tracked peak, with hysteresis and a debounce, turns it into key events.
+//    sending speed, gives a smooth tone envelope at ~1 kHz. Two more, a few
+//    hundred hertz either side, watch the room.
+// 3. A threshold halfway (in decibels) between the channel's noise floor and
+//    the level of its marks, with hysteresis and a debounce, turns it into key
+//    events. A key-down also needs contrast: the tone must stand further above
+//    its floor than both neighbours stand above theirs. Room sounds (voices,
+//    thumps, typing, a fan) are broadband and lift all three together; a tone
+//    lifts only its own channel.
 //
 // Runs unchanged in the AudioWorklet and in Node tests.
 
@@ -23,6 +28,8 @@ export type DetectorEvent =
       pitch: number | null;
       /** Peak over noise of the locked tone, dB. */
       snr: number;
+      /** The tone channel's noise floor, dBFS. */
+      floor: number;
       keyDown: boolean;
     };
 
@@ -35,9 +42,112 @@ export interface DetectorOptions {
   dit?: number;
   /** Minimum peak-over-noise to treat anything as a signal, dB. */
   minSnrDb?: number;
+  /** How far the tone must rise above its floor beyond the neighbours' rise, dB. */
+  contrastDb?: number;
+  /** Squelch: the least a key-down must rise above the floor, dB (set by calibration). */
+  squelchDb?: number | null;
+  /** Tests: the envelope stage's state at every step (1 kHz). */
+  trace?: (s: TraceStep) => void;
+}
+
+export interface TraceStep {
+  t: number;
+  env: number;
+  refs: [number, number];
+  floor: number;
+  refFloors: [number, number];
+  peak: number;
+  onThr: number;
+  offThr: number;
+  toneLike: boolean;
+  markLevel: number;
+  keyDown: boolean;
+  pending: boolean | null;
+}
+
+/** One lock-in channel: low-passed I and Q of the input mixed down from `hz`. */
+class Channel {
+  private cos = 1;
+  private sin = 0;
+  private stepCos = 1;
+  private stepSin = 0;
+  private renorm = 0;
+  private i = 0;
+  private q = 0;
+  private readonly lpI: LowPass;
+  private readonly lpQ: LowPass;
+
+  constructor(
+    private readonly fs: number,
+    cutoff: number,
+  ) {
+    this.lpI = new LowPass(fs, cutoff);
+    this.lpQ = new LowPass(fs, cutoff);
+  }
+
+  /** Retunes without a phase jump (following drift). */
+  tune(hz: number) {
+    const w = (2 * Math.PI * hz) / this.fs;
+    this.stepCos = Math.cos(w);
+    this.stepSin = Math.sin(w);
+  }
+
+  setCutoff(fc: number) {
+    this.lpI.setCutoff(fc);
+    this.lpQ.setCutoff(fc);
+  }
+
+  reset() {
+    this.cos = 1;
+    this.sin = 0;
+    this.lpI.reset();
+    this.lpQ.reset();
+  }
+
+  step(x: number) {
+    // Rotate the reference phasor; renormalise now and then to stop drift.
+    const c = this.cos * this.stepCos - this.sin * this.stepSin;
+    const s = this.sin * this.stepCos + this.cos * this.stepSin;
+    this.cos = c;
+    this.sin = s;
+    if (++this.renorm >= 1024) {
+      this.renorm = 0;
+      const m = Math.hypot(this.cos, this.sin);
+      this.cos /= m;
+      this.sin /= m;
+    }
+    this.i = this.lpI.step(x * c);
+    this.q = this.lpQ.step(x * s);
+  }
+
+  get re(): number {
+    return this.i;
+  }
+
+  get im(): number {
+    return this.q;
+  }
+
+  /** Envelope (tone amplitude), dBFS. */
+  get db(): number {
+    return 20 * Math.log10(2 * Math.hypot(this.i, this.q) + 1e-9);
+  }
 }
 
 const STATUS_INTERVAL = 0.05;
+/** How fast the noise floors follow the room, dB per second (they track the median level). */
+const FLOOR_RATE = 10;
+/** Room gate settings; tests sweep them. */
+export const gateTuning = { weight: 0.25, quiet: 6, contrast: 8 };
+/**
+ * Pitch steadiness: the tone channel's phase is compared with itself `lag`
+ * ms earlier, smoothed over `smooth` ms. A keyed tone turns at one fixed rate
+ * (its offset from the lock, the same every mark); a voice's harmonic glides
+ * through, noise wanders. `coherence` is the least steadiness (0..1), `tol`
+ * how far (Hz) a mark's pitch may sit from the pitch learned from earlier
+ * marks, and `wide` the allowance before any are learned.
+ */
+export const steadyTuning = { lag: 4, smooth: 4, coherence: 0.4, tol: 10, wide: 20, downHold: 0.1 };
 
 export class Detector {
   readonly fs: number;
@@ -68,30 +178,54 @@ export class Detector {
   private historyPos = 0;
   private historyCount = 0;
 
-  // I/Q envelope
+  // I/Q envelopes: the tone and its two neighbours
   private lockedHz: number | null = null;
-  private cosP = 1;
-  private sinP = 0;
-  private stepCos = 1;
-  private stepSin = 0;
-  private renorm = 0;
-  private lpI: LowPass;
-  private lpQ: LowPass;
+  private readonly tone: Channel;
+  private readonly refs: [Channel, Channel];
   private readonly decim: number;
   private decimCount = 0;
-  private envPrev = 0;
+  private envPrev = -180;
   private tPrev = 0;
 
-  // Key detection
+  // Key detection, all levels in dB
+  private contrastDb: number;
+  private squelchDb: number | null;
+  private trace: ((s: TraceStep) => void) | null;
   private noise = 0;
+  private refNoise = [0, 0];
   private peak = 0;
   private envInit = false;
   private warmup = 0;
-  private warmAcc = 0;
+  private warmAcc = [0, 0, 0];
   private keyDown = false;
   private pendingState: boolean | null = null;
   private pendingT = 0;
   private pendingSince = 0;
+  /** The current mark's level, and the last time the envelope fell 6 dB below it. */
+  private markLevel = 0;
+  /** When the last mark ended. */
+  private lastOff = -1;
+  /** Recent tone-channel phasors at 1 kHz, and the smoothed lagged product. */
+  private readonly zRe = new Float64Array(32);
+  private readonly zIm = new Float64Array(32);
+  private zPos = 0;
+  private zCount = 0;
+  private wRe = 0;
+  private wIm = 0;
+  private wMag = 0;
+  /** Where the sender's tone sits from the lock, Hz, learned from their marks. */
+  private toneOffset = 0;
+  private offsetMarks = 0;
+  private markOffsets: number[] = [];
+  private downT = 0;
+  /**
+   * The last 200 ms of envelope, to time a mark's start once its level is
+   * known. A key's own thump can hold the room gate shut for 40 ms or more
+   * after the tone has started.
+   */
+  private readonly histEnv = new Float64Array(200);
+  private readonly histT = new Float64Array(200);
+  private histPos = 0;
 
   // Bookkeeping
   private sample = 0;
@@ -106,6 +240,9 @@ export class Detector {
     this.maxHz = opts.maxHz ?? 1200;
     this.pinned = opts.pinnedHz ?? null;
     this.minSnrDb = opts.minSnrDb ?? 9;
+    this.contrastDb = opts.contrastDb ?? gateTuning.contrast;
+    this.squelchDb = opts.squelchDb ?? null;
+    this.trace = opts.trace ?? null;
     this.dit = opts.dit ?? 0.08;
     this.fftSize = sampleRate > 30000 ? 4096 : 2048;
     this.hop = this.fftSize / 2;
@@ -118,8 +255,8 @@ export class Detector {
     this.fftBuf = new Float32Array(this.fftSize);
     this.history = new Float32Array(Math.round(sampleRate * 2.5));
     this.decim = Math.max(1, Math.round(sampleRate / 1000));
-    this.lpI = new LowPass(sampleRate, this.cutoff());
-    this.lpQ = new LowPass(sampleRate, this.cutoff());
+    this.tone = new Channel(sampleRate, this.cutoff());
+    this.refs = [new Channel(sampleRate, this.cutoff()), new Channel(sampleRate, this.cutoff())];
     if (this.pinned) this.lock(this.pinned, false, []);
   }
 
@@ -138,8 +275,9 @@ export class Detector {
     this.dit = Math.min(0.4, Math.max(0.02, dit));
     const next = this.cutoff();
     if (Math.abs(next - prev) / prev > 0.15) {
-      this.lpI.setCutoff(next);
-      this.lpQ.setCutoff(next);
+      this.tone.setCutoff(next);
+      for (const r of this.refs) r.setCutoff(next);
+      if (this.lockedHz !== null) this.tuneRefs(this.lockedHz);
     }
   }
 
@@ -147,6 +285,11 @@ export class Detector {
     this.pinned = hz;
     if (hz) this.lock(hz, false, out);
     return out;
+  }
+
+  /** The least a key-down must rise above the floor, dB; null for the default. */
+  setSquelch(db: number | null) {
+    this.squelchDb = db;
   }
 
   /** While the app itself is sending, ignore input so it cannot decode itself. */
@@ -199,6 +342,7 @@ export class Detector {
           level: 20 * Math.log10(rms + 1e-9),
           pitch: this.lockedHz,
           snr: this.snrDb(),
+          floor: this.envInit ? this.noise : -120,
           keyDown: this.keyDown,
         });
       }
@@ -211,8 +355,7 @@ export class Detector {
   }
 
   private snrDb(): number {
-    if (!this.envInit || this.noise <= 0) return 0;
-    return 20 * Math.log10(this.peak / this.noise);
+    return this.envInit ? this.peak - this.noise : 0;
   }
 
   private analyse(out: DetectorEvent[]) {
@@ -289,20 +432,29 @@ export class Detector {
 
   private setOscillator(hz: number) {
     this.lockedHz = hz;
-    const w = (2 * Math.PI * hz) / this.fs;
-    this.stepCos = Math.cos(w);
-    this.stepSin = Math.sin(w);
+    this.tone.tune(hz);
+    this.tuneRefs(hz);
+  }
+
+  /** Neighbours far enough out that the tone barely reaches them through the low-pass. */
+  private tuneRefs(hz: number) {
+    const off = Math.max(200, 2.5 * this.cutoff());
+    const below = hz - off >= 120 ? hz - off : hz + 2 * off;
+    this.refs[0].tune(below);
+    this.refs[1].tune(Math.min(hz + off, this.fs / 2 - 200));
   }
 
   private lock(hz: number, replayHistory: boolean, out: DetectorEvent[]) {
     this.setOscillator(hz);
-    this.cosP = 1;
-    this.sinP = 0;
-    this.lpI.reset();
-    this.lpQ.reset();
+    this.tone.reset();
+    for (const r of this.refs) r.reset();
     this.envInit = false;
     this.warmup = 0;
-    this.warmAcc = 0;
+    this.warmAcc = [0, 0, 0];
+    this.zCount = 0;
+    this.wRe = this.wIm = this.wMag = 0;
+    this.toneOffset = 0;
+    this.offsetMarks = 0;
     this.keyDown = false;
     this.pendingState = null;
     this.decimCount = 0;
@@ -322,33 +474,56 @@ export class Detector {
   }
 
   private iqStep(x: number, sampleIndex: number, out: DetectorEvent[]) {
-    // Rotate the reference phasor; renormalise now and then to stop drift.
-    const c = this.cosP * this.stepCos - this.sinP * this.stepSin;
-    const s = this.sinP * this.stepCos + this.cosP * this.stepSin;
-    this.cosP = c;
-    this.sinP = s;
-    if (++this.renorm >= 1024) {
-      this.renorm = 0;
-      const m = Math.hypot(this.cosP, this.sinP);
-      this.cosP /= m;
-      this.sinP /= m;
-    }
-    const i = this.lpI.step(x * c);
-    const q = this.lpQ.step(x * s);
+    this.tone.step(x);
+    this.refs[0].step(x);
+    this.refs[1].step(x);
     if (++this.decimCount < this.decim) return;
     this.decimCount = 0;
-    const env = 2 * Math.hypot(i, q);
-    this.envelopeStep(env, sampleIndex / this.fs, out);
+    this.steadinessStep();
+    this.envelopeStep(this.tone.db, this.refs[0].db, this.refs[1].db, sampleIndex / this.fs, out);
   }
 
-  private envelopeStep(env: number, t: number, out: DetectorEvent[]) {
+  /** Updates the smoothed product of the tone phasor with itself `lag` ms ago. */
+  private steadinessStep() {
+    const re = this.tone.re;
+    const im = this.tone.im;
+    const n = this.zRe.length;
+    const lag = steadyTuning.lag;
+    if (this.zCount >= lag) {
+      const j = (this.zPos - lag + n) % n;
+      const pr = this.zRe[j];
+      const pi = this.zIm[j];
+      const a = 1 - Math.exp(-1 / steadyTuning.smooth);
+      this.wRe += (re * pr + im * pi - this.wRe) * a;
+      this.wIm += (im * pr - re * pi - this.wIm) * a;
+      this.wMag += (Math.hypot(re, im) * Math.hypot(pr, pi) - this.wMag) * a;
+    }
+    this.zRe[this.zPos] = re;
+    this.zIm[this.zPos] = im;
+    this.zPos = (this.zPos + 1) % n;
+    this.zCount++;
+  }
+
+  /** Steadiness of the tone channel (0..1) and its pitch offset from the lock, Hz. */
+  private steadiness(): { coherence: number; offset: number } {
+    const coherence = Math.hypot(this.wRe, this.wIm) / (this.wMag + 1e-30);
+    const offset = Math.atan2(this.wIm, this.wRe) / ((2 * Math.PI * steadyTuning.lag * this.decim) / this.fs);
+    return { coherence, offset };
+  }
+
+  private envelopeStep(env: number, ref0: number, ref1: number, t: number, out: DetectorEvent[]) {
     const dt = this.decim / this.fs;
-    // Warm-up: let the filter settle and measure the floor before deciding anything.
+    // Warm-up: let the filters settle and measure the floors before deciding anything.
     if (!this.envInit) {
       this.warmup++;
-      if (this.warmup > 15) this.warmAcc += env;
+      if (this.warmup > 15) {
+        this.warmAcc[0] += env;
+        this.warmAcc[1] += ref0;
+        this.warmAcc[2] += ref1;
+      }
       if (this.warmup >= 45) {
-        this.noise = Math.max(this.warmAcc / 30, 1e-7);
+        this.noise = this.warmAcc[0] / 30;
+        this.refNoise = [this.warmAcc[1] / 30, this.warmAcc[2] / 30];
         this.peak = this.noise;
         this.envInit = true;
       }
@@ -356,39 +531,77 @@ export class Detector {
       this.tPrev = t;
       return;
     }
-    const k = (tau: number) => 1 - Math.exp(-dt / tau);
 
-    // Noise floor: falls fast, rises slowly, frozen while the key is down.
-    if (!this.keyDown) {
-      if (env < this.noise) this.noise += (env - this.noise) * k(0.03);
-      else this.noise += (env - this.noise) * k(1.5);
+    // Floors: each channel's median level while the key is up, followed in
+    // small steps so bursts and marks barely move them.
+    if (!this.keyDown && this.pendingState === null) {
+      const step = FLOOR_RATE * dt;
+      this.noise += env > this.noise ? step : -step;
+      this.refNoise[0] += ref0 > this.refNoise[0] ? step : -step;
+      this.refNoise[1] += ref1 > this.refNoise[1] ? step : -step;
     }
-    this.noise = Math.max(this.noise, 1e-7);
-    // Peak follows the level of marks (so fading lowers the threshold with it)
-    // and relaxes slowly toward the floor between them.
-    if (env > this.peak) this.peak += (env - this.peak) * k(0.004);
-    else if (this.keyDown) this.peak += (env - this.peak) * k(0.08);
-    else this.peak = this.noise + (this.peak - this.noise) * Math.exp(-dt / 1.5);
 
-    const snr = 20 * Math.log10(this.peak / this.noise);
+    // Contrast: how far the tone stands above its floor beyond what the room
+    // adds to both neighbours.
+    const r0 = ref0 - this.refNoise[0];
+    const r1 = ref1 - this.refNoise[1];
+    const lo = Math.min(r0, r1);
+    const hi = Math.max(r0, r1);
+    const room = Math.max(0, lo + gateTuning.weight * (hi - lo));
+    // In a quiet room there is nothing to tell apart: any rise counts.
+    const clear = room < gateTuning.quiet || env - this.noise - room >= this.contrastDb;
+    // And it must be the sender's tone: steady, at the pitch of their marks so far.
+    const { coherence, offset } = this.steadiness();
+    const tol = this.offsetMarks >= 3 ? steadyTuning.tol : steadyTuning.wide;
+    const steady = coherence >= steadyTuning.coherence && Math.abs(offset - this.toneOffset) <= tol;
+    const toneLike = clear && steady;
+    if (this.keyDown && coherence >= 0.9 && clear) this.markOffsets.push(offset);
+
+    // Peak: the level of marks. Rises fast with a tone (not with room sounds),
+    // follows a mark down slowly, and relaxes toward the floor between marks.
+    const k = (tau: number) => 1 - Math.exp(-dt / tau);
+    if (env > this.peak && (toneLike || this.keyDown)) this.peak += (env - this.peak) * k(0.004);
+    else if (this.keyDown && env < this.peak) this.peak += (env - this.peak) * k(0.08);
+    else if (!this.keyDown) this.peak = this.noise + (this.peak - this.noise) * Math.exp(-dt / 1.5);
+    this.peak = Math.max(this.peak, this.noise);
+
+    // Thresholds halfway between floor and marks, in dB, so a mark well below
+    // the loudest still counts. In a silent room the floor is far down: the
+    // span is capped so a mark's fading tail does not count as the mark.
     const span = this.peak - this.noise;
-    const onThr = this.noise + 0.55 * span;
-    const offThr = this.noise + 0.45 * span;
+    const used = Math.min(span, 30);
+    const least = Math.max(this.minSnrDb, this.squelchDb ?? 0);
+    const onThr = this.peak - used + Math.max(least, 0.5 * used);
+    const offThr = this.peak - used + Math.max(least - 3, 0.4 * used);
+
+    this.histEnv[this.histPos] = env;
+    this.histT[this.histPos] = t;
+    this.histPos = (this.histPos + 1) % this.histEnv.length;
+    if (this.keyDown || this.pendingState === false) {
+      // Mark edges are timed at half the mark's own amplitude (6 dB down), where
+      // a filtered edge rises and falls symmetrically, so marks keep their length.
+      // The tone's own level: it rises slowly, so a key's thump or a clack
+      // during the mark barely moves it.
+      if (toneLike && env > this.markLevel) this.markLevel += (env - this.markLevel) * k(0.015);
+      const half = this.markLevel - 6;
+      if (this.envPrev >= half && env < half) this.downT = this.interpolate(this.envPrev, env, this.tPrev, t, half);
+    }
 
     let raw = this.keyDown;
     let crossT = t;
-    if (snr < this.minSnrDb) {
+    if (span < this.minSnrDb) {
       raw = false;
-    } else if (!this.keyDown && env > onThr) {
+    } else if (!this.keyDown && env > onThr && toneLike) {
       raw = true;
-      crossT = this.interpolate(this.envPrev, env, this.tPrev, t, this.noise + 0.5 * span);
-    } else if (this.keyDown && env < offThr) {
+    } else if (this.keyDown && (env < offThr || env < this.markLevel - 10)) {
+      // Off below the threshold, or well below this mark's own level (an echo's tail).
       raw = false;
-      crossT = this.interpolate(this.envPrev, env, this.tPrev, t, this.noise + 0.5 * span);
+      crossT = t - this.downT < 0.06 ? this.downT : t;
     }
 
     // Debounce: a change must hold before it counts; its time is the crossing.
-    const hold = Math.min(0.015, Math.max(0.004, 0.2 * this.dit));
+    // A steady tone is its own proof, so a key-down needs less.
+    const hold = Math.min(0.015, Math.max(0.004, (raw && !this.keyDown ? steadyTuning.downHold : 0.2) * this.dit));
     if (raw !== this.keyDown) {
       if (this.pendingState !== raw) {
         this.pendingState = raw;
@@ -397,14 +610,55 @@ export class Detector {
       } else if (t - this.pendingSince >= hold) {
         this.keyDown = raw;
         this.pendingState = null;
-        out.push({ type: 'key', down: raw, t: this.pendingT });
+        if (raw) {
+          this.markLevel = this.recentMedian(t - this.pendingSince);
+          this.downT = t;
+          this.markOffsets = [];
+        } else if (this.markOffsets.length >= 10) {
+          // Learn where this sender's tone sits.
+          const m = [...this.markOffsets].sort((x, y) => x - y)[this.markOffsets.length >> 1];
+          this.toneOffset = this.offsetMarks ? this.toneOffset + 0.3 * (m - this.toneOffset) : m;
+          this.offsetMarks++;
+        }
+        // A key-down is timed where the envelope rose through half the mark's amplitude.
+        if (!raw) this.lastOff = this.pendingT;
+        out.push({ type: 'key', down: raw, t: raw ? this.riseTime(this.markLevel - 6, this.pendingT) : this.pendingT });
       }
     } else {
       this.pendingState = null;
     }
 
+    this.trace?.({ t, env, refs: [ref0, ref1], floor: this.noise, refFloors: [this.refNoise[0], this.refNoise[1]], peak: this.peak, onThr, offThr, toneLike, markLevel: this.markLevel, keyDown: this.keyDown, pending: this.pendingState });
     this.envPrev = env;
     this.tPrev = t;
+  }
+
+  /** Median envelope over the last `seconds`: a mark's level, unmoved by a click on its edge. */
+  private recentMedian(seconds: number): number {
+    const n = this.histEnv.length;
+    const now = this.histT[(this.histPos - 1 + n) % n];
+    const v: number[] = [];
+    for (let j = 1; j <= n; j++) {
+      const i = (this.histPos - j + n) % n;
+      if (this.histT[i] < now - seconds - 1e-9) break;
+      v.push(this.histEnv[i]);
+    }
+    v.sort((a, b) => a - b);
+    return v[Math.floor(v.length / 2)];
+  }
+
+  /** When the envelope last rose through `level` since the last mark ended; `fallback` if not found. */
+  private riseTime(level: number, fallback: number): number {
+    const n = this.histEnv.length;
+    for (let j = 1; j < n; j++) {
+      const i = (this.histPos - j + n) % n;
+      const p = (i - 1 + n) % n;
+      if (this.histT[p] <= this.lastOff) break;
+      if (this.histEnv[p] < level && this.histEnv[i] >= level) {
+        return this.interpolate(this.histEnv[p], this.histEnv[i], this.histT[p], this.histT[i], level);
+      }
+    }
+    return fallback;
   }
 
   private interpolate(e0: number, e1: number, t0: number, t1: number, level: number): number {

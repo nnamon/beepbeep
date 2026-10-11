@@ -27,6 +27,8 @@ export interface Settings {
   input: InputSource;
   micDeviceId: string;
   pinnedHz: number | null;
+  /** Squelch from calibration: how far a key-down must rise above the room, dB. */
+  squelchDb: number | null;
   /** Band conditions for receive drills and QSOs. */
   noise: number;
   qsb: number;
@@ -79,6 +81,7 @@ const DEFAULTS: Settings = {
   input: 'mic',
   micDeviceId: '',
   pinnedHz: null,
+  squelchDb: null,
   noise: 0,
   qsb: 0,
   qrm: 0,

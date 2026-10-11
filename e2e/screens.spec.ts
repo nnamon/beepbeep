@@ -29,7 +29,8 @@ for (const theme of ['dark', 'light'] as const) {
       );
       await page.goto(`./#/${route}`);
       await page.waitForTimeout(600);
-      const wide = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      // Against the device width: a phone zooms out to fit a page that overflows, so innerWidth grows with it.
+      const wide = (await page.evaluate(() => document.documentElement.scrollWidth)) - page.viewportSize()!.width;
       await page.screenshot({ path: `test-results/screens/${info.project.name}-${theme}-${name}.png`, fullPage: true });
       expect(errors).toEqual([]);
       expect(wide).toBeLessThanOrEqual(1);
@@ -100,7 +101,7 @@ for (const theme of ['dark', 'light'] as const) {
     await seed(page);
     await page.reload();
     await page.waitForTimeout(800);
-    const wide = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    const wide = (await page.evaluate(() => document.documentElement.scrollWidth)) - page.viewportSize()!.width;
     await page.screenshot({ path: `test-results/screens/${info.project.name}-${theme}-progress-data.png`, fullPage: true });
     await page.getByRole('radio', { name: 'Sending' }).click();
     await page.screenshot({ path: `test-results/screens/${info.project.name}-${theme}-progress-data-tx.png`, fullPage: false });

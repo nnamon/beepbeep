@@ -10,7 +10,7 @@
 import { tokenOf } from '../morse/code';
 import { kmeans2 } from './kmeans';
 import { gapClasses } from './breaks';
-import { LIVE, settleOver } from './settle';
+import { LIVE, settleOver, type Kept } from './settle';
 
 export interface DecodedMark {
   start: number;
@@ -35,6 +35,11 @@ export interface DecodedChar {
 export type DecoderOutput =
   | { kind: 'char'; char: DecodedChar }
   | { kind: 'space'; t: number; gap: number };
+
+/** A click or glitch far shorter than a dit (a key's thump, a contact bounce): not a mark. */
+export function isGlitch(duration: number, dit: number): boolean {
+  return duration < Math.max(0.008, 0.25 * dit);
+}
 
 export interface DecoderOptions {
   /** Expected character speed, to start the estimates. */
@@ -145,11 +150,13 @@ export class Decoder {
    * Decodes marks again from a learned model: the second pass at the end of an
    * over, so characters keyed before the fist was learned come out right too.
    */
-  static redecode(model: DecoderModel, marks: { start: number; end: number }[], until?: number): DecoderOutput[] {
+  static redecode(model: DecoderModel, marks: { start: number; end: number }[], until?: number, keep?: Kept[], full = false): DecoderOutput[] {
     // The whole-over search (settle.ts): per-letter tempo, the fist refitted
     // from the reading, and a light language model for what timing leaves open.
-    // While an over is still open (`until`), a quicker search: it runs on every letter.
-    const settled = settleOver(marks, model, until, until === undefined ? {} : LIVE);
+    // While an over is still open (`until`), a quicker search: it runs on every
+    // letter (`full` asks for the full one anyway). `keep`: letters already
+    // written down, which the reading must begin with.
+    const settled = settleOver(marks, model, until, { ...(until === undefined || full ? {} : LIVE), keep });
     if (settled.length || !marks.length) return settled;
     // Should the search ever come back empty, the live reading stands.
     return Decoder.greedy(model, marks, until);
@@ -212,8 +219,7 @@ export class Decoder {
     this.down = false;
     const d = t - this.downAt;
     this.lastUp = t;
-    // Ignore clicks and glitches far shorter than a dit.
-    if (d < Math.max(0.008, 0.25 * this.dit)) return [];
+    if (isGlitch(d, this.dit)) return [];
     // A very long mark is a tuning carrier or a stuck key, not a character.
     if (d > Math.max(1.2, 5 * this.dah)) {
       this.pending = [];

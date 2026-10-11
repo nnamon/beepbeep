@@ -44,6 +44,7 @@ export async function startMic(): Promise<MicInfo | null> {
     signal.info = info;
     signal.micOn = true;
     if (settings.pinnedHz) engine.command({ type: 'pin', hz: settings.pinnedHz });
+    if (settings.squelchDb) engine.command({ type: 'squelch', db: settings.squelchDb });
     unsub?.();
     unsub = engine.onEvents((events) => {
       for (const e of events) {

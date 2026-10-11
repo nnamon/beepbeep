@@ -130,11 +130,13 @@
         <Segmented label="Period" bind:value={days} options={[{ value: 7, label: '7 days' }, { value: 30, label: '30 days' }]} />
       </div>
     </div>
-    <p class="muted small">
-      {heatOf === 'rx' ? 'Characters you copied' : 'Characters you sent, as the decoder received them'}, last {days} days. Stronger colour
-      is more accurate. Blank cells have none yet.
+    <div class="note">
+      <p class="muted small">
+        {heatOf === 'rx' ? 'Characters you copied' : 'Characters you sent, as the decoder received them'}, last {days} days. Stronger colour
+        is more accurate. Blank cells have none yet.
+      </p>
       {#if charRows.length}<button type="button" class="tbtn" onclick={() => (charTable = !charTable)}>{charTable ? 'Heatmap' : 'Table'}</button>{/if}
-    </p>
+    </div>
     {#if charTable && charRows.length}
       <!-- A region that scrolls sideways must take keyboard focus (WCAG 2.1.1). -->
       <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -315,14 +317,21 @@
     flex-wrap: wrap;
   }
 
+  .note {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--s-2);
+  }
+
   .tbtn {
+    flex: none;
     border: 0;
     background: none;
     color: var(--muted);
     font-size: var(--size-s);
     text-decoration: underline;
     padding: 0;
-    margin-left: var(--s-1);
     min-height: 32px;
   }
 

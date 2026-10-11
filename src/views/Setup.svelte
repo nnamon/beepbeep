@@ -3,6 +3,7 @@
   import Button from '../ui/Button.svelte';
   import Segmented from '../ui/Segmented.svelte';
   import TokenText from '../ui/TokenText.svelte';
+  import SampleRecorder from '../ui/SampleRecorder.svelte';
   import { engine } from '../lib/audio/engine';
   import { LiveDecoder, type InputSource } from '../lib/audio/live';
   import { settings } from '../lib/state/settings.svelte';
@@ -32,6 +33,7 @@
   onDestroy(() => {
     if (poll) clearInterval(poll);
     calLive?.stop();
+    calUnsub?.();
   });
 
   async function refreshDevices() {
@@ -53,11 +55,32 @@
     engine.command({ type: 'pin', hz });
   }
 
+  /** Levels heard while calibrating: the tone over the room (while keyed) and the room. */
+  let calLevels: { rise: number[]; floor: number[] } = { rise: [], floor: [] };
+  let calUnsub: (() => void) | null = null;
+  let calPin = $state<number | null>(null);
+  let calLevelNote = $state('');
+
   async function calibrate() {
     if (settings.input === 'mic' && !signal.micOn) await micOn();
     calText = '';
     calNote = '';
+    calLevelNote = '';
+    calPin = null;
     cal = 'listening';
+    if (settings.input === 'mic') {
+      // Measure from scratch: an old squelch must not hide a quieter tone.
+      engine.command({ type: 'squelch', db: null });
+      calLevels = { rise: [], floor: [] };
+      calUnsub?.();
+      calUnsub = engine.onEvents((events) => {
+        for (const e of events) {
+          if (e.type !== 'status') continue;
+          if (e.keyDown) calLevels.rise.push(e.snr);
+          else calLevels.floor.push(e.floor);
+        }
+      });
+    }
     calLive?.stop();
     calLive = new LiveDecoder({
       source: sendInput(),
@@ -83,6 +106,8 @@
     // The second pass: decoded again with the whole calibration's timing.
     await calLive.settle();
     calLive.stop();
+    calUnsub?.();
+    calUnsub = null;
     calText = calLive.text;
     const mic = settings.input === 'mic';
     const vs = (calText.match(/V/g) ?? []).length;
@@ -103,7 +128,39 @@
     } else {
       calNote = `Heard ${calText || 'nothing clear'}. A V is di-di-di-dah: three short, one long. Keep the gaps inside a V shorter than the gaps between V's.`;
     }
+    if (mic) checkLevels(vs >= 2 && marks <= vs * 4 + 2);
     cal = 'done';
+  }
+
+  const median = (v: number[]) => [...v].sort((a, b) => a - b)[Math.floor(v.length / 2)];
+
+  /**
+   * How far the tone stood above the room while keyed. A good calibration sets
+   * the squelch at half that rise (9 to 20 dB): room sounds quieter than that
+   * never key. The locked tone is offered for pinning.
+   */
+  function checkLevels(good: boolean) {
+    if (calLevels.rise.length < 3) {
+      engine.command({ type: 'squelch', db: settings.squelchDb });
+      return;
+    }
+    const rise = Math.round(median(calLevels.rise));
+    const room = calLevels.floor.length ? Math.round(median(calLevels.floor)) : null;
+    const where = room === null ? '' : ` (room ${room} dBFS, tone ${room + rise} dBFS)`;
+    if (good) {
+      settings.squelchDb = Math.max(9, Math.min(20, Math.round(rise / 2)));
+      calLevelNote = `Tone ${rise} dB over the room${where}. Squelch set to ${settings.squelchDb} dB: room sounds quieter than that are ignored.`;
+    } else {
+      calLevelNote = `Tone ${rise} dB over the room${where}. Squelch left at ${settings.squelchDb ? `${settings.squelchDb} dB` : 'the default'}.`;
+    }
+    if (rise < 15) calLevelNote += ' That is weak: turn the sidetone up or bring the mic closer.';
+    engine.command({ type: 'squelch', db: settings.squelchDb });
+    if (good && signal.pitch && (!settings.pinnedHz || Math.abs(settings.pinnedHz - signal.pitch) > 10)) calPin = Math.round(signal.pitch);
+  }
+
+  function clearSquelch() {
+    settings.squelchDb = null;
+    engine.command({ type: 'squelch', db: null });
   }
 
   // Drawn at the container's pixel width so the axis text stays 13 px.
@@ -218,7 +275,9 @@
           <span class="muted">
             {#if settings.pinnedHz}Pinned at <span class="num">{settings.pinnedHz} Hz</span>
               <Button kind="quiet" onclick={() => pin(null)}>Unpin</Button>
-            {:else if signal.pitch}Locked at <span class="num">{Math.round(signal.pitch)} Hz</span>{:else}Searching 300–1200 Hz{/if}
+            {:else if signal.pitch}Locked at <span class="num">{Math.round(signal.pitch)} Hz</span>
+              <Button kind="quiet" onclick={() => pin(Math.round(signal.pitch ?? 0))}>Pin {Math.round(signal.pitch)} Hz</Button>
+            {:else}Searching 300–1200 Hz{/if}
           </span>
         </div>
         <div class="spec-wrap" bind:clientWidth={specWidth}>
@@ -243,9 +302,16 @@
           {#each [400, 600, 800, 1000, 1200] as t (t)}<text x={xOf(t)} y={H - 4} class="tick" text-anchor="middle">{t}</text>{/each}
         </svg>
         </div>
-        <p class="muted small">Click the spectrum to pin a tone. Level {Math.round(signal.level)} dBFS, signal {Math.round(signal.snr)} dB over noise.</p>
+        <div class="row between">
+          <p class="muted small">
+            Level {Math.round(signal.level)} dBFS, signal {Math.round(signal.snr)} dB over noise.{#if settings.squelchDb}
+              Squelch {settings.squelchDb} dB, from calibration.{/if}
+          </p>
+          {#if settings.squelchDb}<Button kind="quiet" onclick={clearSquelch}>Clear squelch</Button>{/if}
+        </div>
       </div>
     {/if}
+    {#if __DEBUG__}<SampleRecorder />{/if}
   {/if}
 
   <div class="block">
@@ -256,6 +322,13 @@
     {/if}
     {#if calText}<TokenText tokens={textTokens(calText).map((t) => ({ t }))} size="l" />{/if}
     {#if calNote}<p>{calNote}</p>{/if}
+    {#if calLevelNote}<p>{calLevelNote}</p>{/if}
+    {#if calPin}
+      <div class="row">
+        <Button kind="primary" onclick={() => { pin(calPin); calPin = null; }}>Pin {calPin} Hz</Button>
+        <span class="muted small">Listen only at your tone, so other sounds can't take over.</span>
+      </div>
+    {/if}
     <div><Button kind={cal === 'idle' ? 'primary' : 'secondary'} onclick={calibrate} disabled={cal === 'listening' || cal === 'settling'}>Calibrate</Button></div>
   </div>
 
@@ -263,7 +336,11 @@
     <h2>Notes</h2>
     <ul>
       <li>Put the mic within a metre of the radio or oscillator speaker. Use headphones for the app's own audio.</li>
-      <li>Audio stays on this device. Nothing is recorded or uploaded.</li>
+      {#if __DEBUG__}
+        <li>Debug server: samples you record are saved on the machine serving this page.</li>
+      {:else}
+        <li>Audio stays on this device. Nothing is recorded or uploaded.</li>
+      {/if}
       <li>LICW classes are private: LICW counts automated transcription as recording. Don't run the decoder during a class.</li>
       <li>On iPhone, keep BeepBeep in the foreground while it listens.</li>
     </ul>

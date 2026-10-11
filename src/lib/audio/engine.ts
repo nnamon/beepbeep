@@ -287,6 +287,10 @@ class AudioEngine {
         const waiters = this.spectrumWaiters;
         this.spectrumWaiters = [];
         for (const w of waiters) w({ hz: m.hz, db: m.db });
+      } else if (m.type === 'pcm' && this.recording) {
+        this.recording.chunks.push(m.data);
+        this.recording.t0 ??= m.t0;
+        if (m.last) this.recording.done?.();
       }
     };
     this.micNode = ctx.createMediaStreamSource(stream);
@@ -328,6 +332,37 @@ class AudioEngine {
 
   command(c: WorkletCommand) {
     this.worklet?.port.postMessage(c);
+  }
+
+  private recording: { chunks: Float32Array[]; t0: number | null; done?: () => void } | null = null;
+
+  /** Debug builds: records the raw microphone input the detector hears. */
+  startRecording() {
+    this.recording = { chunks: [], t0: null };
+    this.command({ type: 'record', on: true });
+  }
+
+  /** The recording, and the detector time of its first sample. */
+  stopRecording(): Promise<{ pcm: Float32Array; t0: number; sampleRate: number }> {
+    const rec = this.recording;
+    if (!rec || !this.worklet) {
+      this.recording = null;
+      return Promise.resolve({ pcm: new Float32Array(0), t0: 0, sampleRate: this.sampleRate });
+    }
+    return new Promise((resolve) => {
+      rec.done = () => {
+        this.recording = null;
+        const n = rec.chunks.reduce((a, c) => a + c.length, 0);
+        const pcm = new Float32Array(n);
+        let at = 0;
+        for (const c of rec.chunks) {
+          pcm.set(c, at);
+          at += c.length;
+        }
+        resolve({ pcm, t0: rec.t0 ?? 0, sampleRate: this.sampleRate });
+      };
+      this.command({ type: 'record', on: false });
+    });
   }
 
   spectrum(): Promise<{ hz: number[]; db: number[] }> {
