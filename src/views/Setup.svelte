@@ -4,6 +4,7 @@
   import Segmented from '../ui/Segmented.svelte';
   import TokenText from '../ui/TokenText.svelte';
   import SampleRecorder from '../ui/SampleRecorder.svelte';
+  import Icon from '../ui/Icon.svelte';
   import { engine } from '../lib/audio/engine';
   import { LiveDecoder, type InputSource } from '../lib/audio/live';
   import { settings } from '../lib/state/settings.svelte';
@@ -185,21 +186,9 @@
   const hi = $derived(spec.hz[spec.hz.length - 1] ?? 1500);
   const xOf = (hz: number) => ((hz - lo) / (hi - lo)) * W;
 
-  function clickSpectrum(e: MouseEvent) {
-    const svg = e.currentTarget as SVGSVGElement;
-    const r = svg.getBoundingClientRect();
-    const hz = lo + ((e.clientX - r.left) / r.width) * (hi - lo);
-    if (hz >= 300 && hz <= 1200) pin(Math.round(hz));
-  }
-
-  function keySpectrum(e: KeyboardEvent) {
-    const cur = Math.round(settings.pinnedHz ?? signal.pitch ?? 650);
-    const step = e.shiftKey ? 50 : 10;
-    if (e.key === 'ArrowRight' || e.key === 'ArrowUp') pin(Math.min(1200, cur + step));
-    else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') pin(Math.max(300, cur - step));
-    else if (e.key === 'Escape') pin(null);
-    else return;
-    e.preventDefault();
+  /** Moves the pinned pitch, within the band the detector searches. */
+  function setPitch(hz: number) {
+    if (Number.isFinite(hz)) pin(Math.max(300, Math.min(1200, Math.round(hz))));
   }
 
   const ON = (v: boolean | null) => (v === null ? 'not reported' : v ? 'on' : 'off');
@@ -270,32 +259,36 @@
 
     {#if signal.micOn}
       <div class="block">
-        <div class="row between">
-          <h2>Spectrum</h2>
-          <span class="muted">
-            {#if settings.pinnedHz}Pinned at <span class="num">{settings.pinnedHz} Hz</span>
-              <Button kind="quiet" onclick={() => pin(null)}>Unpin</Button>
-            {:else if signal.pitch}Locked at <span class="num">{Math.round(signal.pitch)} Hz</span>
-              <Button kind="quiet" onclick={() => pin(Math.round(signal.pitch ?? 0))}>Pin {Math.round(signal.pitch)} Hz</Button>
-            {:else}Searching 300–1200 Hz{/if}
-          </span>
+        <h2>Your tone</h2>
+        <div class="tone">
+          {#if settings.pinnedHz}
+            <div class="stepper">
+              <Button kind="secondary" label="5 Hz lower" onclick={() => setPitch((settings.pinnedHz ?? 600) - 5)}><Icon name="minus" size={18} /></Button>
+              <label class="hz">
+                <span class="sr">Pinned pitch</span>
+                <input
+                  class="num"
+                  type="number"
+                  inputmode="numeric"
+                  min="300"
+                  max="1200"
+                  step="1"
+                  value={settings.pinnedHz}
+                  onchange={(e) => setPitch(Number((e.currentTarget as HTMLInputElement).value))}
+                />
+                <span class="muted">Hz</span>
+              </label>
+              <Button kind="secondary" label="5 Hz higher" onclick={() => setPitch((settings.pinnedHz ?? 600) + 5)}><Icon name="plus" size={18} /></Button>
+            </div>
+            <Button kind="quiet" onclick={() => pin(null)}>Unpin</Button>
+          {:else}
+            <span class="muted">{#if signal.pitch}Heard at <span class="num">{Math.round(signal.pitch)} Hz</span>{:else}Searching 300–1200 Hz{/if}</span>
+            <Button kind={signal.pitch ? 'primary' : 'secondary'} onclick={() => setPitch(signal.pitch ?? 600)}>Pin {Math.round(signal.pitch ?? 600)} Hz</Button>
+          {/if}
         </div>
+        <p class="muted small">Pinned, the decoder listens only at that pitch. Key a few V's and pin what it hears, or set your sidetone's pitch here.</p>
         <div class="spec-wrap" bind:clientWidth={specWidth}>
-        <svg
-          class="spec"
-          viewBox="0 0 {W} {H}"
-          width={W}
-          height={H}
-          role="slider"
-          tabindex="0"
-          aria-label="Input spectrum. Click, or use arrow keys, to pin the tone."
-          aria-valuemin={300}
-          aria-valuemax={1200}
-          aria-valuenow={Math.round(settings.pinnedHz ?? signal.pitch ?? 650)}
-          aria-valuetext="{Math.round(settings.pinnedHz ?? signal.pitch ?? 650)} Hz"
-          onclick={clickSpectrum}
-          onkeydown={keySpectrum}
-        >
+        <svg class="spec" viewBox="0 0 {W} {H}" width={W} height={H} role="img" aria-label="Input spectrum, 200 to 1500 Hz">
           <rect x={xOf(300)} y="0" width={xOf(1200) - xOf(300)} height={H} class="band" />
           {#if path}<path d={path} class="line" />{/if}
           {#if signal.pitch}<line x1={xOf(signal.pitch)} x2={xOf(signal.pitch)} y1="0" y2={H} class="lock" />{/if}
@@ -409,6 +402,44 @@
     padding-left: var(--s-1);
   }
 
+  .tone {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-2);
+  }
+
+  .stepper {
+    display: flex;
+    align-items: center;
+    gap: var(--s-1);
+  }
+
+  .stepper :global(.btn) {
+    padding: 0 var(--s-1);
+  }
+
+  .hz {
+    display: flex;
+    align-items: baseline;
+    gap: var(--s-half);
+  }
+
+  .hz input {
+    width: 6ch;
+    text-align: center;
+    font-size: var(--size-l);
+  }
+
+  .sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
   .spec {
     display: block;
     box-sizing: border-box;
@@ -416,7 +447,6 @@
     height: 120px;
     border: var(--hairline) solid var(--line);
     border-radius: var(--radius);
-    cursor: crosshair;
   }
 
   .band {
