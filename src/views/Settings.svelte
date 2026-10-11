@@ -5,7 +5,8 @@
   import Slider from '../ui/Slider.svelte';
   import Toggle from '../ui/Toggle.svelte';
   import VoiceRecorder from '../ui/VoiceRecorder.svelte';
-  import { settings, resetSettings } from '../lib/state/settings.svelte';
+  import { effectiveMix, settings, resetSettings } from '../lib/state/settings.svelte';
+  import { areaOf } from '../lib/train/world';
   import { href } from '../lib/state/router.svelte';
   import { engine } from '../lib/audio/engine';
   import { voices } from '../lib/audio/speech';
@@ -53,6 +54,12 @@
   }
 
   // Desktop Chrome has navigator.vibrate but no motor; offer it on touch devices only.
+  const MIX_NAME = { asia: 'Asia-Pacific', europe: 'Europe', americas: 'the Americas', world: 'everywhere' } as const;
+  const mixNote = $derived(
+    settings.stationMix === 'auto'
+      ? `Auto: mostly ${MIX_NAME[effectiveMix()]}${areaOf(settings.you) ? ', from your callsign or region' : '; set your callsign to focus it'}.`
+      : `Mostly ${MIX_NAME[settings.stationMix]}, some from elsewhere.`,
+  );
   const canVibrate =
     typeof navigator !== 'undefined' && 'vibrate' in navigator && window.matchMedia('(pointer: coarse)').matches;
   const tone = () => void engine.playText('VVV', { charWpm: 20, pitch: settings.pitch });
@@ -74,6 +81,33 @@
       ]}
     />
     <p class="muted small">System uses Shack when the device is dark and Light when it is light. Paper is a warm cream for daylight.</p>
+  </div>
+
+  <div class="group">
+    <h2>Your station</h2>
+    <div class="station">
+      <label><span class="label">Callsign</span><input id="you-call" class="mono" bind:value={settings.you.call} autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="K1ABC" /></label>
+      <label><span class="label">Name</span><input id="you-name" class="mono" bind:value={settings.you.name} autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="TOM" /></label>
+      <label><span class="label">QTH</span><input id="you-qth" class="mono" bind:value={settings.you.qth} autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="BOSTON" /></label>
+      <label><span class="label">State, province or country</span><input id="you-region" class="mono" bind:value={settings.you.state} autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="MA, ON, JAPAN" /></label>
+      <label><span class="label">SKCC number</span><input id="you-skcc" class="mono" bind:value={settings.you.skcc} autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="Optional" /></label>
+    </div>
+    <p class="muted small">Used in QSOs and in the send drill's My station material. Send your region as you would on the air.</p>
+    <div class="field">
+      <span class="label">Stations you hear</span>
+      <Segmented
+        label="Stations you hear"
+        bind:value={settings.stationMix}
+        options={[
+          { value: 'auto', label: 'Auto' },
+          { value: 'asia', label: 'Asia-Pacific' },
+          { value: 'europe', label: 'Europe' },
+          { value: 'americas', label: 'Americas' },
+          { value: 'world', label: 'Worldwide' },
+        ]}
+      />
+    </div>
+    <p class="muted small">QSO stations and practice callsigns. {mixNote}</p>
   </div>
 
   <div class="group">
@@ -252,6 +286,36 @@
     flex-direction: column;
     gap: var(--s-4);
     max-width: 760px;
+  }
+
+  .station {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: var(--s-2);
+  }
+
+  .station label {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-half);
+    min-width: 0;
+  }
+
+  .station input {
+    min-height: var(--target);
+    padding: 0 var(--s-1);
+    border: var(--hairline) solid var(--muted);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--ink);
+    font-size: var(--size-m);
+    text-transform: uppercase;
+    width: 100%;
+  }
+
+  .station input::placeholder {
+    text-transform: none;
+    color: var(--muted);
   }
 
   .field {

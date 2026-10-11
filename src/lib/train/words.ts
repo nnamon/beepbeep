@@ -100,3 +100,6 @@ export function usesOnly(text: string, known: Set<string>): boolean {
 export function wordsFromKnown(list: readonly string[], known: Set<string>): string[] {
   return list.filter((w) => usesOnly(w, known));
 }
+
+/** Canadian provinces and territories, as sent in exchanges. */
+export const PROVINCES = ['ON', 'QC', 'BC', 'AB', 'MB', 'SK', 'NS', 'NB', 'NL', 'PE', 'YT', 'NT', 'NU'];

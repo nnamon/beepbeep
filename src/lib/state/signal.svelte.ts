@@ -1,5 +1,6 @@
 // What the signal bar shows: input level, tone lock, key state, speed.
 
+import { untrack } from 'svelte';
 import { engine, type MicInfo } from '../audio/engine';
 import { settings } from './settings.svelte';
 
@@ -19,8 +20,10 @@ export const signal = $state({
   lastKeyDown: 0,
   /** A short message such as a speed change, cleared after a moment. */
   notice: '',
-  /** A decoder is listening to the on-screen touch key: show the pad. */
+  /** A decoder is listening to the on-screen touch key: the pad is live. */
   touchKey: false,
+  /** Screens where you send are open: the pad stays in place (faded while not listening). */
+  touchArea: 0,
 });
 
 let noticeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -79,4 +82,17 @@ function micError(err: unknown): string {
   if (name === 'NotFoundError') return 'No microphone found.';
   if (name === 'NotReadableError') return 'Microphone in use by another app.';
   return (err as Error)?.message || 'Microphone failed to start.';
+}
+
+/**
+ * Call from a screen where you send (in an $effect): the touch key pad stays
+ * on screen while it is open, so it does not come and go, moving the layout,
+ * each time a decoder starts or stops. Returns the release.
+ */
+export function touchKeyArea(): () => void {
+  // Untracked: the calling effect must not depend on the count it changes.
+  untrack(() => signal.touchArea++);
+  return () => {
+    untrack(() => (signal.touchArea = Math.max(0, signal.touchArea - 1)));
+  };
 }

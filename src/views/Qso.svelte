@@ -8,8 +8,8 @@
   import InputHelp from '../ui/InputHelp.svelte';
   import { engine } from '../lib/audio/engine';
   import { LiveDecoder } from '../lib/audio/live';
-  import { settings, strict } from '../lib/state/settings.svelte';
-  import { signal, startMic } from '../lib/state/signal.svelte';
+  import { settings, strict, effectiveMix } from '../lib/state/settings.svelte';
+  import { signal, touchKeyArea, startMic } from '../lib/state/signal.svelte';
   import { href } from '../lib/state/router.svelte';
   import { QsoBot, FORMATS, type BotIdentity, type BotTurn, type Format, type Opener } from '../lib/qso/bot';
   import { parse } from '../lib/qso/parse';
@@ -23,6 +23,11 @@
   import { textTokens } from '../lib/util/text';
   import { randomSeed } from '../lib/util/random';
   import { keepAwake } from '../lib/util/wakelock';
+
+  // The touch key pad stays in place from the start of a QSO to its log.
+  $effect(() => {
+    if (stage !== 'setup') return touchKeyArea();
+  });
 
   type FieldKey = 'call' | 'rst' | 'name' | 'qth' | 'state' | 'skcc' | 'serial';
   const FIELDS: Record<Format, FieldKey[]> = {
@@ -74,6 +79,7 @@
       format,
       opener: format === 'pileup' ? 'you' : opener,
       you: { ...settings.you },
+      mix: effectiveMix(),
       wpm: format === 'sst' ? Math.min(botWpm, 20) : botWpm,
       seed: randomSeed(),
       crowd,
@@ -349,9 +355,10 @@
             <label><span class="label">Call</span><input class="mono" bind:value={settings.you.call} autocapitalize="characters" spellcheck="false" /></label>
             <label><span class="label">Name</span><input class="mono" bind:value={settings.you.name} autocapitalize="characters" spellcheck="false" /></label>
             <label><span class="label">QTH</span><input class="mono" bind:value={settings.you.qth} autocapitalize="characters" spellcheck="false" /></label>
-            <label><span class="label">State</span><input class="mono" bind:value={settings.you.state} autocapitalize="characters" spellcheck="false" maxlength="3" /></label>
+            <label><span class="label">Region</span><input class="mono" bind:value={settings.you.state} autocapitalize="characters" spellcheck="false" placeholder="MA, ON, JAPAN" /></label>
             {#if format === 'skcc'}<label><span class="label">SKCC nr</span><input class="mono" bind:value={settings.you.skcc} autocapitalize="characters" spellcheck="false" /></label>{/if}
           </div>
+          <p class="muted small">Saved for next time. Also in <a href={href('settings')}>Settings</a>, Your station.</p>
         </div>
         <p class="muted small">Band conditions are set in <a href={href('settings')}>Settings</a>.</p>
         <InputHelp />

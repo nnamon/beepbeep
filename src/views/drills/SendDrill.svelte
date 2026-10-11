@@ -13,9 +13,10 @@
   import { LiveDecoder } from '../../lib/audio/live';
   import { engine } from '../../lib/audio/engine';
   import { settings, strict } from '../../lib/state/settings.svelte';
-  import { signal, startMic } from '../../lib/state/signal.svelte';
+  import { signal, touchKeyArea, startMic } from '../../lib/state/signal.svelte';
   import { currentLevel, keepSend, playMarks, recordSend, saveSession, sendInput } from '../../lib/train/session';
-  import { items, type Material } from '../../lib/train/generate';
+  import { href } from '../../lib/state/router.svelte';
+  import { items, stationLine, type Material } from '../../lib/train/generate';
   import { analyseFist, type FistReport } from '../../lib/train/fist';
   import { compareCopy, describeIssue, oneNote, spacingIssues, type SendIssue } from '../../lib/train/scoring';
   import { buildSchedule } from '../../lib/morse/schedule';
@@ -24,9 +25,12 @@
   import { keepAwake } from '../../lib/util/wakelock';
   import type { DecodedChar } from '../../lib/decoder/decoder';
 
+  // The touch key pad stays in place while this screen is open.
+  $effect(() => touchKeyArea());
+
   type Stage = 'ready' | 'sending' | 'review';
 
-  let material = $state<Material>('words');
+  let material = $state<Material | 'station'>('words');
   let stage = $state<Stage>('ready');
   let prompt = $state('');
   let liveTokens = $state<Tok[]>([]);
@@ -50,9 +54,14 @@
   const startedAt = Date.now();
 
   function nextPrompt() {
+    const own = material === 'station' ? stationLine(rng, settings.you) : null;
+    if (own) {
+      prompt = own;
+      return;
+    }
     const known = new Set(currentLevel().known);
     const useKnown = material === 'characters' || material === 'groups' ? known : known.size >= 26 ? null : known;
-    const kind = material === 'characters' ? 'groups' : material;
+    const kind = material === 'characters' ? 'groups' : material === 'station' ? 'phrases' : material;
     const list = items(rng, kind, useKnown, kind === 'groups' ? 3 : 1);
     prompt = list.length ? list.join(' ') : items(rng, 'groups', known, 3).join(' ');
   }
@@ -232,8 +241,12 @@
           { value: 'words', label: 'Words' },
           { value: 'callsigns', label: 'Callsigns' },
           { value: 'phrases', label: 'Phrases' },
+          { value: 'station', label: 'My station' },
         ]}
       />
+      {#if material === 'station' && !settings.you.call.trim()}
+        <p class="muted">Set your callsign in <a href={href('settings')}>Settings</a>, Your station. Until then this sends practice phrases.</p>
+      {/if}
       <p class="muted">Send the text shown. Press Done or pause {settings.overTimeout} s to end the over.</p>
       <InputHelp />
     </div>

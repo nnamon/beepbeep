@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { TRACKS, KOCH_ORDER, LICW_BC1, LICW_BC2 } from './courses';
-import { callsign, items, fillPhrase } from './generate';
+import { callsign, items, fillPhrase, stationLine } from './generate';
 import { newStat, recordAnswer, pickNext, NEW_HEAT } from './srs';
 import { compareCopy, recoveryLength, spacingIssues, oneNote } from './scoring';
 import { analyseFist } from './fist';
@@ -127,5 +127,17 @@ describe('lesson advance', () => {
     expect(lessonOpenedBy(0.8)?.id).toBe('licw-bc1-2');
     settings.level.licw = TRACKS.licw.levels.at(-1)!.id;
     expect(lessonOpenedBy(1)).toBeNull();
+  });
+});
+
+describe('my station lines', () => {
+  it('builds sending practice from your own details', () => {
+    const rng = mulberry32(9);
+    const you = { call: '9v1ab', name: 'jose', qth: 'tampines', state: 'singapore', skcc: '' };
+    const lines = new Set(Array.from({ length: 300 }, () => stationLine(rng, you)!));
+    expect([...lines].every((l) => l.includes('9V1AB') || l.includes('JOSE') || l.includes('TAMPINES') || l.includes('SINGAPORE'))).toBe(true);
+    expect(lines).toContain('CQ CQ CQ DE 9V1AB 9V1AB K');
+    expect(lines).toContain('QTH TAMPINES SINGAPORE');
+    expect(stationLine(rng, { ...you, call: ' ' })).toBeNull();
   });
 });

@@ -6,10 +6,13 @@
   import { engine } from '../lib/audio/engine';
   import { LiveDecoder, type InputSource } from '../lib/audio/live';
   import { settings } from '../lib/state/settings.svelte';
-  import { signal, startMic, stopMic } from '../lib/state/signal.svelte';
+  import { signal, touchKeyArea, startMic, stopMic } from '../lib/state/signal.svelte';
   import { textTokens } from '../lib/util/text';
   import { sendInput, straightOnly } from '../lib/train/session';
   import { outputsToText } from '../lib/decoder/pipeline';
+
+  // The touch key pad stays in place while this screen is open.
+  $effect(() => touchKeyArea());
 
   let devices = $state<MediaDeviceInfo[]>([]);
   let spec = $state<{ hz: number[]; db: number[] }>({ hz: [], db: [] });

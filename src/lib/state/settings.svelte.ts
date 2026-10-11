@@ -2,6 +2,7 @@
 
 import type { TrackId } from '../train/courses';
 import type { InputSource } from '../audio/live';
+import { areaOf, type Mix } from '../train/world';
 
 export interface Settings {
   /** System follows the device: Shack when it is dark, Light when it is light. */
@@ -58,6 +59,8 @@ export interface Settings {
   autoTaper: boolean;
   /** App audio goes to headphones: the mic stays open while the app sends, for break-in. */
   headphones: boolean;
+  /** Where the stations you hear come from; auto works it out from your callsign or region. */
+  stationMix: 'auto' | 'asia' | 'europe' | 'americas' | 'world';
 }
 
 const DEFAULTS: Settings = {
@@ -96,6 +99,7 @@ const DEFAULTS: Settings = {
   chirp: false,
   autoTaper: false,
   headphones: false,
+  stationMix: 'auto',
 };
 
 const KEY = 'beepbeep.settings.v1';
@@ -143,4 +147,10 @@ export function resetSettings() {
 /** Strict mode only applies on the LICW track. */
 export function strict(): boolean {
   return settings.track === 'licw' && settings.licwStrict;
+}
+
+/** The station mix in effect: your choice, or from your callsign or region (worldwide if neither says). */
+export function effectiveMix(): Mix {
+  if (settings.stationMix !== 'auto') return settings.stationMix;
+  return areaOf(settings.you) ?? 'world';
 }

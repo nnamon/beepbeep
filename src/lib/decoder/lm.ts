@@ -8,6 +8,7 @@ import { ALL_TOKENS, tokenize } from '../morse/code';
 import { CHUNKS, COMMON_WORDS, JOBS, NAMES, PHRASES, QSO_WORDS, STATES, STATE_CITIES, RIGS, ANTENNAS, WEATHER } from '../train/words';
 import { callsign, fillPhrase } from '../train/generate';
 import { ENGLISH } from '../train/english';
+import { COUNTRIES, WORLD_REGIONS, station } from '../train/world';
 import { mulberry32, pick } from '../util/random';
 
 const SPACE = ' ';
@@ -21,19 +22,20 @@ export interface LanguageModel {
 function corpus(): string[] {
   const rng = mulberry32(73);
   const lines: string[] = [];
-  const call = () => callsign(rng, { dx: 0.2 });
+  // Callsigns from everywhere, so a 9V1, JA or DL call is as familiar as a K.
+  const call = () => callsign(rng, { mix: 'world' });
   const rst = () => pick(rng, ['599', '579', '559', '449', '5NN', '339', '569']);
-  const state = () => pick(rng, STATES);
-  const city = () => {
-    const s = pick(rng, Object.keys(STATE_CITIES));
-    return `${pick(rng, STATE_CITIES[s])} ${s}`;
-  };
+
   const num = (n: number) => Array.from({ length: n }, () => Math.floor(rng() * 10)).join('');
   for (let i = 0; i < 400; i++) lines.push(fillPhrase(rng, pick(rng, PHRASES)));
-  for (let i = 0; i < 300; i++) {
+  for (let i = 0; i < 400; i++) {
+    // Stations from everywhere: call, local name, city and region together.
+    const st = station(rng, 'world');
     const a = call();
-    const b = call();
-    const n = pick(rng, NAMES);
+    const b = st.call;
+    const n = st.name;
+    const city = () => `${st.qth} ${st.region}`;
+    const state = () => st.region;
     lines.push(
       pick(rng, [
         `CQ CQ DE ${a} ${a} K`,
@@ -124,6 +126,8 @@ function words(): Set<string> {
     // City names whole: SANTA FE must not make FE a word.
     ...Object.values(STATE_CITIES).flat().filter((c) => !c.includes(' ')),
     ...PHRASES.flatMap((p) => p.split(' ')).filter((w) => !w.includes('{')),
+    ...COUNTRIES.flatMap((c) => [...c.names, ...c.places.map((p) => p.city)]),
+    ...WORLD_REGIONS,
     'HW?', 'QRZ?', 'AGN?', '<AR>', '<SK>', '<BT>', '<KN>', '<BK>', 'EE', 'TEST', 'VVV', 'PARIS',
   ];
   lexicon = new Set(all);

@@ -16,18 +16,26 @@ test('decodes the keyboard straight key', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('beepbeep.settings.v1', JSON.stringify({ input: 'straight', sendWpm: 15, voice: 'off' })));
   await page.goto('./#/practice/live');
   await page.getByRole('button', { name: 'Start' }).click();
-  const dit = 80;
-  // K = dah dit dah, then pause; M = dah dah.
-  const send = async (pattern: string) => {
-    for (const el of pattern) {
-      await page.keyboard.down('Space');
-      await page.waitForTimeout(el === '.' ? dit : dit * 3);
-      await page.keyboard.up('Space');
-      await page.waitForTimeout(dit);
+  // K then M on Space, timed inside the page so test-runner load cannot stretch the gaps.
+  await page.evaluate(async () => {
+    const dit = 80;
+    const evs: [number, boolean][] = [];
+    let t = 0;
+    for (const letter of ['-.-', '--']) {
+      for (const el of letter) {
+        evs.push([t, true]);
+        t += el === '.' ? dit : dit * 3;
+        evs.push([t, false]);
+        t += dit;
+      }
+      t += dit * 2;
     }
-    await page.waitForTimeout(dit * 3);
-  };
-  await send('-.-');
-  await send('--');
+    const t0 = performance.now();
+    for (const [at, down] of evs) {
+      const wait = t0 + at - performance.now();
+      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+      document.body.dispatchEvent(new KeyboardEvent(down ? 'keydown' : 'keyup', { code: 'Space', key: ' ', bubbles: true }));
+    }
+  });
   await expect(page.getByLabel('Decoded sending')).toContainText('KM', { timeout: 5_000 });
 });

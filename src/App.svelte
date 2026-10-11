@@ -4,6 +4,7 @@
   import Icon from './ui/Icon.svelte';
   import VisualCue from './ui/VisualCue.svelte';
   import TouchKey from './ui/TouchKey.svelte';
+  import Logo from './ui/Logo.svelte';
   import SoundGate from './ui/SoundGate.svelte';
   import Guide from './views/Guide.svelte';
   import Practice from './views/Practice.svelte';
@@ -14,7 +15,8 @@
   import Setup from './views/Setup.svelte';
   import Reference from './views/Reference.svelte';
   import Specimen from './views/Specimen.svelte';
-  import { settings } from './lib/state/settings.svelte';
+  import { effectiveMix, settings } from './lib/state/settings.svelte';
+  import { setMix } from './lib/train/world';
   import { notify, signal } from './lib/state/signal.svelte';
   import { engine } from './lib/audio/engine';
 
@@ -23,6 +25,8 @@
     engine.setVolume(settings.volume);
     engine.muteWhilePlaying = !settings.headphones;
   });
+  // Practice callsigns come from the areas you hear most.
+  $effect(() => setMix(effectiveMix()));
 
   // Alt+Up / Alt+Down: receive speed. On touch screens the same is in Settings.
   function onKey(e: KeyboardEvent) {
@@ -40,11 +44,13 @@
     { id: 'progress', label: 'Progress' },
   ];
   const top = $derived(route.path[0] ?? 'practice');
+  // The pad stays put on every sending screen; it fades while nothing listens.
+  const showPad = $derived(settings.input === 'touch' && (signal.touchArea > 0 || signal.touchKey));
 </script>
 
-<div class="shell" class:keying={signal.touchKey}>
+<div class="shell" class:keying={showPad}>
   <header class="head">
-    <a class="mark" href={href('practice')}>BeepBeep</a>
+    <a class="mark" href={href('practice')}><Logo />BeepBeep</a>
     <span class="ver num" title="Version and build">v{__APP_VERSION__} · {__APP_BUILD__}</span>
     <nav class="nav" aria-label="Main">
       {#each tabs as t (t.id)}
@@ -94,7 +100,7 @@
 <svelte:window onkeydown={onKey} />
 
 {#if settings.visualCue}<VisualCue />{/if}
-{#if signal.touchKey}<TouchKey />{/if}
+{#if showPad}<TouchKey />{/if}
 
 <style>
   .shell {
@@ -113,6 +119,9 @@
   }
 
   .mark {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-1);
     font-size: var(--size-m);
     font-weight: var(--weight-strong);
     text-decoration: none;

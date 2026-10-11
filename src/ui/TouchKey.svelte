@@ -21,9 +21,11 @@
     };
   });
 
+  const live = $derived(signal.touchKey);
+
   function down(e: PointerEvent) {
     e.preventDefault();
-    if (pressed) return;
+    if (pressed || !live) return;
     try {
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     } catch {
@@ -45,9 +47,11 @@
     bind:this={pad}
     type="button"
     class="pad"
-    class:on={pressed || signal.keyDown}
+    class:on={live && (pressed || signal.keyDown)}
+    class:idle={!live}
     tabindex="-1"
-    aria-label="Touch key. Hold to send. Space also keys."
+    aria-disabled={!live}
+    aria-label={live ? 'Touch key. Hold to send. Space also keys.' : 'Touch key, waiting until the app listens.'}
     onpointerdown={down}
     onpointerup={up}
     onpointercancel={up}
@@ -55,7 +59,7 @@
     oncontextmenu={(e) => e.preventDefault()}
   >
     <span class="name">Key</span>
-    <span class="hint">Hold to send</span>
+    <span class="hint">{live ? 'Hold to send' : 'Waiting'}</span>
   </button>
 </div>
 
@@ -98,6 +102,12 @@
     -webkit-user-select: none;
     -webkit-touch-callout: none;
     -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Not listening: stays in place, faded, so nothing on the page moves. */
+  .pad.idle {
+    opacity: 0.4;
+    border-style: dashed;
   }
 
   .pad.on {

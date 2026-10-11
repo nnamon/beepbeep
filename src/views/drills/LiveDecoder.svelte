@@ -13,11 +13,14 @@
   import { LiveDecoder } from '../../lib/audio/live';
   import type { DecoderOutput } from '../../lib/decoder/decoder';
   import { settings, strict } from '../../lib/state/settings.svelte';
-  import { signal, startMic } from '../../lib/state/signal.svelte';
+  import { signal, touchKeyArea, startMic } from '../../lib/state/signal.svelte';
   import { analyseFist, type FistReport } from '../../lib/train/fist';
   import { oneNote } from '../../lib/train/scoring';
   import { keepAwake } from '../../lib/util/wakelock';
   import { keepSend, saveSession, sendInput } from '../../lib/train/session';
+
+  // The touch key pad stays in place while this screen is open.
+  $effect(() => touchKeyArea());
 
   let live: LiveDecoder | null = null;
   let running = $state(false);

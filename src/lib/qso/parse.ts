@@ -1,6 +1,14 @@
 // Reads a decoded over (possibly with copy errors) into QSO fields.
 
-import { STATES } from '../train/words';
+import { WORLD_REGIONS } from '../train/world';
+
+/** States, provinces and countries a station may send as its region. */
+export const REGION_SET: ReadonlySet<string> = new Set(WORLD_REGIONS);
+
+// Region codes that are also everyday words or prosigns (SK as in <SK>, ON as
+// in "FB ON UR ANT"): they count as a region only after QTH or in a bare SST
+// exchange, never on their own.
+const AMBIGUOUS = new Set(['SK', 'ON']);
 import { editDistance } from '../util/text';
 
 export interface Parsed {
@@ -53,7 +61,8 @@ export function words(text: string): string[] {
     .filter(Boolean);
 }
 
-export function parse(text: string): Parsed {
+/** `regions`: what counts as a state, province or country (add your own if it is not listed). */
+export function parse(text: string, regions: ReadonlySet<string> = REGION_SET): Parsed {
   const w = words(text);
   const p: Parsed = {
     words: w,
@@ -109,9 +118,12 @@ export function parse(text: string): Parsed {
           parts.push(w[j]);
           j++;
         }
+        // A region code straight after the city counts even if it is also a
+        // keyword or prosign (QTH REGINA SK).
+        if (parts.length && w[j] && regions.has(w[j]) && !regions.has(parts[parts.length - 1])) parts.push(w[j]);
         if (parts.length) {
           p.qth ??= parts.join(' ');
-          const st = parts.find((s) => STATES.includes(s));
+          const st = parts.find((s) => regions.has(s));
           if (st) p.state ??= st;
         }
       }
@@ -121,7 +133,7 @@ export function parse(text: string): Parsed {
       p.skcc = next()!;
     } else if (/^\d{1,4}$/.test(x) && (w[i - 1] === '5NN' || /^[1-5][9N][9N]$/.test(w[i - 1] ?? ''))) {
       p.serial ??= x.replace(/^0+(?=\d)/, '');
-    } else if (STATES.includes(x) && !p.state) {
+    } else if (regions.has(x) && !AMBIGUOUS.has(x) && !p.state) {
       p.state = x;
     } else if (x === 'RIG' && next()) {
       let j = i + 1;

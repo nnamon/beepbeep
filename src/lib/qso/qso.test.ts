@@ -154,3 +154,51 @@ describe('garbled sending', () => {
     expect(bot.hear('⁇ ⁇ E ⁇ T')[0].text).toBe('QRS PSE AGN?');
   });
 });
+
+describe('international stations', () => {
+  it('gives every station a call, city and region from one country', async () => {
+    const { makeIdentity } = await import('./bot');
+    const { COUNTRIES, countryOf } = await import('../train/world');
+    const { mulberry32 } = await import('../util/random');
+    const rng = mulberry32(42);
+    for (let i = 0; i < 600; i++) {
+      const s = makeIdentity(rng, 0, 'world');
+      const c = countryOf(s.call);
+      expect(c, s.call).not.toBeNull();
+      expect(c!.places.some((p) => p.city === s.qth && p.region === s.state), `${s.call} ${s.qth} ${s.state}`).toBe(true);
+      expect(COUNTRIES).toContain(c);
+    }
+  });
+
+  it('works out your area and weights the stations you hear', async () => {
+    const { areaOf, countryOf, MIXES } = await import('../train/world');
+    const { makeIdentity } = await import('./bot');
+    const { mulberry32 } = await import('../util/random');
+    expect(areaOf({ call: '9V1AB', state: '' })).toBe('asia');
+    expect(areaOf({ call: '', state: 'SINGAPORE' })).toBe('asia');
+    expect(areaOf({ call: 'DL1ABC', state: '' })).toBe('europe');
+    expect(areaOf({ call: 'K1ABC', state: '' })).toBe('americas');
+    expect(areaOf({ call: '', state: '' })).toBeNull();
+    const rng = mulberry32(7);
+    const counts = { asia: 0, europe: 0, americas: 0 };
+    const n = 2000;
+    for (let i = 0; i < n; i++) counts[countryOf(makeIdentity(rng, 0, 'asia').call)!.area]++;
+    for (const area of ['asia', 'europe', 'americas'] as const) {
+      expect(Math.abs(counts[area] / n - MIXES.asia[area]), area).toBeLessThan(0.04);
+    }
+  });
+
+  it('copies your region when it is a country, or one it does not list', () => {
+    for (const region of ['SINGAPORE', 'PENANG']) {
+      const bot = new QsoBot({ format: 'sst', opener: 'you', you: { ...ME, call: '9V1AB', name: 'JOSE', state: region }, wpm: 18, seed: 3 });
+      bot.hear('CQ SST DE 9V1AB');
+      bot.hear(`GE ${bot.active!.name} JOSE ${region}`);
+      expect(bot.copied, region).toMatchObject({ name: 'JOSE', state: region });
+    }
+  });
+
+  it('does not take the SK prosign for Saskatchewan', () => {
+    expect(parse('TNX FER QSO 73 TU <SK>').state).toBeNull();
+    expect(parse('QTH REGINA SK').state).toBe('SK');
+  });
+});

@@ -3,9 +3,9 @@
 // operator would, including AGN?, QRS and repairing a busted call.
 
 import { type Rng, mulberry32, pick } from '../util/random';
-import { callsign } from '../train/generate';
-import { ANTENNAS, JOBS, NAMES, RIGS, STATES, STATE_CITIES, WEATHER } from '../train/words';
-import { callDistance, missingPart, parse, type Parsed } from './parse';
+import { ANTENNAS, JOBS, RIGS, STATES, WEATHER } from '../train/words';
+import { station, type Mix } from '../train/world';
+import { REGION_SET, callDistance, missingPart, parse, type Parsed } from './parse';
 
 export type Format = 'ragchew' | 'licw' | 'skcc' | 'sst' | 'pota' | 'sota' | 'contest' | 'pileup';
 export type Opener = 'bot' | 'you';
@@ -81,17 +81,21 @@ export interface QsoOptions {
   seed?: number;
   /** Stations in a pileup. */
   crowd?: number;
+  /** Where stations come from (by your location). */
+  mix?: Mix;
 }
 
 type Stage = 'cq' | 'wait-cq' | 'answered' | 'exchange' | 'chat' | 'closing' | 'done';
 
-export function makeIdentity(rng: Rng, pitchOffset = 0): BotIdentity {
-  const state = pick(rng, Object.keys(STATE_CITIES));
+export function makeIdentity(rng: Rng, pitchOffset = 0, mix: Mix = 'world'): BotIdentity {
+  // A real-looking station from the areas you hear most: call, local name,
+  // city and the region it sends, all from one country.
+  const st = station(rng, mix);
   return {
-    call: callsign(rng, { dx: 0.15 }),
-    name: pick(rng, NAMES),
-    qth: pick(rng, STATE_CITIES[state]),
-    state,
+    call: st.call,
+    name: st.name,
+    qth: st.qth,
+    state: st.region,
     skcc: `${1000 + Math.floor(rng() * 38000)}${pick(rng, ['', '', 'C', 'T', 'S'])}`,
     rig: pick(rng, RIGS),
     ant: pick(rng, ANTENNAS),
@@ -122,6 +126,7 @@ export class QsoBot {
   private rng: Rng;
   private wpm: number;
   private you: Partial<Operator>;
+  private regions: ReadonlySet<string>;
   private last: BotTurn[] = [];
   private topics: ('rig' | 'wx' | 'age')[];
   private overs = 0;
@@ -134,9 +139,12 @@ export class QsoBot {
     this.rng = mulberry32(opts.seed ?? Date.now() & 0xffff);
     this.wpm = opts.format === 'sst' ? Math.min(opts.wpm, 20) : opts.wpm;
     this.you = opts.you;
+    // Your own region counts even when it is not on the list (a small country, a grid square).
+    const own = (opts.you.state ?? '').trim().toUpperCase();
+    this.regions = own && !REGION_SET.has(own) ? new Set([...REGION_SET, own]) : REGION_SET;
     const n = opts.format === 'pileup' ? Math.max(2, opts.crowd ?? 3) : 1;
     this.stations = Array.from({ length: n }, (_, i) =>
-      makeIdentity(this.rng, n === 1 ? 0 : Math.round((i - (n - 1) / 2) * 140 + (this.rng() - 0.5) * 60)),
+      makeIdentity(this.rng, n === 1 ? 0 : Math.round((i - (n - 1) / 2) * 140 + (this.rng() - 0.5) * 60), opts.mix ?? 'world'),
     );
     if (n === 1) this.active = this.stations[0];
     const topicPool: ('rig' | 'wx' | 'age')[] = ['rig', 'wx', 'age'];
@@ -169,7 +177,7 @@ export class QsoBot {
     if (!trimmed) return [];
     this.transcript.push({ from: 'you', who: this.you.call || 'you', text: trimmed });
     this.overs++;
-    const p = parse(trimmed);
+    const p = parse(trimmed, this.regions);
 
     // Mostly unreadable: ask for it again, slower, as a real operator would.
     const unknown = (trimmed.match(/\u2047/g) ?? []).length;
@@ -464,8 +472,8 @@ export class QsoBot {
     if (this.format === 'sst' && !p.name) {
       // SST exchange is bare: NAME STATE.
       const w = p.words.filter((x) => !['GE', 'GM', 'GA', 'TU', '73', 'SST', 'R'].includes(x) && !p.calls.includes(x));
-      const st = w.find((x) => STATES.includes(x));
-      const nm = w.find((x) => /^[A-Z]{2,8}$/.test(x) && !STATES.includes(x) && x !== this.active?.name);
+      const st = w.find((x) => this.regions.has(x));
+      const nm = w.find((x) => /^[A-Z]{2,8}$/.test(x) && !this.regions.has(x) && x !== this.active?.name);
       c.state = st ?? c.state;
       c.name = nm ?? c.name;
     }

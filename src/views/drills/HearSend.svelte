@@ -12,7 +12,7 @@
   import type { DecodedChar } from '../../lib/decoder/decoder';
   import { engine } from '../../lib/audio/engine';
   import { settings, strict } from '../../lib/state/settings.svelte';
-  import { signal, startMic } from '../../lib/state/signal.svelte';
+  import { signal, touchKeyArea, startMic } from '../../lib/state/signal.svelte';
   import { currentLevel, playMarks, recordSend, saveSession, sendInput, wait } from '../../lib/train/session';
   import { items } from '../../lib/train/generate';
   import { buildSchedule } from '../../lib/morse/schedule';
@@ -20,6 +20,9 @@
   import { compareCopy } from '../../lib/train/scoring';
   import { mulberry32, randomSeed } from '../../lib/util/random';
   import { keepAwake } from '../../lib/util/wakelock';
+
+  // The touch key pad stays in place while this screen is open.
+  $effect(() => touchKeyArea());
 
   const SET = 10;
   let material = $state<'characters' | 'words'>('characters');
