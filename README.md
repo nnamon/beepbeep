@@ -1,12 +1,12 @@
 # BeepBeep
 
-A CW trainer that runs in the browser. It decodes your key through the microphone, so any sidetone works: a transceiver, a practice oscillator, a keyer toy.
+CW trainer for the browser. It decodes your keying from the microphone, so it works with any sidetone source, such as a transceiver or a practice oscillator.
 
 **https://nnamon.github.io/beepbeep/**
 
-Desktop and phone browsers (Safari on iOS 16.4+, current Chrome on Android). Installs as an app and works offline. Progress stays in the browser.
+Runs in desktop and phone browsers (Safari on iOS 16.4+, current Chrome on Android). It can be installed as an app and works offline. Progress is stored in the browser.
 
-## What it does
+## Features
 
 | Area | Modes |
 | --- | --- |
@@ -22,31 +22,31 @@ Input is the microphone, an on-screen touch key for phones and tablets, or the k
 
 ## How decoding works
 
-No trained model: signal processing and a small statistical decoder, tuned against synthetic audio, simulated beginner keying and microphone recordings.
+Signal processing and a small statistical decoder; there is no trained network in the app. Parameters were tuned on synthetic audio, simulated beginner keying and microphone recordings.
 
-### Hearing the tone (`src/lib/dsp/detector.ts`, in an AudioWorklet)
+### Tone detection (`src/lib/dsp/detector.ts`, runs in an AudioWorklet)
 
-1. **Find it.** A peak-hold FFT (4096 points, every ~43 ms) picks the strongest keyed peak between 300 and 1200 Hz and locks to it, or uses the pitch pinned in Setup. Audio from the 2.5 s before the lock is replayed, so the first characters are not lost.
-2. **Listen only there.** A lock-in (I/Q) detector mixes the input down from that pitch and low-passes I and Q (2nd-order, cutoff about 4/dit: 50 Hz at 15 wpm). Its envelope, at 1 kHz, is the tone's level in a window about 100 Hz wide.
-3. **Loud enough.** Levels are in dB against the channel's noise floor, which follows the median level of the room in small steps (10 dB/s), so marks, voices and thumps barely move it. A key-down needs the envelope halfway (in dB) between the floor and the level of recent marks, and at least the squelch: 9 dB by default, or half the tone's rise over the room as measured by calibration. A key-up comes at 40% of that span, or 10 dB below the mark's own level, which ends a mark cleanly through room echo.
-4. **The room, not the key.** Two more lock-in channels, a few hundred hertz either side, watch the room. A key-down needs the tone to rise above its floor by 8 dB more than the room lifts them (when the room lifts them by 6 dB or more). Typing, a key's thump, a slammed door and a fan rise across the band; a sidetone rises only in its own channel.
-5. **Your tone, not a voice.** The tone channel's phase is compared with itself 4 ms earlier. A keyed tone turns at one fixed rate: its pitch offset from the lock, the same every mark. A key-down needs that steadiness, within 20 Hz of the lock until three marks are learned, then within 10 Hz of your pitch.
-6. **Each mark, as a whole.** When a mark ends, its pitch is measured over its steady middle (phase against itself 10 ms earlier, across the whole plateau), which pins it to a hertz or two. It must sit within 3 Hz of the pitch learned from your marks (4 Hz around a pinned pitch until three are in), with more allowance for short marks, whose pitch is known less exactly. A mark that fails is withdrawn. If several withdrawn marks agree on another pitch, the pin was off and that pitch is adopted. While a mark lasts, it ends once the pitch has left yours for 0.6 dit, so a voice carrying on after your dah is not added to it.
-7. **Your timbre, and a second ear.** A buzzer or square-wave oscillator has a strong third harmonic at exactly three times its pitch. If your accepted marks show one rising with the tone, every mark must carry it; voices and radios near your pitch rarely do. Then a second detector also listens at three times your pitch. Speech and radio voices crowd the fundamental far more than its harmonic, so where something covers the fundamental (it hears sound, but not your tone), marks heard on the harmonic count; where it hears silence or your tone, the fundamental decides. A pure-sine sidetone shows no harmonic, and both stay off.
-8. **Edges.** Each edge is timed where the envelope crosses half the mark's own amplitude (6 dB down), found by looking back up to 200 ms, so a mark keeps its length even when a key's thump delays the decision. A change has to hold for a short debounce. Marks shorter than a quarter dit are dropped as clicks.
+1. **Pitch search.** A peak-hold FFT (4096 points, about every 43 ms) finds the strongest keyed peak between 300 and 1200 Hz and locks to it. A pitch pinned in Setup is used instead. After a lock, the previous 2.5 s of audio is processed again so the first characters are kept.
+2. **Lock-in channel.** The input is mixed down from the locked pitch to I and Q, and both are low-passed (2nd order, cutoff about 4/dit, 50 Hz at 15 wpm). The envelope, at 1 kHz, is the tone level in a band about 100 Hz wide.
+3. **Thresholds.** Levels are in dB above the channel's noise floor. The floor follows the median room level at up to 10 dB/s, so marks, voices and thumps move it very little. Key-down needs the envelope halfway (in dB) between the floor and the level of recent marks, and above the squelch: 9 dB by default, or half the tone's rise over the room measured at calibration. Key-up is at 40% of that span, or 10 dB below the mark's own level; the second rule ends marks in rooms with echo.
+4. **Room gate.** Two more lock-in channels, a few hundred hertz either side of the tone, measure the room. When the room rises 6 dB or more in them, key-down also needs the tone channel to rise 8 dB more than they do. Typing, key thumps, doors and fans raise all three channels; a sidetone raises only its own.
+5. **Pitch steadiness.** The tone channel's phase is compared with its value 4 ms earlier. A keyed tone gives a constant phase rate (its pitch offset from the lock), the same in every mark. Key-down needs that rate within 20 Hz of the lock until three marks are learned, then within 10 Hz of the learned pitch.
+6. **Whole-mark pitch check.** When a mark ends, its pitch is measured over its steady middle (phase against the value 10 ms earlier, across the plateau), to within 1–2 Hz. It must be within 3 Hz of the pitch learned from earlier marks (4 Hz around a pinned pitch until three marks are in), with a wider tolerance for short marks. Marks that fail are withdrawn. If several withdrawn marks agree on another pitch, the pin is taken to be wrong and that pitch is adopted. A mark in progress ends once the pitch has been off for 0.6 dit, so speech continuing after a dah is not added to it.
+7. **Third harmonic and second detector.** Buzzers and square-wave oscillators have a strong third harmonic. If accepted marks show the third harmonic rising with the tone, every later mark must have it; voices and radios near the same pitch rarely do. A second detector then runs at three times the pitch. Speech and radio voices mask the fundamental much more than the third harmonic, so when the fundamental channel hears sound that is not the tone, marks from the second detector are used; when it hears silence or the tone, the fundamental decides. A pure-sine sidetone has no third harmonic, and both stay off.
+8. **Edge timing.** Each edge is placed where the envelope crosses half the mark's amplitude (6 dB down), searching back up to 200 ms, so a key thump that delays the decision does not shorten the mark. A state change must hold for a short debounce. Marks shorter than a quarter dit are dropped as clicks.
 
-On recordings from a laptop microphone (`src/lib/decoder/samples.test.ts`): V's and CQs keyed in a quiet or noisy room read correctly, and talking near the laptop, which the earlier detector turned into 24 to 38 letters a take, now leaves one to three. Keying while typing, talking or a radio plays is the hard case: where another sound covers your tone at your pitch, those moments are lost, and those takes still read with errors. On synthetic room sounds (`src/lib/dsp/room.test.ts`), a fan and typing key nothing (a fan keyed 30 letters in 80 s before) and speech 5 letters in 80 s (58 before).
+On laptop microphone recordings (`src/lib/decoder/samples.test.ts`), V's and CQs keyed in a quiet or noisy room decode correctly. Talking near the laptop gave 24 to 38 false letters per take with the earlier detector and gives 1 to 3 now. Keying while typing, talking or with a radio playing still decodes with errors: where another sound covers the tone at its pitch, that stretch is lost. On synthetic room sounds (`src/lib/dsp/room.test.ts`), a fan and typing give no letters (a fan gave 30 letters in 80 s before) and speech gives 5 letters in 80 s (58 before).
 
-### Reading the marks (`src/lib/decoder/`)
+### Decoding (`src/lib/decoder/`)
 
-1. Dit and dah come from k-means on recent mark lengths. Gaps are learned on their own: the deepest valleys in the density of recent gaps (log time) separate gaps inside a letter, between letters and between words. Hand keying needs this, since its gaps do not follow its marks: on a touch key, short taps with long pauses between them.
-2. A pattern that is not a character is split at the gap inside it that stands out, as a listener would split two run-together letters.
-3. The whole over is decoded again the way an experienced operator copies a beginner (`settle.ts`). Every reading is scored on timing judged per letter (each letter gets its own tempo, drawn from a tempo curve across the over, with an allowance for hesitations that only ever lengthens a gap), plus a light language model: character trigrams over operating text, callsigns and English, and word-level evidence (real words, callsign shapes, numbers, repeats like CQ CQ). A beam search keeps the best readings; the fist is re-estimated from the best one and the over decoded again. Language only breaks ties the timing leaves open: cleanly sent wrong text decodes as sent. The search runs in a worker, and key events are timed by their own timestamps, so neither can disturb the timing being measured.
-4. While you key, the over is read again on every letter, but a word is written down once about 20 marks (five or six letters) follow it, read with the full search, and never changes after that (`stable.ts`); later readings must begin with it. Keying faster or slower later does not rewrite what you already saw. On the beginner scorecard this costs about 0.6 points of character error against reading the whole over again.
+1. Dit and dah lengths come from k-means on recent mark durations. Gap classes are learned separately: the deepest valleys in the density of recent gaps (log time) separate gaps inside a letter, between letters and between words. Hand keying needs this because its gaps do not scale with its marks; a touch key, for example, gives short taps with long pauses.
+2. A pattern that is not a valid character is split at its most prominent internal gap.
+3. The whole over is decoded again by a search (`settle.ts`). Each reading is scored on timing, with a tempo per letter drawn from a tempo curve across the over and an allowance for hesitations that only lengthens gaps, plus a light language model: character trigrams over operating text, callsigns and English, and word-level terms for real words, callsign shapes, numbers and repeats such as CQ CQ. A beam search keeps the best readings; the fist is re-estimated from the best one and the over is decoded again. The language model only decides between readings the timing scores about equally, so clearly sent wrong text decodes as sent. The search runs in a worker, and key events carry their own timestamps, so neither affects the timing measurement.
+4. While you key, the over is read again after every letter. A word is written once about 20 marks (five or six letters) follow it, using the full search, and does not change after that (`stable.ts`); later readings must start with it. A change of speed later in the over does not rewrite words already shown. On the beginner scorecard this costs about 0.6 points of character error against reading the whole over again.
 
-The same code runs in the tests, which decode synthetic audio with noise, fading, interference, static, chirp, drift, room echo and hand-sent timing (`src/lib/decoder/accuracy.test.ts`), synthetic room sounds (`src/lib/dsp/room.test.ts`), and simulated beginner keying: short dahs, rushed letters, hesitations, speeding up, touch-key pauses (`src/lib/decoder/newbie.test.ts`, which prints a scorecard for the end of the over and for what is shown while keying).
+Tests run the same code on synthetic audio with noise, fading, interference, static, chirp, drift, room echo and hand-sent timing (`src/lib/decoder/accuracy.test.ts`), on synthetic room sounds (`src/lib/dsp/room.test.ts`), and on simulated beginner keying with short dahs, rushed letters, hesitations, speeding up and touch-key pauses (`src/lib/decoder/newbie.test.ts`, which prints a scorecard for the end of the over and for what is shown while keying).
 
-A character shows once the silence after it is longer than a gap inside a character, about 1.7 dits. Measured from key-up (90th percentile, `src/lib/decoder/latency.test.ts`): 184 ms at 12 wpm, 153 ms at 15, 115 ms at 20, 81 ms at 30.
+A character is shown once the silence after it is longer than a gap inside a character, about 1.7 dits. Latency from key-up (90th percentile, `src/lib/decoder/latency.test.ts`): 184 ms at 12 wpm, 153 ms at 15, 115 ms at 20, 81 ms at 30.
 
 ## Development
 
@@ -66,7 +66,7 @@ Screenshots from the e2e run land in `test-results/screens/`, for desktop, iPhon
 
 Real recordings for the decoder go in `fixtures/recordings/` (see the README there). The test is skipped while it is empty.
 
-Microphone samples: a debug server records what the detector hears from a phone or laptop on the local network and saves it on the machine serving it.
+Microphone samples: a debug server records the raw microphone input from a phone or laptop on the local network, with the detector's output, and saves it on the machine running the server.
 
 ```sh
 # once: a self-signed certificate (browsers only allow the microphone over https)

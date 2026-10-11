@@ -149,7 +149,7 @@
 
       {#if !settings.guideSeen}
         <p class="first">
-          New here? The <a href={href('guide')}>guide</a> shows where to start, with or without a key.
+          The <a href={href('guide')}>guide</a> shows where to start, with or without a key.
           <button type="button" class="dismiss" onclick={() => (settings.guideSeen = true)}>Dismiss</button>
         </p>
       {/if}

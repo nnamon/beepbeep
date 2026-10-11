@@ -35,7 +35,7 @@
   let status = $state('');
   let files = $state<string[]>([]);
 
-  // The recordings that help most, in order. Short text: what matters is the room, not the copy.
+  // The recordings that help most, in order. The text is short; the room is what is being recorded.
   const TAKES: { id: string; title: string; how: string; kind: Kind; keyed: string; notes: string }[] = [
     { id: 't1', title: 'Quiet keying', how: 'Quiet room, your normal speed.', kind: 'keying', keyed: 'CQ CQ DE', notes: 'quiet room' },
     { id: 't2', title: 'Keying while talking', how: 'Talk out loud, or play a video with speech, while you key.', kind: 'keying-noise', keyed: 'CQ CQ DE', notes: 'talking' },
@@ -43,7 +43,7 @@
     { id: 't4', title: 'Talking only', how: 'No keying. About 20 s of talking near the laptop.', kind: 'noise', keyed: '', notes: 'talking' },
     { id: 't5', title: 'Weak tone', how: 'Sidetone turned down, or the key further from the laptop.', kind: 'keying', keyed: 'CQ CQ DE', notes: 'quieter sidetone' },
     { id: 't6', title: 'Pause and resume', how: 'VVV, wait about 5 s, then VVV again.', kind: 'keying', keyed: 'VVV VVV', notes: '5 s pause' },
-    { id: 'p1', title: 'Playback, anywhere', how: 'The app keys a known text through the speaker. Take the laptop or phone where it is noisy: a radio on, people talking, outdoors. No keying.', kind: 'playback', keyed: '', notes: '' },
+    { id: 'p1', title: 'Playback, anywhere', how: 'Keys a known text through the speaker. Record somewhere noisy, such as near a radio or people talking. No keying.', kind: 'playback', keyed: '', notes: '' },
   ];
   let take = $state<string | null>(null);
 

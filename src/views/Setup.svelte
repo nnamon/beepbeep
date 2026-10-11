@@ -149,9 +149,9 @@
       const gaps = inner !== null && inner >= 1.8 ? ` Gaps inside a letter run ${inner.toFixed(1)} dits; the standard is 1.` : '';
       calNote = `${vs} V. ${Math.round(wpm)} wpm${where}, saved as your sending speed.${gaps}`;
     } else if (mic && marks > (vs || 3) * 4 + 2) {
-      calNote = 'The tone is breaking up. Lower the sidetone volume, move the mic, or use a wired mic.';
+      calNote = 'Tone breaking up. Lower the sidetone volume, move the mic or use a wired mic.';
     } else {
-      calNote = `Heard ${calText || 'nothing clear'}. A V is di-di-di-dah: three short, one long. Keep the gaps inside a V shorter than the gaps between V's.`;
+      calNote = `Heard ${calText || 'nothing clear'}. V is di-di-di-dah. Gaps inside a V should be shorter than gaps between V's.`;
     }
     if (mic) checkLevels(vs >= 2 && marks <= vs * 4 + 2);
     cal = 'done';
@@ -174,11 +174,11 @@
     const where = room === null ? '' : ` (room ${room} dBFS, tone ${room + rise} dBFS)`;
     if (good) {
       settings.squelchDb = Math.max(9, Math.min(20, Math.round(rise / 2)));
-      calLevelNote = `Tone ${rise} dB over the room${where}. Squelch set to ${settings.squelchDb} dB: room sounds quieter than that are ignored.`;
+      calLevelNote = `Tone ${rise} dB over the room${where}. Squelch set to ${settings.squelchDb} dB.`;
     } else {
       calLevelNote = `Tone ${rise} dB over the room${where}. Squelch left at ${settings.squelchDb ? `${settings.squelchDb} dB` : 'the default'}.`;
     }
-    if (rise < 15) calLevelNote += ' That is weak: turn the sidetone up or bring the mic closer.';
+    if (rise < 15) calLevelNote += ' Weak. Turn the sidetone up or move the mic closer.';
     engine.command({ type: 'squelch', db: settings.squelchDb });
     if (good && signal.pitch && (!settings.pinnedHz || Math.abs(settings.pinnedHz - signal.pitch) > 10)) calPin = Math.round(signal.pitch);
   }
@@ -273,7 +273,7 @@
           <div><dt class="label">Sample rate</dt><dd class="num">{signal.info.sampleRate} Hz</dd></div>
         </dl>
         {#if signal.info.echoCancellation || signal.info.noiseSuppression || signal.info.autoGainControl}
-          <p class="warn">The browser kept voice processing on. Tones may break up; calibration below will show it.</p>
+          <p class="warn">The browser kept voice processing on. Tones may break up.</p>
         {/if}
         {#if signal.info.bluetooth}
           <p class="warn">Bluetooth input: audio drops to call quality. Use wired earphones or the built-in mic.</p>
@@ -310,7 +310,7 @@
             <Button kind={signal.pitch ? 'primary' : 'secondary'} onclick={() => setPitch(signal.pitch ?? 600)}>Pin {Math.round(signal.pitch ?? 600)} Hz</Button>
           {/if}
         </div>
-        <p class="muted small">Pinned, the decoder listens only at that pitch. Key a few V's and pin what it hears, or set your sidetone's pitch here.</p>
+        <p class="muted small">Pinned, the decoder listens only at this pitch. Key a few V's and pin the pitch heard, or enter your sidetone's pitch.</p>
         <div class="spec-wrap" bind:clientWidth={specWidth}>
         <svg class="spec" viewBox="0 0 {W} {H}" width={W} height={H} role="img" aria-label="Input spectrum, 200 to 1500 Hz">
           <rect x={xOf(300)} y="0" width={xOf(1200) - xOf(300)} height={H} class="band" />
@@ -343,7 +343,7 @@
     {#if calPin}
       <div class="row">
         <Button kind="primary" onclick={() => { pin(calPin); calPin = null; }}>Pin {calPin} Hz</Button>
-        <span class="muted small">Listen only at your tone, so other sounds can't take over.</span>
+        <span class="muted small">Decode only at this pitch.</span>
       </div>
     {/if}
     <div class="row">

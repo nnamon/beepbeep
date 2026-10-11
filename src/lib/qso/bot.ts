@@ -12,7 +12,7 @@ export type Opener = 'bot' | 'you';
 
 export const FORMATS: { id: Format; name: string; exchange: string }[] = [
   { id: 'ragchew', name: 'Ragchew', exchange: 'RST, name, QTH, then rig, antenna, weather' },
-  { id: 'licw', name: 'LICW QSO Protocol', exchange: 'Calls, RST, name and QTH repeated, a cordial close' },
+  { id: 'licw', name: 'LICW QSO Protocol', exchange: 'Calls, RST, name and QTH, each repeated, then 73' },
   { id: 'skcc', name: 'SKCC', exchange: 'RST, QTH, name, SKCC number' },
   { id: 'sst', name: 'K1USN SST', exchange: 'Name and state, 20 WPM or slower' },
   { id: 'pota', name: 'POTA', exchange: 'Call, 5NN, state' },

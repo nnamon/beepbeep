@@ -80,7 +80,7 @@
         { value: 'paper', label: 'Paper' },
       ]}
     />
-    <p class="muted small">System uses Shack when the device is dark and Light when it is light. Paper is a warm cream for daylight.</p>
+    <p class="muted small">System uses Shack when the device is dark and Light when it is light. Paper is cream, for daylight.</p>
   </div>
 
   <div class="group">

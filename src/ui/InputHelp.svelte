@@ -13,7 +13,7 @@
       Bluetooth input: audio drops to call quality. Wired earphones or the built-in mic decode better.
     {:else}
       Input: microphone. Use headphones so the mic doesn't pick up the app.
-      No key with you? <button type="button" class="switch" onclick={() => (settings.input = 'touch')}>Use the touch key</button>
+      No key: <button type="button" class="switch" onclick={() => (settings.input = 'touch')}>Use the touch key</button>
     {/if}
   {:else if settings.input === 'touch'}
     Touch key: hold the pad at the bottom of the screen. Space works too.

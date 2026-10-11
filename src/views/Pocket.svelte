@@ -34,7 +34,7 @@
     { id: 'characters', name: 'Characters', count: level.known.length, note: level.name },
     { id: 'chunks', name: 'Chunks', count: wordsFromKnown(CHUNKS, known).length, note: 'CQ, DE, TU, 5NN, -ING' },
     { id: 'words', name: 'Words', count: wordsFromKnown([...QSO_WORDS, ...COMMON_WORDS], known).length, note: 'Operating and common words' },
-    { id: 'callsigns', name: 'Callsigns', count: null, note: 'Generated, realistic prefixes' },
+    { id: 'callsigns', name: 'Callsigns', count: null, note: 'Generated, with real prefixes' },
     { id: 'phrases', name: 'Phrases', count: null, note: 'Whole QSO lines' },
     { id: 'custom', name: 'Custom', count: custom.chars.length + custom.words.length, note: 'Your own set' },
   ]);
