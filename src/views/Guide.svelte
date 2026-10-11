@@ -13,13 +13,14 @@
     { when: 'No key, but you want to send', go: 'Touch key', to: ['setup'], what: 'Set Input to Touch key. A pad appears at the bottom of the screen while a drill listens.' },
     { when: 'Key, rig or CW toy nearby', go: 'Setup', to: ['setup'], what: 'Start the mic and send V V V to calibrate. Then Practice, Send.' },
     { when: 'At a computer, no key', go: 'Setup', to: ['setup'], what: 'Keyboard straight key (hold Space) or paddles ([ and ], or Z and X).' },
+    { when: 'New to contacts', go: 'Learn QSOs', to: ['qso', 'learn'], what: 'Guided lessons: answer a CQ, swap reports, sign off. Checked as you go.' },
     { when: 'Ready for contacts', go: 'QSO', to: ['qso'], what: 'Pick a format; a simulated station answers your overs.' },
   ];
 
   const AREAS = [
     { name: 'Practice', to: ['practice'], what: 'Your course (Koch or LICW) and lesson, the session plan, and every drill: sending drills on the left, receive drills on the right.' },
     { name: 'Pocket', to: ['pocket'], what: 'Phone rounds by ear: characters, chunks, words, callsigns, phrases, or your own set.' },
-    { name: 'QSO', to: ['qso'], what: 'A simulated station: ragchew, LICW, SKCC, SST, POTA, SOTA, contest or pileup.' },
+    { name: 'QSO', to: ['qso'], what: 'Learn QSOs, guided lessons on each part of a contact; and a simulated station: ragchew, LICW, SKCC, SST, POTA, SOTA, contest or pileup.' },
     { name: 'Progress', to: ['progress'], what: 'Speeds over time, accuracy by character, spacing slips, recent sends, QSO log.' },
     { name: 'Settings', to: ['settings'], what: 'Speeds, pitch, spoken answers, band conditions, input, export and import.' },
     { name: 'Signal bar', to: ['setup'], what: 'Top right, or under the header on a phone. Shows the input, tone and key light. Select it to open Setup.' },

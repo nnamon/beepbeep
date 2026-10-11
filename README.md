@@ -46,7 +46,7 @@ Progress: speeds over time and accuracy by character.
 | Both | Hear it, send it; QSO simulator |
 | Receive | Copy drill, familiarity (LICW BC1), TTR drill, sound surfing (IFR), head copy, callsign and word sprint |
 | Pocket | Phone quiz rounds by ear: characters, chunks, words, callsigns, phrases, custom sets |
-| QSO | Ragchew, LICW QSO protocol, SKCC, K1USN SST, POTA, SOTA, contest, DX pileup |
+| QSO | Learn QSOs: guided lessons on each part of a contact, typed or keyed, checked as you go. Then the simulator: ragchew, LICW QSO protocol, SKCC, K1USN SST, POTA, SOTA, contest, DX pileup |
 | LICW exercises | The syllabus exercises for BC1 to BC3, INT 1 to 3, ADV 1 to 3, TTR+ and OverLearn: familiarity, recognition, TTR, VET and VST, groups, Speed Racer, CW-voice-CW and more, at each stage's speeds, with notes on how to do each one |
 
 Practice opens with today's session: a checklist for your lesson in a set order (new sounds, then naming them fast, then copying, then sending), sized to your session length. Steps tick themselves as you do them.

@@ -352,6 +352,7 @@
     gap: var(--s-2);
     max-width: 560px;
     margin: 0 auto;
+
     /* Roughly the screen less the header, its padding and the notch and home bar. */
     min-height: calc(100dvh - 200px - var(--safe-top) - var(--safe-bottom));
   }

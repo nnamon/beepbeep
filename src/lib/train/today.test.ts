@@ -3,7 +3,7 @@ import { todaySteps, type TodayInput } from './today';
 import { CLASSES, classById, type ClassId } from './classes';
 
 const base: TodayInput = { track: 'licw', stage: 'bc1', fresh: ['T', 'I', 'N'], weak: [], added: ['T', 'I', 'N'], sessionMinutes: 15, day: 0 };
-const ROUTES = new Set(['practice/familiarity', 'practice/copy/groups', 'practice/ttr', 'practice/hear-send', 'practice/ifr', 'pocket/round/characters', 'qso']);
+const ROUTES = new Set(['practice/familiarity', 'practice/copy/groups', 'practice/ttr', 'practice/hear-send', 'practice/ifr', 'pocket/round/characters', 'qso', 'qso/learn/whole']);
 
 describe("today's session", () => {
   it('every step on every stage and day opens something real', () => {

@@ -323,6 +323,7 @@
 {#if stage === 'setup'}
   <section class="setup">
     <h1>QSO</h1>
+    <p class="learn">Learn QSOs step by step first: <a href={href('qso', 'learn')}>guided lessons</a> on each part of a contact, checked as you go.</p>
     <div class="grid">
       <div class="col field">
         <h3>Format</h3>

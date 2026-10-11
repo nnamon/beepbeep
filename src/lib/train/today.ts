@@ -72,7 +72,7 @@ function later(stage: ClassId, i: TodayInput): Step[] {
         { id: 'fam', title: 'Familiarity, QSO words', why: 'The words of a QSO as single sounds.', minutes: 3, to: ex(stage, 'fam-words'), modes: [mode(stage, 'fam-words')] },
         { id: 'calls', title: 'Call signs', why: 'Every QSO starts with copying a call.', minutes: 3, to: ex(stage, 'callsigns'), modes: [mode(stage, 'callsigns')] },
         { id: 'contests', title: 'Contest exchanges', why: 'Short, fast, and the same shape every time.', minutes: 3, to: ex(stage, 'contests'), modes: [mode(stage, 'contests')] },
-        { ...send, why: 'Put it together: an LICW protocol, SKCC or POTA contact.' },
+        { id: 'send', title: 'A guided QSO', why: 'Put it together: a whole contact, checked step by step.', minutes: 5, to: ['qso', 'learn', 'whole'], modes: ['qso-learn', 'qso'] },
         { id: 'copy', title: 'Copy, read back', why: 'Phrases on paper, checked at the end.', minutes: 3, to: ex(stage, 'copy'), modes: [mode(stage, 'copy')], optional: true },
       ];
     case 'ttrplus':

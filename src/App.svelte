@@ -10,6 +10,7 @@
   import Practice from './views/Practice.svelte';
   import Pocket from './views/Pocket.svelte';
   import Qso from './views/Qso.svelte';
+  import QsoLearn from './views/QsoLearn.svelte';
   import Progress from './views/Progress.svelte';
   import Settings from './views/Settings.svelte';
   import Setup from './views/Setup.svelte';
@@ -72,7 +73,7 @@
     {:else if top === 'pocket'}
       <Pocket />
     {:else if top === 'qso'}
-      <Qso />
+      {#if route.path[1] === 'learn'}<QsoLearn />{:else}<Qso />{/if}
     {:else if top === 'progress'}
       <Progress />
     {:else if top === 'settings'}

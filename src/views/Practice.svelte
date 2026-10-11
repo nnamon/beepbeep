@@ -130,6 +130,7 @@
     ] },
     { group: 'Both', items: [
       { id: 'hear-send', name: 'Hear it, send it', text: 'Copy a character or word, then send it.' },
+      { id: 'qso-learn', name: 'Learn QSOs', text: 'A guided lesson for each part of a contact, checked as you go.', href: href('qso', 'learn') },
       { id: 'qso', name: 'QSO simulator', text: 'Ragchew, SKCC, SST, POTA, contest or pileup with a simulated station.', href: href('qso') },
     ] },
     { group: 'Receive', items: [

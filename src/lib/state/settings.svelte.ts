@@ -83,6 +83,9 @@ export interface Settings {
   autoTaper: boolean;
   /** App audio goes to headphones: the mic stays open while the app sends, for break-in. */
   headphones: boolean;
+  /** Learn QSOs: how much of what to send is shown, and whether you key or type it. */
+  qsoHelp: 'text' | 'outline' | 'none';
+  qsoInput: 'key' | 'type';
   /** Where the stations you hear come from; auto works it out from your callsign or region. */
   stationMix: 'auto' | 'asia' | 'europe' | 'americas' | 'world';
 }
@@ -129,6 +132,8 @@ const DEFAULTS: Settings = {
   autoTaper: false,
   headphones: false,
   stationMix: 'auto',
+  qsoHelp: 'text',
+  qsoInput: 'key',
 };
 
 const KEY = 'beepbeep.settings.v1';
