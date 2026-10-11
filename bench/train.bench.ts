@@ -2,8 +2,10 @@
 // benchmark's training beds and writes src/lib/dsp/evidence-weights.json.
 //   pure: a sine sidetone, the fundamental's rise and steadiness
 //   rich: a tone with harmonics (square wave, buzzer), harmonics 1-5
-// Scenes vary pitch, speed, fist, mistuning and SNR so the models are not tied
-// to one setting. Reports ROC area on the held-out beds.
+// Scenes vary pitch (300-1200 Hz, the app's search range), speed (8-35 wpm),
+// fist, timbre, key thump, room reverberation, mistuning and SNR, so the
+// models are not tied to one operator's setup. Reports ROC area on the
+// held-out beds.
 //
 //   docker compose run --rm dev npm run bench -- train
 
@@ -19,7 +21,9 @@ import { trainMlp } from './lib/mlp';
 import { mlpLogit, type Mlp } from '../src/lib/dsp/evidence';
 
 const TEXTS = ['CQ CQ DE K1ABC K', 'VVV TNX FER CALL', 'NAME IS TOM QTH SINGAPORE', 'UR RST 579 579 73', 'PARIS PARIS DE 9V1XX'];
-const FISTNAMES = ['straight key, fair', 'newbie, rushed letters', 'newbie, hesitant', 'touch key, beginner', 'clean, 20 wpm (control)'];
+const FISTNAMES = ['straight key, fair', 'newbie, rushed letters', 'newbie, hesitant', 'touch key, beginner', 'clean, 20 wpm (control)', 'paddles, keyer'];
+/** Paddles through an electronic keyer: machine-timed elements, hand spacing between letters. */
+const KEYER = { name: 'paddles, keyer', wpm: 18, dah: 3, elem: 1, char: 3.4, word: 7.5, jitter: 0.01, gapJitter: 0.2, elemJitter: 0.01, perChar: 0, drift: 0, hesitate: 0.05 };
 const SNRS = [-6, -3, 0, 3, 6, 10, 15, 20, 30];
 
 export function benchBeds(): { name: string; samples: Float32Array }[] {
@@ -45,9 +49,10 @@ interface Scene {
 
 function scene(bed: { name: string; samples: Float32Array }, timbre: Timbre, snr: number, seed: number): Scene {
   const rng = mulberry32(seed);
-  const pitch = 450 + Math.floor(rng() * 400);
-  const fist = FISTS.find((f) => f.name === FISTNAMES[Math.floor(rng() * FISTNAMES.length)])!;
-  const wpm = 10 + Math.floor(rng() * 15);
+  // The app's whole search range of pitches, and speeds from a slow beginner to a quick operator.
+  const pitch = 300 + Math.floor(rng() * 900);
+  const fist = [...FISTS, KEYER].find((f) => f.name === FISTNAMES[Math.floor(rng() * FISTNAMES.length)])!;
+  const wpm = 8 + Math.floor(rng() * 28);
   const keying = { text: TEXTS[Math.floor(rng() * TEXTS.length)], fist: { ...fist, wpm }, seed };
   // Half the scenes with a key's thump at the edges, half in a reverberant room.
   const thump = rng() < 0.5 ? { level: -10 + rng() * 15 } : undefined;

@@ -19,6 +19,8 @@ export interface Fist {
   /** Relative spread of each element and each gap. */
   jitter: number;
   gapJitter: number;
+  /** Spread of gaps inside a letter, if not `gapJitter` (an electronic keyer times these exactly). */
+  elemJitter?: number;
   /** Relative spread of tempo from one letter to the next. */
   perChar: number;
   /** Tempo change from the start of the over to the end (0.4: 40% faster). */
@@ -85,7 +87,7 @@ export function keyText(text: string, f: Fist, seed: number): { start: number; e
     pendingSpace = false;
     const p = patternOf(tok)!;
     for (let i = 0; i < p.length; i++) {
-      if (i) t += f.elem * tempo * ln(f.gapJitter) * hes();
+      if (i) t += f.elem * tempo * ln(f.elemJitter ?? f.gapJitter) * (f.elemJitter === undefined ? hes() : 1);
       const len = (p[i] === '.' ? 1 : f.dah) * tempo * ln(f.jitter);
       out.push({ start: t, end: t + len });
       t += len;
