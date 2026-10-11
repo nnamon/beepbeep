@@ -5,12 +5,15 @@ import { readFileSync } from 'node:fs';
 
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
 
+// The commit a Pages build came from (Actions sets GITHUB_SHA); local builds say so.
+const build = (process.env.GITHUB_SHA ?? '').slice(0, 7) || 'local';
+
 // GitHub Pages serves the app under /beepbeep/; local builds use /.
 const base = process.env.BASE_PATH ?? '/';
 
 export default defineConfig({
   base,
-  define: { __APP_VERSION__: JSON.stringify(pkg.version) },
+  define: { __APP_VERSION__: JSON.stringify(pkg.version), __APP_BUILD__: JSON.stringify(build) },
   plugins: [
     svelte(),
     VitePWA({

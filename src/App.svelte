@@ -45,6 +45,7 @@
 <div class="shell" class:keying={signal.touchKey}>
   <header class="head">
     <a class="mark" href={href('practice')}>BeepBeep</a>
+    <span class="ver num" title="Version and build">v{__APP_VERSION__} · {__APP_BUILD__}</span>
     <nav class="nav" aria-label="Main">
       {#each tabs as t (t.id)}
         <a href={href(t.id)} class:on={top === t.id} aria-current={top === t.id ? 'page' : undefined}>{t.label}</a>
@@ -116,6 +117,13 @@
     font-weight: var(--weight-strong);
     text-decoration: none;
     letter-spacing: 0.01em;
+  }
+
+  .ver {
+    font-size: var(--size-s);
+    color: var(--muted);
+    margin-left: calc(-1 * var(--s-3));
+    white-space: nowrap;
   }
 
   .nav {
@@ -223,8 +231,13 @@
     }
 
     .head {
+      gap: var(--s-2);
       padding: var(--s-1) var(--s-2);
       padding-top: max(var(--s-1), env(safe-area-inset-top));
+    }
+
+    .ver {
+      margin-left: calc(-1 * var(--s-1));
     }
 
     .signal-strip {

@@ -3,7 +3,7 @@ import { svelte } from '@sveltejs/vite-plugin-svelte';
 
 export default defineConfig({
   plugins: [svelte()],
-  define: { __APP_VERSION__: JSON.stringify('test') },
+  define: { __APP_VERSION__: JSON.stringify('test'), __APP_BUILD__: JSON.stringify('test') },
   test: {
     include: ['src/**/*.test.ts'],
     environment: 'node',
