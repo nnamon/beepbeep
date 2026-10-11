@@ -13,12 +13,17 @@
 
   type Kind = 'noise' | 'keying' | 'keying-noise' | 'playback';
   type Hand = 'steady' | 'hand';
+  type PitchChoice = 'mine' | 'random';
 
   // Playback: the app keys a known text through the speaker while recording,
   // so the take carries its exact keying. Any place, no keying needed.
   let playText = $state('CQ CQ DE K1ABC K PARIS VVV');
   let playWpm = $state(15);
   let playHand = $state<Hand>('hand');
+  // Random: 400–1000 Hz, so the takes cover other people's sidetones, not just this one.
+  let playPitch = $state<PitchChoice>('mine');
+  /** The detector was pinned to the take's pitch; the user's pin goes back at stop. */
+  let repinned = false;
   let playback: { text: string; wpm: number; hand: Hand; pitch: number; seed: number; startCtx: number; recStartCtx: number; marks: { start: number; end: number }[] } | null = null;
 
   let kind = $state<Kind>('noise');
@@ -86,7 +91,13 @@
       // A second of the room first, then the text, then a second more.
       await new Promise((r) => setTimeout(r, 1000));
       if (!recording) return;
-      const pitch = settings.pinnedHz ?? settings.pitch;
+      const pitch = playPitch === 'mine' ? (settings.pinnedHz ?? settings.pitch) : 400 + 10 * Math.floor(Math.random() * 61);
+      if (playPitch === 'random') {
+        engine.command({ type: 'pin', hz: pitch });
+        repinned = true;
+      }
+      // The app mutes the mic while it plays; this take is meant to hear itself.
+      engine.muteWhilePlaying = false;
       const seed = Math.floor(Math.random() * 1e6);
       const fist = playHand === 'hand' ? { jitter: 0.15, charGapScale: 1.25, wordGapScale: 1.2, seed } : { jitter: 0.03, seed };
       const pb = await engine.playText(playText.trim().toUpperCase(), { charWpm: playWpm, pitch, fist, seed, leadIn: 0 });
@@ -103,6 +114,11 @@
     if (timer) clearInterval(timer);
     timer = null;
     const rec = await engine.stopRecording();
+    if (repinned) {
+      engine.command({ type: 'pin', hz: settings.pinnedHz });
+      repinned = false;
+    }
+    engine.muteWhilePlaying = !settings.headphones;
     unsub?.();
     unsub = null;
     live?.flush();
@@ -140,7 +156,7 @@
     try {
       await upload(`${name}.wav`, wav(rec.pcm, rec.sampleRate));
       await upload(`${name}.json`, JSON.stringify(meta));
-      status = `Saved samples/${name}.wav, ${meta.seconds.toFixed(1)} s`;
+      status = `Saved samples/${name}.wav, ${meta.seconds.toFixed(1)} s${playback ? `, ${playback.pitch} Hz` : ''}`;
     } catch (e) {
       status = `Upload failed: ${(e as Error).message}`;
     }
@@ -179,7 +195,15 @@
       <label><span class="label">Speed, wpm</span><input class="num" type="number" min="5" max="40" bind:value={playWpm} disabled={recording} /></label>
     </div>
     <Segmented label="Keying" bind:value={playHand} options={[{ value: 'hand' as Hand, label: 'Like a hand' }, { value: 'steady' as Hand, label: 'Steady' }]} />
-    <p class="muted small">Uses your pitch ({settings.pinnedHz ?? settings.pitch} Hz) and the device speaker. The take stops by itself.</p>
+    <Segmented
+      label="Pitch"
+      bind:value={playPitch}
+      options={[
+        { value: 'mine' as PitchChoice, label: `Yours, ${settings.pinnedHz ?? settings.pitch} Hz` },
+        { value: 'random' as PitchChoice, label: 'Random, 400–1000 Hz' },
+      ]}
+    />
+    <p class="muted small">Plays through the device speaker. The take stops by itself.</p>
   {/if}
   <div class="fields">
     <label><span class="label">What you key</span><input class="mono" bind:value={keyed} autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="VVV CQ DE 9V1XX" disabled={kind === 'noise' || kind === 'playback' || recording} /></label>

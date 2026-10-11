@@ -2,7 +2,8 @@
 // (samples/<name>.wav with <name>.json), replayed through the detector and
 // decoder as the browser runs them. Room-only takes should key nothing and
 // keying takes decode what was keyed (samples/labels.json corrects the text
-// given when recording). No take may get worse than samples/best.json.
+// given when recording). No take may get worse than samples/best.json; a new
+// take's first result goes in as its best.
 // The samples stay on the machine that recorded them; without them this skips.
 
 import { afterAll, describe, expect, it } from 'vitest';
@@ -31,6 +32,7 @@ const ROWS: string[] = [];
 // BEST=1 rewrites it from the current results.
 const UPDATE = process.env.BEST === '1';
 const BEST: Record<string, number> = existsSync(`${DIR}/best.json`) ? JSON.parse(readFileSync(`${DIR}/best.json`, 'utf8')) : {};
+let added = false;
 
 const names = existsSync(DIR)
   ? readdirSync(DIR)
@@ -68,7 +70,7 @@ export function replay(samples: Float32Array, sampleRate: number, meta: Meta) {
 describe('microphone samples', () => {
   if (!names.length) it.skip(`no samples in ${DIR}`, () => {});
   afterAll(() => {
-    if (UPDATE) writeFileSync(`${DIR}/best.json`, JSON.stringify(BEST, null, 2));
+    if (UPDATE || added) writeFileSync(`${DIR}/best.json`, JSON.stringify(BEST, null, 2));
     if (ROWS.length) console.log(`\nMicrophone samples: letter error now and in the browser when recorded\n${ROWS.join('\n')}\n`);
   });
   for (const n of names) {
@@ -84,8 +86,10 @@ describe('microphone samples', () => {
       // Room takes count stray letters; keying takes, letter error against what was keyed.
       const value = meta.kind === 'noise' ? r.text.replace(/ /g, '').length : keyed ? cer(keyed.replace(/ /g, ''), r.text.replace(/ /g, '')) : null;
       if (value === null) return;
-      if (UPDATE) BEST[n] = value;
-      else expect(value, 'worse than the best recorded in samples/best.json').toBeLessThanOrEqual((BEST[n] ?? 0) + 1e-9);
+      if (UPDATE || !(n in BEST)) {
+        added ||= !(n in BEST);
+        BEST[n] = value;
+      } else expect(value, 'worse than the best recorded in samples/best.json').toBeLessThanOrEqual((BEST[n] ?? 0) + 1e-9);
     });
   }
 });

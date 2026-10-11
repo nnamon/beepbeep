@@ -33,7 +33,7 @@ it('real', () => {
     const keyed = n in labels ? labels[n] : meta.keyed || null;
     const cells: string[] = [];
     for (const [d, make] of Object.entries(DETECTORS)) {
-      const r = read(make, samples, sampleRate, meta.settings.pinnedHz ?? meta.playback?.pitch ?? null, meta.settings.sendWpm || 15);
+      const r = read(make, samples, sampleRate, meta.playback?.pitch ?? meta.settings.pinnedHz ?? null, meta.settings.sendWpm || 15);
       totals[d] ??= { err: 0, stray: 0 };
       if (meta.kind === 'noise') {
         totals[d].stray += letters(r.text);
