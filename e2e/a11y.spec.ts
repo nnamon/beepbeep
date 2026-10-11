@@ -6,6 +6,7 @@ const ROUTES = [
   'practice', 'practice/live', 'practice/send', 'practice/hear-send', 'practice/copy', 'practice/familiarity', 'practice/ttr',
   'practice/ifr', 'practice/head-copy', 'practice/sprint', 'pocket', 'pocket/custom', 'pocket/round/characters',
   'qso', 'progress', 'settings', 'setup', 'reference', 'specimen', 'guide',
+  'practice/class/bc1/familiarity', 'practice/class/bc2/vst', 'practice/class/adv1/stories', 'practice/class/overlearn/rhythm',
 ];
 
 for (const theme of ['dark', 'light', 'paper'] as const) {

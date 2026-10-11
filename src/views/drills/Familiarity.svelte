@@ -114,7 +114,7 @@
 
 <svelte:window onkeydown={onKey} />
 
-<DrillFrame title="Familiarity" eyebrow="{level.name} · new character {idx + 1} of {targets.length}">
+<DrillFrame title="Spot the new character" eyebrow="{level.name} · new character {idx + 1} of {targets.length}">
   {#if stage === 'ready'}
     <p class="muted lead">A new character plays unnamed, mixed with others. Tap each time it plays.</p>
   {:else if stage === 'playing'}

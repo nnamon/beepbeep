@@ -1,8 +1,22 @@
 // User settings, persisted to localStorage (a per-device convenience).
 
-import type { TrackId } from '../train/courses';
+import { DEFAULT_CAROUSEL, migrateLevelId, type Carousel, type TrackId } from '../train/courses';
 import type { InputSource } from '../audio/live';
 import { areaOf, type Mix } from '../train/world';
+import type { ClassId } from '../train/classes';
+
+export interface ExercisePrefs {
+  /** Chosen speed, where the exercise offers several. */
+  speed?: number;
+  /** Your saved text to play instead of lesson material; null for the lesson. */
+  text?: string | null;
+  /** Show each card once it has played. */
+  show?: boolean;
+  /** Shuffle your text. */
+  shuffle?: boolean;
+  /** Start again when the run ends. */
+  loop?: boolean;
+}
 
 export interface Settings {
   /** System follows the device: Shack when it is dark, Light when it is light. */
@@ -15,6 +29,12 @@ export interface Settings {
   /** The guide has been opened; hides the pointer to it on Practice. */
   guideSeen: boolean;
   level: Record<TrackId, string>;
+  /** LICW: the carousel group you joined BC1 and BC2 at. */
+  carousel: Carousel;
+  /** LICW: the class whose exercises Practice lists. */
+  licwClass: ClassId;
+  /** Per class exercise ('bc1/vet'): your choices of speed and material. */
+  exercisePrefs: Record<string, ExercisePrefs>;
   /** On the LICW track, use the lesson's speeds (12/8, 12/10) for receive drills. */
   useCourseSpeeds: boolean;
   /** Receive speeds: character and effective (Farnsworth). */
@@ -71,7 +91,10 @@ const DEFAULTS: Settings = {
   licwStrict: false,
   licwAsked: false,
   guideSeen: false,
-  level: { koch: 'koch-1', licw: 'licw-bc1-1' },
+  level: { koch: 'koch-1', licw: 'licw-bc1-REA' },
+  carousel: { ...DEFAULT_CAROUSEL },
+  licwClass: 'bc1',
+  exercisePrefs: {},
   useCourseSpeeds: true,
   charWpm: 20,
   effectiveWpm: 12,
@@ -112,7 +135,9 @@ function load(): Settings {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const s = JSON.parse(raw);
-      return { ...DEFAULTS, ...s, level: { ...DEFAULTS.level, ...s.level }, you: { ...DEFAULTS.you, ...s.you } };
+      const level = { ...DEFAULTS.level, ...s.level };
+      level.licw = migrateLevelId(level.licw);
+      return { ...DEFAULTS, ...s, level, carousel: { ...DEFAULTS.carousel, ...s.carousel }, you: { ...DEFAULTS.you, ...s.you } };
     }
   } catch {
     /* storage unavailable: use defaults */

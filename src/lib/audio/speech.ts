@@ -3,7 +3,7 @@
 // work offline and mute the decoder input like any other app sound. Words and
 // anything without a clip use the device voice. Recorded clips override both.
 
-import { isProsign, displayToken } from '../morse/code';
+import { isProsign, displayToken, tokenize } from '../morse/code';
 import { voiceClip } from '../state/db';
 import { settings } from '../state/settings.svelte';
 import { engine, type Playback } from './engine';
@@ -89,6 +89,39 @@ export async function say(tokenOrWord: string): Promise<void> {
     // Some browsers never fire onend; don't hang the drill.
     setTimeout(resolve, 2500);
   });
+}
+
+/** Text to speech in the device voice, with a time limit that grows with the text. */
+function device(text: string): Promise<void> {
+  if (!speechAvailable() || !text.trim()) return Promise.resolve();
+  return new Promise((resolve) => {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    const v = voices().find((x) => x.voiceURI === settings.voiceURI);
+    if (v) u.voice = v;
+    u.rate = 1.05;
+    u.onend = () => resolve();
+    u.onerror = () => resolve();
+    speechSynthesis.speak(u);
+    // Some browsers never fire onend; don't hang, but don't cut a sentence short either.
+    setTimeout(resolve, 2000 + text.length * 90);
+  });
+}
+
+/**
+ * Says a card: spelled one character at a time (clips where there are any), or
+ * as words in the device voice. Resolves when done; at once if voice is off.
+ */
+export async function sayCard(text: string, spell: boolean): Promise<void> {
+  if (settings.voice === 'off') return;
+  if (!spell) return device(text.toLowerCase());
+  for (const token of tokenize(text.toUpperCase())) {
+    if (token === ' ') {
+      await new Promise((r) => setTimeout(r, 250));
+      continue;
+    }
+    await say(token);
+  }
 }
 
 function playBlob(blob: Blob): Promise<void> {

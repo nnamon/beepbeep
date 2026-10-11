@@ -5,7 +5,7 @@ import { engine, type Playback } from '../audio/engine';
 import { renderSchedule, type Conditions } from '../morse/render';
 import { scheduleFromMarks, type FistOptions } from '../morse/schedule';
 import { settings, strict } from '../state/settings.svelte';
-import { TRACKS, levelById, type Level } from './courses';
+import { KOCH_LEVELS, licwLevels, type Level, type TrackId } from './courses';
 import { addConfusion, addSession, getItems, getKv, putItem, setKv, type SessionRecord } from '../state/db';
 import { newStat, recordAnswer, type ItemStat } from './srs';
 import { randomSeed } from '../util/random';
@@ -13,8 +13,19 @@ import { align, textTokens } from '../util/text';
 import { charTimingError } from './fist';
 import type { DecodedChar } from '../decoder/decoder';
 
+let licwCache: { key: string; levels: Level[] } | null = null;
+
+/** A track's levels; the LICW carousel runs from the groups you joined at. */
+export function trackLevels(track: TrackId = settings.track): Level[] {
+  if (track === 'koch') return KOCH_LEVELS;
+  const key = `${settings.carousel.bc1}|${settings.carousel.bc2}`;
+  if (licwCache?.key !== key) licwCache = { key, levels: licwLevels(settings.carousel) };
+  return licwCache.levels;
+}
+
 export function currentLevel(): Level {
-  return levelById(settings.level[settings.track]) ?? TRACKS[settings.track].levels[0];
+  const levels = trackLevels();
+  return levels.find((l) => l.id === settings.level[settings.track]) ?? levels[0];
 }
 
 /** Speeds for receive drills: the level's speeds on the LICW track, settings otherwise. */
@@ -90,7 +101,7 @@ export function advanceThreshold(): number {
 /** The lesson a receive score opens, or null (below the threshold, or the last lesson). */
 export function lessonOpenedBy(accuracy: number): Level | null {
   if (accuracy < advanceThreshold()) return null;
-  const levels = TRACKS[settings.track].levels;
+  const levels = trackLevels();
   return levels[levels.findIndex((l) => l.id === currentLevel().id) + 1] ?? null;
 }
 

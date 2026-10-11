@@ -47,8 +47,11 @@ Progress: speeds over time and accuracy by character.
 | Receive | Copy drill, familiarity (LICW BC1), TTR drill, sound surfing (IFR), head copy, callsign and word sprint |
 | Pocket | Phone quiz rounds by ear: characters, chunks, words, callsigns, phrases, custom sets |
 | QSO | Ragchew, LICW QSO protocol, SKCC, K1USN SST, POTA, SOTA, contest, DX pileup |
+| LICW classes | The exercises for BC1 to BC3, INT 1 to 3, ADV 1 to 3, TTR+ and OverLearn: familiarity, recognition, TTR, VET and VST, groups, Speed Racer, CW-voice-CW and more, at each class's speeds, with notes on how to do each one |
 
-Two course tracks: the classic Koch order (K M R S U…) and the LICW Beginners Carousel (BC1, BC2). LICW strict mode applies the LICW Method Guide's guardrails: no rhythm visuals, decoded sending after each over, receive answers at the end of a drill.
+Two course tracks: the classic Koch order (K M R S U…) and the LICW Beginners Carousel (BC1, BC2), which starts at whichever group you joined. LICW strict mode applies the LICW Method Guide's guardrails: no rhythm visuals, decoded sending after each over, receive answers at the end of a drill.
+
+Class exercises play material generated from your lesson, or your own text: class handouts pasted or opened as .txt, one card per line or per word. Morse Browser's `{cw|speech}` markup works, so a line can send one thing and say another. BeepBeep ships no LICW class texts.
 
 Input is the microphone, an on-screen touch key for phones and tablets, or the keyboard as a straight key (Space) or iambic paddles (`[`/`]` or `Z`/`X`). The in-app Guide (`#/guide`) shows where to start with or without a key.
 

@@ -1,8 +1,11 @@
 <script lang="ts">
   import { route, href } from '../lib/state/router.svelte';
   import { settings, strict } from '../lib/state/settings.svelte';
-  import { TRACKS, type TrackId } from '../lib/train/courses';
-  import { currentLevel, farnsworthDays, receiveSpeeds } from '../lib/train/session';
+  import { CAROUSEL_GROUPS, TRACK_NAMES, type TrackId } from '../lib/train/courses';
+  import { CLASSES, EXERCISE_GROUPS, classById, groupOf, type ClassId } from '../lib/train/classes';
+  import Select from '../ui/Select.svelte';
+  import Exercise from './drills/Exercise.svelte';
+  import { currentLevel, farnsworthDays, receiveSpeeds, trackLevels } from '../lib/train/session';
   import { getItems, sessions } from '../lib/state/db';
   import { accuracy, windowStats } from '../lib/train/srs';
   import { displayToken } from '../lib/morse/code';
@@ -23,7 +26,7 @@
 
   const mode = $derived(route.path[1] ?? '');
   const level = $derived(currentLevel());
-  const levels = $derived(TRACKS[settings.track].levels);
+  const levels = $derived(trackLevels());
   const idx = $derived(levels.findIndex((l) => l.id === level.id));
   const speeds = $derived(receiveSpeeds());
 
@@ -73,17 +76,22 @@
     void farnsworthDays().then((d) => (wideDays = d));
   });
 
-  // The Beginner Carousel class exercises, each mapped to a drill.
-  const BC = [
-    { name: 'Familiarity', text: 'Tap each time the new character plays.', to: ['familiarity'] },
-    { name: 'Recognition', text: 'Single characters at lesson speed.', to: ['copy', 'chars'] },
-    { name: 'Short-word flow', text: 'Short words from known characters.', to: ['copy', 'words'] },
-    { name: 'TTR', text: 'Name it before the voice does.', to: ['ttr'] },
-    { name: 'IFR', text: 'Continuous stream. Skip misses.', to: ['ifr'] },
-    { name: 'Context', text: 'Two or three words together.', to: ['copy', 'context'] },
-    { name: 'Sending', text: 'Hear it, then send it.', to: ['hear-send'] },
-    { name: 'Endurance', text: 'Three-minute stream.', to: ['ifr', 'endurance'] },
-  ];
+  // LICW class exercises. BC1 and BC2 follow the carousel group you are on.
+  const cls = $derived.by(() => {
+    const id = settings.licwClass;
+    if (id === 'bc1' || id === 'bc2') return classById(level.id.startsWith('licw-bc2') ? 'bc2' : 'bc1')!;
+    return classById(id) ?? classById('bc1')!;
+  });
+
+  const exerciseGroups = $derived(
+    EXERCISE_GROUPS.map((g) => ({ g, items: cls.exercises.filter((e) => groupOf(cls, e) === g) })).filter((x) => x.items.length),
+  );
+
+  function pickClass(id: ClassId) {
+    settings.licwClass = id;
+    if (id !== 'bc1' && id !== 'bc2') return;
+    if (!level.id.startsWith(`licw-${id}`)) settings.level.licw = levels.find((l) => l.id.startsWith(`licw-${id}`))!.id;
+  }
   function setTrack(t: TrackId) {
     settings.track = t;
   }
@@ -104,7 +112,7 @@
     ] },
     { group: 'Receive', items: [
       { id: 'copy', name: 'Copy drill', text: 'Type groups or words from your lesson.' },
-      { id: 'familiarity', name: 'Familiarity', text: 'Tap each time the new character plays.' },
+      { id: 'familiarity', name: 'Spot the new character', text: 'Tap each time the new character plays.' },
       { id: 'ttr', name: 'TTR drill', text: 'Name each character before the voice does.' },
       { id: 'ifr', name: 'Sound surfing (IFR)', text: 'Copy a continuous stream without stopping.' },
       { id: 'head-copy', name: 'Head copy', text: 'Listen without writing, then answer questions.' },
@@ -113,7 +121,9 @@
   ];
 </script>
 
-{#if mode === 'live'}
+{#if mode === 'class'}
+  {#key route.path.join('/')}<Exercise classId={route.path[2] ?? ''} exerciseId={route.path[3] ?? ''} />{/key}
+{:else if mode === 'live'}
   <LiveDecoder />
 {:else if mode === 'send'}
   <SendDrill />
@@ -170,7 +180,7 @@
 
       <div class="level">
         <div class="level-name">
-          <span class="label">{TRACKS[settings.track].name}</span>
+          <span class="label">{TRACK_NAMES[settings.track]}</span>
           <div class="stepper">
             <Button kind="secondary" label="Previous lesson" disabled={idx <= 0} onclick={() => step(-1)}><Icon name="back" size={18} /></Button>
             <strong>{level.name}</strong>
@@ -220,17 +230,31 @@
 
     {#if settings.track === 'licw'}
       <section class="bc" aria-labelledby="bc-h">
-        <h2 id="bc-h">BC exercises</h2>
-        <ol>
-          {#each BC as b (b.name)}
-            <li>
-              <a href={href('practice', ...b.to)}>
-                <span class="name">{b.name}</span>
-                <span class="text muted">{b.text}</span>
-              </a>
-            </li>
-          {/each}
-        </ol>
+        <div class="bc-head">
+          <h2 id="bc-h">Class exercises</h2>
+          <Select label="Class" options={CLASSES.map((c) => ({ value: c.id, label: c.name }))} value={cls.id} onchange={pickClass} />
+          {#if cls.carousel}
+            {@const which = cls.carousel}
+            <Select label="Joined at" options={CAROUSEL_GROUPS[which]} value={settings.carousel[which]} onchange={(v) => (settings.carousel[which] = v)} />
+          {/if}
+          <span class="band muted">{cls.band}</span>
+        </div>
+        <ul class="routine">
+          {#each cls.routine as r (r)}<li>{r}</li>{/each}
+        </ul>
+        {#each exerciseGroups as { g, items } (g)}
+          <h3 class="ex-group">{g}</h3>
+          <ol>
+            {#each items as e (e.id)}
+              <li>
+                <a href={e.drill ? href('practice', ...e.drill) : href('practice', 'class', cls.id, e.id)}>
+                  <span class="name">{e.name}</span>
+                  <span class="text muted">{e.summary}</span>
+                </a>
+              </li>
+            {/each}
+          </ol>
+        {/each}
       </section>
     {/if}
 
@@ -411,6 +435,37 @@
     grid-column: 1 / -1;
   }
 
+  .bc-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: var(--s-2) var(--s-3);
+  }
+
+  .bc-head h2 {
+    flex-basis: 100%;
+  }
+
+  .band {
+    padding-bottom: var(--s-1);
+  }
+
+  .routine {
+    margin: var(--s-2) 0 0;
+    padding-left: 1.2em;
+    max-width: var(--reading);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .ex-group {
+    margin-top: var(--s-3);
+    font-size: var(--size-s);
+    color: var(--muted);
+    font-weight: var(--weight-strong);
+  }
+
   .bc ol {
     list-style: none;
     margin: var(--s-1) 0 0;
@@ -419,11 +474,6 @@
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 0 var(--s-3);
     border-top: var(--hairline) solid var(--line);
-    counter-reset: bc;
-  }
-
-  .bc li {
-    counter-increment: bc;
   }
 
   .bc a {
@@ -432,13 +482,6 @@
     padding: var(--s-2) 0;
     border-bottom: var(--hairline) solid var(--line);
     text-decoration: none;
-  }
-
-  .bc .name::before {
-    content: counter(bc) ' ';
-    font-family: var(--font-mono);
-    color: var(--muted);
-    font-weight: normal;
   }
 
   .bc a:hover .name {

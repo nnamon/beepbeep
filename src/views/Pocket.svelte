@@ -2,20 +2,19 @@
   import { onMount } from 'svelte';
   import { route, href } from '../lib/state/router.svelte';
   import { settings } from '../lib/state/settings.svelte';
-  import { currentLevel } from '../lib/train/session';
+  import { currentLevel, trackLevels } from '../lib/train/session';
   import { CHUNKS, COMMON_WORDS, QSO_WORDS, wordsFromKnown } from '../lib/train/words';
   import { getKv, setKv } from '../lib/state/db';
   import { ALL_TOKENS, displayToken, isProsign } from '../lib/morse/code';
   import Button from '../ui/Button.svelte';
   import Icon from '../ui/Icon.svelte';
-  import { TRACKS } from '../lib/train/courses';
   import PocketRound from './PocketRound.svelte';
 
   const sub = $derived(route.path[1] ?? '');
   const stageId = $derived(route.path[2] ?? 'characters');
   const level = $derived(currentLevel());
   const known = $derived(new Set(level.known));
-  const levels = $derived(TRACKS[settings.track].levels);
+  const levels = $derived(trackLevels());
   const idx = $derived(levels.findIndex((l) => l.id === level.id));
 
   function step(d: number) {

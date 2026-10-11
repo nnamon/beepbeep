@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TRACKS, KOCH_ORDER, LICW_BC1, LICW_BC2 } from './courses';
+import { KOCH_LEVELS, KOCH_ORDER, LICW_BC1, LICW_BC2, licwLevels, migrateLevelId } from './courses';
 import { callsign, items, fillPhrase, stationLine } from './generate';
 import { newStat, recordAnswer, pickNext, NEW_HEAT } from './srs';
 import { compareCopy, recoveryLength, spacingIssues, oneNote } from './scoring';
@@ -10,21 +10,42 @@ import { patternOf } from '../morse/code';
 import { mulberry32 } from '../util/random';
 
 describe('courses', () => {
-  it('LICW carousel covers 44 characters, 18 in BC1', () => {
+  it('LICW carousel covers 43 characters, 18 in BC1, and BK as a letter pair', () => {
     expect(LICW_BC1.flat()).toHaveLength(18);
-    expect(LICW_BC2.flat()).toHaveLength(26);
-    const levels = TRACKS.licw.levels;
-    expect(levels.at(-1)!.known).toHaveLength(44);
-    expect(new Set(levels.at(-1)!.known).size).toBe(44);
-    expect(levels[0]).toMatchObject({ name: 'BC1 · lesson 1', added: ['R', 'E', 'A'], charWpm: 12, effectiveWpm: 8 });
-    expect(levels[6]).toMatchObject({ added: ['K', 'M', 'Y'], effectiveWpm: 10 });
+    expect(LICW_BC2.flat()).toHaveLength(25);
+    const levels = licwLevels();
+    expect(levels.at(-1)!.known).toHaveLength(43);
+    expect(new Set(levels.at(-1)!.known).size).toBe(43);
+    expect(levels.at(-1)!.known).not.toContain('<BK>');
+    expect(levels[0]).toMatchObject({ id: 'licw-bc1-REA', name: 'BC1 · REA', added: ['R', 'E', 'A'], charWpm: 12, effectiveWpm: 8 });
+    expect(levels[6]).toMatchObject({ id: 'licw-bc2-KMY', added: ['K', 'M', 'Y'], effectiveWpm: 10 });
+    const bk = levels.find((l) => l.id === 'licw-bc2-28BK')!;
+    expect(bk).toMatchObject({ name: 'BC2 · 2 8 BK', added: ['2', '8'], words: ['BK'] });
+    expect(levels.find((l) => l.id === 'licw-bc2-40')!.words).toEqual(['BK']);
+  });
+  it('the carousel starts at the group you joined', () => {
+    const levels = licwLevels({ bc1: 'TIN', bc2: 'QXV' });
+    expect(levels.slice(0, 6).map((l) => l.id)).toEqual(['licw-bc1-TIN', 'licw-bc1-PSG', 'licw-bc1-LCD', 'licw-bc1-HOF', 'licw-bc1-UWB', 'licw-bc1-REA']);
+    expect(levels[0].known).toEqual(['T', 'I', 'N']);
+    expect(levels[5].known).toHaveLength(18);
+    // BC2 starts with all of BC1 known.
+    expect(levels[6].id).toBe('licw-bc2-QXV');
+    expect(levels[6].known).toEqual([...LICW_BC1.flat().slice(3), 'R', 'E', 'A', 'Q', 'X', 'V']);
+    expect(levels.at(-1)!.id).toBe('licw-bc2-59,');
+  });
+  it('maps lesson numbers saved before the carousel to groups', () => {
+    expect(migrateLevelId('licw-bc1-2')).toBe('licw-bc1-TIN');
+    expect(migrateLevelId('licw-bc2-8')).toBe('licw-bc2-28BK');
+    expect(migrateLevelId('licw-bc2-5')).toBe('licw-bc2-ARSKBT');
+    expect(migrateLevelId('licw-bc1-TIN')).toBe('licw-bc1-TIN');
+    expect(migrateLevelId('koch-3')).toBe('koch-3');
   });
   it('every course character has a pattern', () => {
     for (const t of [...KOCH_ORDER, ...LICW_BC1.flat(), ...LICW_BC2.flat()]) expect(patternOf(t)).toBeTruthy();
   });
   it('Koch starts with K and M', () => {
-    expect(TRACKS.koch.levels[0].known).toEqual(['K', 'M']);
-    expect(TRACKS.koch.levels[1].added).toEqual(['R']);
+    expect(KOCH_LEVELS[0].known).toEqual(['K', 'M']);
+    expect(KOCH_LEVELS[1].added).toEqual(['R']);
   });
 });
 
@@ -123,9 +144,9 @@ describe('lesson advance', () => {
     expect(lessonOpenedBy(0.85)).toBeNull();
     expect(lessonOpenedBy(0.9)?.id).toBe('koch-2');
     settings.track = 'licw';
-    settings.level.licw = 'licw-bc1-1';
-    expect(lessonOpenedBy(0.8)?.id).toBe('licw-bc1-2');
-    settings.level.licw = TRACKS.licw.levels.at(-1)!.id;
+    settings.level.licw = 'licw-bc1-REA';
+    expect(lessonOpenedBy(0.8)?.id).toBe('licw-bc1-TIN');
+    settings.level.licw = licwLevels().at(-1)!.id;
     expect(lessonOpenedBy(1)).toBeNull();
   });
 });
