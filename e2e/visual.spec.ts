@@ -2,7 +2,7 @@
 // with fixed data. Update baselines with --update-snapshots after a deliberate change.
 import { test, expect } from '@playwright/test';
 
-for (const theme of ['dark', 'light'] as const) {
+for (const theme of ['dark', 'light', 'paper'] as const) {
   test(`specimen ${theme}`, async ({ page }) => {
     await page.addInitScript((t) => {
       localStorage.setItem('beepbeep.settings.v1', JSON.stringify({ theme: t, voice: 'off' }));

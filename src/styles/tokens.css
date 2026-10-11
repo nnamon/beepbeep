@@ -47,8 +47,49 @@
   color-scheme: dark;
 }
 
-/* Paper (light) theme: chosen explicitly, or by the system when no choice is stored. */
+/*
+ * Light: neutral off-white, the light theme the system setting uses.
+ * Contrast on bg: ink 16.7, muted 6.0, signal 5.2, fault 5.3.
+ */
 :root[data-theme='light'] {
+  --bg: #f8f8f6;
+  --surface: #fff;
+  --surface-2: #eeeeeb;
+  --line: #dcdcd7;
+  --ink: #17181a;
+  --muted: #5b5f66;
+  --signal: #985a00;
+  --signal-soft: rgb(152 90 0 / 11%);
+  --signal-ink: #fff;
+  --fault: #c42b30;
+  --scrim: rgb(23 24 26 / 35%);
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    --bg: #f8f8f6;
+    --surface: #fff;
+    --surface-2: #eeeeeb;
+    --line: #dcdcd7;
+    --ink: #17181a;
+    --muted: #5b5f66;
+    --signal: #985a00;
+    --signal-soft: rgb(152 90 0 / 11%);
+    --signal-ink: #fff;
+    --fault: #c42b30;
+    --scrim: rgb(23 24 26 / 35%);
+
+    color-scheme: light;
+  }
+}
+
+/*
+ * Paper: warm cream, chosen explicitly.
+ * Contrast on bg: ink 15.5, muted 5.5, signal 4.9, fault 5.1.
+ */
+:root[data-theme='paper'] {
   --bg: #f5f3ee;
   --surface: #fff;
   --surface-2: #eceae4;
@@ -62,24 +103,6 @@
   --scrim: rgb(26 27 29 / 35%);
 
   color-scheme: light;
-}
-
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme='dark']) {
-    --bg: #f5f3ee;
-    --surface: #fff;
-    --surface-2: #eceae4;
-    --line: #d9d5cc;
-    --ink: #1a1b1d;
-    --muted: #5e636a;
-    --signal: #9a5b00;
-    --signal-soft: rgb(154 91 0 / 12%);
-    --signal-ink: #fff;
-    --fault: #c42b30;
-    --scrim: rgb(26 27 29 / 35%);
-
-    color-scheme: light;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

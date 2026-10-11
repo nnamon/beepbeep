@@ -4,7 +4,8 @@ import type { TrackId } from '../train/courses';
 import type { InputSource } from '../audio/live';
 
 export interface Settings {
-  theme: 'system' | 'dark' | 'light';
+  /** System follows the device: Shack when it is dark, Light when it is light. */
+  theme: 'system' | 'dark' | 'light' | 'paper';
   track: TrackId;
   /** LICW strict mode: the Method Guide's guardrails. */
   licwStrict: boolean;
@@ -127,6 +128,11 @@ $effect.root(() => {
     const t = settings.theme;
     if (t === 'system') document.documentElement.removeAttribute('data-theme');
     else document.documentElement.setAttribute('data-theme', t);
+    // Browser chrome follows the chosen theme; System keeps index.html's media-matched pair.
+    for (const m of document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')) {
+      m.dataset.content ??= m.content;
+      m.content = t === 'system' ? m.dataset.content : getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+    }
   });
 });
 

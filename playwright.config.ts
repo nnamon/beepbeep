@@ -17,7 +17,8 @@ export default defineConfig({
   reporter: [['list']],
   // Visual baselines are rendered in the Playwright container (Linux), so compare there only.
   snapshotPathTemplate: '{testDir}/__screenshots__/{projectName}/{arg}{ext}',
-  expect: { toHaveScreenshot: { maxDiffPixelRatio: 0.002 } },
+  // Tight per-pixel threshold so palette changes register; rendering is deterministic in the container.
+  expect: { toHaveScreenshot: { maxDiffPixelRatio: 0.002, threshold: 0.02 } },
   globalSetup: './e2e/global-setup.ts',
   // BASE_URL runs the suite against a deployed copy, e.g. https://nnamon.github.io/beepbeep/
   use: { baseURL: process.env.BASE_URL ?? 'http://localhost:4173/' },

@@ -69,9 +69,11 @@
       options={[
         { value: 'system', label: 'System' },
         { value: 'dark', label: 'Shack (dark)' },
-        { value: 'light', label: 'Paper (light)' },
+        { value: 'light', label: 'Light' },
+        { value: 'paper', label: 'Paper' },
       ]}
     />
+    <p class="muted small">System uses Shack when the device is dark and Light when it is light. Paper is a warm cream for daylight.</p>
   </div>
 
   <div class="group">

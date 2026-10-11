@@ -8,7 +8,7 @@ const ROUTES = [
   'qso', 'progress', 'settings', 'setup', 'reference', 'specimen', 'guide',
 ];
 
-for (const theme of ['dark', 'light'] as const) {
+for (const theme of ['dark', 'light', 'paper'] as const) {
   for (const route of ROUTES) {
     test(`${theme} ${route}`, async ({ page }) => {
       await page.addInitScript((t) => {
