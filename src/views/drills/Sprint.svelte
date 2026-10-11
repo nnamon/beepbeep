@@ -93,7 +93,7 @@
 <DrillFrame title="Sprint" eyebrow="{material === 'callsigns' ? 'Callsigns' : 'Words'} · +2 wpm right, −2 wpm missed" count={stage !== 'ready' && stage !== 'done' ? `${Math.min(n + 1, ROUND)} / ${ROUND}` : ''}>
   {#if stage === 'ready'}
     <Segmented label="Material" bind:value={material} options={[{ value: 'callsigns', label: 'Callsigns' }, { value: 'words', label: 'Words' }]} />
-    <p class="muted">Starts at {receiveSpeeds().charWpm} wpm. {ROUND} items.</p>
+    <p class="muted">{ROUND} to copy, starting at {receiveSpeeds().charWpm} wpm. Each one you get right makes the next 2 wpm faster; each miss makes it 2 wpm slower.</p>
   {:else if stage === 'done'}
     <dl class="facts">
       <div><dt class="label">Top speed copied</dt><dd class="num big">{top || '–'} wpm</dd></div>

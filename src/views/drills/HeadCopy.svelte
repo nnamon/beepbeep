@@ -102,7 +102,7 @@
 <DrillFrame title="Head copy" eyebrow="{receiveSpeeds().charWpm} wpm · no writing while it plays">
   {#if stage === 'ready'}
     <div class="intro">
-      <p class="muted">An over plays. Nothing shows and typing is off. Questions follow.</p>
+      <p class="muted">A station sends one over. Nothing shows on screen and you can't type while it plays. Afterwards you answer questions about it, such as the operator's name and rig.</p>
       <Toggle bind:checked={notesAllowed} label="Allow notes" detail="Up to three words while it plays" />
     </div>
   {:else if stage === 'playing'}

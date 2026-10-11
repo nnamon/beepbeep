@@ -150,7 +150,7 @@
   {#if !running && !done}
     <div class="intro">
       <Segmented label="Material" bind:value={material} options={[{ value: 'characters', label: 'Characters' }, { value: 'words', label: 'Words' }]} />
-      <p class="muted">Copy each item, then send it. Use headphones so the mic doesn't hear the app.</p>
+      <p class="muted">A character or word plays. Copy it, then send it back on your key. Use headphones so the microphone hears only your key, not the app.</p>
       <InputHelp />
     </div>
   {:else if running}

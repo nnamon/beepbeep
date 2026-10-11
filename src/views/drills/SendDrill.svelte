@@ -245,9 +245,9 @@
         ]}
       />
       {#if material === 'station' && !settings.you.call.trim()}
-        <p class="muted">Set your callsign in <a href={href('settings')}>Settings</a>, Your station. Until then this sends practice phrases.</p>
+        <p class="muted">Set your callsign in <a href={href('settings')}>Settings</a> (Your station) to practise sending it. Until then you get practice phrases.</p>
       {/if}
-      <p class="muted">Send the text shown. Press Done or pause {settings.overTimeout} s to end the over.</p>
+      <p class="muted">Send the text shown on your key. When you finish, press Done or stop sending for {settings.overTimeout} s.</p>
       <InputHelp />
     </div>
   {:else if stage === 'sending'}

@@ -94,8 +94,8 @@
       </div>
     </div>
     <p class="muted lead">
-      Learn and quiz by ear, no key needed. 20-item rounds; the quiz only plays what this lesson has taught. A Characters round at
-      {settings.track === 'licw' ? '80' : '90'}% or better opens the next lesson.
+      Learn and quiz by ear, no key needed. Each round plays 20, using only what your lesson has covered. Score
+      {settings.track === 'licw' ? '80' : '90'}% or better in a Characters round to open the next lesson.
     </p>
     <ul class="stages">
       {#each STAGES as s (s.id)}

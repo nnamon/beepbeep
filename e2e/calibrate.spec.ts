@@ -47,9 +47,9 @@ test('calibrates V V V keyed by hand on the touch key', async ({ page }) => {
   await expect(page.getByRole('button', { name: /Touch key/ })).toBeVisible();
   await key(page, vvv());
   const note = page.locator('.block', { hasText: 'Calibrate' }).locator('p').last();
-  await expect(note).toContainText(/3 V\. \d+ wpm/, { timeout: 15_000 });
+  await expect(note).toContainText(/Heard 3 V's at \d+ wpm/, { timeout: 15_000 });
   await expect(note).not.toContainText('breaking up');
-  await expect(note).toContainText('Gaps inside a letter run');
+  await expect(note).toContainText('The gaps inside your letters are');
   // The second pass ran in its worker, off the thread that times the key.
   const worker = await page.evaluate(() => performance.getEntriesByType('resource').some((r) => r.name.includes('settle.worker')));
   expect(worker).toBe(true);
@@ -67,7 +67,7 @@ test('starts over mid-calibration and finishes early', async ({ page }) => {
   await page.getByRole('button', { name: 'Done' }).click();
   const note = page.locator('.block', { hasText: 'Calibrate' }).locator('p').last();
   // Only the V's after starting over count, and well before the 9 s run out.
-  await expect(note).toContainText(/^3 V\. \d+ wpm/, { timeout: 5_000 });
+  await expect(note).toContainText(/^Heard 3 V's at \d+ wpm/, { timeout: 5_000 });
   const heard = (await page.locator('.block', { hasText: 'Calibrate' }).locator('p.text').textContent())!.replace(/\s/g, '');
   expect(heard).toBe('VVV');
   await expect(page.getByRole('button', { name: 'Calibrate' })).toBeEnabled();

@@ -133,13 +133,13 @@
     <button type="button" class="tap" onpointerdown={tap}>Tap<span class="muted">Space</span></button>
   {:else if stage === 'scored'}
     <p class="big">{hits} of {occurrences} caught{extra ? `, ${extra} extra taps` : ''}</p>
-    <p class="muted">Catch 80% with no more than 2 extra taps to hear its name. Again plays it alone first.</p>
+    <p class="muted">Catch 8 in 10, with no more than 2 taps on other characters, to hear its name. Again plays it alone first.</p>
   {:else if stage === 'revealed'}
     <span class="label">It was</span>
     <TokenText tokens={[{ t: target }]} size="xl" />
     <p class="muted">{hits} of {occurrences} caught.</p>
   {:else}
-    <p class="big">All {targets.length} new characters named.</p>
+    <p class="big">You found and heard the names of all {targets.length} new characters.</p>
     <p class="muted">Next: Copy drill or TTR drill with this lesson.</p>
   {/if}
 

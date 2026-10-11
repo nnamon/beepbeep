@@ -104,7 +104,7 @@
   const MODES = [
     { group: 'Send', items: [
       { id: 'live', name: 'Live decoder', text: 'Decodes your sending as you key.' },
-      { id: 'send', name: 'Send drill', text: 'Send the text shown. Shows what was received.' },
+      { id: 'send', name: 'Send drill', text: 'Send the text shown and see what was received.' },
     ] },
     { group: 'Both', items: [
       { id: 'hear-send', name: 'Hear it, send it', text: 'Copy a character or word, then send it.' },
@@ -113,7 +113,7 @@
     { group: 'Receive', items: [
       { id: 'copy', name: 'Copy drill', text: 'Type groups or words from your lesson.' },
       { id: 'familiarity', name: 'Spot the new character', text: 'Tap each time the new character plays.' },
-      { id: 'ttr', name: 'TTR drill', text: 'Name each character before the voice does.' },
+      { id: 'ttr', name: 'TTR drill', text: 'Type each character before a voice names it.' },
       { id: 'ifr', name: 'Sound surfing (IFR)', text: 'Copy a continuous stream without stopping.' },
       { id: 'head-copy', name: 'Head copy', text: 'Listen without writing, then answer questions.' },
       { id: 'sprint', name: 'Callsign and word sprint', text: 'Callsigns or words at rising speed.' },
@@ -168,8 +168,8 @@
         <div class="ask" role="group" aria-labelledby="ask-h">
           <h2 id="ask-h">LICW strict mode</h2>
           <p class="muted">
-            Hides rhythm bars and the character reference. Decoded sending shows after each over; receive answers show
-            at the end of a drill. Change it later in Settings.
+            Follows LICW's method closely: no rhythm bars or character chart, your decoded sending appears only after you
+            finish, and receive drills show the answers only at the end. You can change this in Settings.
           </p>
           <div class="ask-actions">
             <Button kind="primary" onclick={() => { settings.licwStrict = true; settings.licwAsked = true; }}>Turn on</Button>
@@ -222,7 +222,8 @@
       </div>
       {#if wideDays !== null && wideDays > 14}
         <p class="flag">
-          Extra spacing on for {wideDays} days ({settings.charWpm}/{settings.effectiveWpm} wpm). Raise effective speed in
+          You have practised with extra space between characters ({settings.charWpm}/{settings.effectiveWpm} wpm) for {wideDays}
+          days. Raise the effective speed in
           <a href={href('settings')}>Settings</a>.
         </p>
       {/if}
@@ -240,7 +241,7 @@
           <span class="band muted">{cls.band}</span>
         </div>
         <ul class="routine">
-          {#if cls.carousel && settings.licwEnrolled}<li>Set the group your class is on with the arrows above, and where you started under Joined at.</li>{/if}
+          {#if cls.carousel && settings.licwEnrolled}<li>Use the arrows above to set the group your class is on, and Joined at for the group you started with.</li>{/if}
           {#each cls.routine as r (r)}<li>{r}</li>{/each}
         </ul>
         {#each exerciseGroups as { g, items } (g)}

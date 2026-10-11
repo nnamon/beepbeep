@@ -246,7 +246,7 @@
               <Select label="Text" options={texts.map((t) => ({ value: t.id, label: t.name }))} value={chosen?.id ?? texts[0].id} onchange={(v) => setPref('text', v)} />
               <Button kind="quiet" onclick={removeText}>Delete</Button>
             </div>
-            {#if chosen}<p class="muted small">{cardsFromText(chosen.text, ex.perLine ?? false).length} {ex.perLine ? 'lines' : 'words'}. One card per {ex.perLine ? 'line' : 'word'}.</p>{/if}
+            {#if chosen}<p class="muted small">{cardsFromText(chosen.text, ex.perLine ?? false).length} {ex.perLine ? 'lines' : 'words'}. Each {ex.perLine ? 'line' : 'word'} plays on its own.</p>{/if}
           {:else}
             <p class="muted">No texts yet. Paste one or open a .txt file{settings.licwEnrolled ? ', such as a class handout' : ''}. {"{cw|speech}"} markup from Morse Browser files works.</p>
           {/if}
@@ -267,9 +267,9 @@
         </div>
       {/if}
       {#if !strict()}
-        <Toggle label="Show text as it plays" detail="Each card appears once it has played." checked={!!prefs.show} onchange={(v) => setPref('show', v)} />
+        <Toggle label="Show each one after it plays" detail="Otherwise you see it when the voice says it, or at the end." checked={!!prefs.show} onchange={(v) => setPref('show', v)} />
       {/if}
-      <Toggle label="Loop" detail="Starts again with new material at the end." checked={!!prefs.loop} onchange={(v) => setPref('loop', v)} />
+      <Toggle label="Repeat" detail="Start again when it finishes." checked={!!prefs.loop} onchange={(v) => setPref('loop', v)} />
       {#if !useText && !playable}
         <p class="warn">Too few characters for this exercise yet. {ex.source === 'prosigns' ? 'It needs the AR SK BT group.' : 'It works once you have more groups.'} Your text works now.</p>
       {/if}

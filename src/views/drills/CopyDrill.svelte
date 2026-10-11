@@ -198,8 +198,8 @@
         ]}
       />
       <p class="muted">
-        {ROUND} items from {known.length} characters. Replays are counted, not scored.
-        {strict() ? 'Answers show at the end.' : 'Answers show after each item.'}
+        {ROUND} to copy, using the {known.length} characters you know. Type what you hear. Replay as often as you like; it
+        doesn't affect your score. {strict() ? 'You see the answers at the end.' : 'You see the answer after each one.'}
       </p>
     </div>
   {:else if stage === 'done' && result}
@@ -214,11 +214,11 @@
         {/each}
       </ul>
       {#if nextLevel && !session}
-        <p>Above {Math.round(threshold * 100)}%: {nextLevel.name} is open.</p>
+        <p>You scored over {Math.round(threshold * 100)}%, so {nextLevel.name} is open.</p>
       {/if}
       {#if tapered}<p>Effective speed raised to {tapered} wpm.</p>{/if}
       {#if session === 'stretch' && result.accuracy >= 0.9 && !promoted}
-        <p>{settings.stretchWpm} wpm held at {Math.round(result.accuracy * 100)}%.</p>
+        <p>You copied {Math.round(result.accuracy * 100)}% at {settings.stretchWpm} wpm, your stretch speed.</p>
         <div><Button onclick={promote}>Make {settings.stretchWpm} wpm the comfort speed</Button></div>
       {:else if promoted}
         <p>Comfort is now {settings.comfortWpm} wpm; stretch is {settings.stretchWpm} wpm.</p>

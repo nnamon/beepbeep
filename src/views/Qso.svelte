@@ -384,7 +384,7 @@
           {/if}
         </div>
         {#if stage === 'running'}
-          <p class="muted small">Over ends on K, KN or BK, Enter, or {settings.overTimeout} s of silence.</p>
+          <p class="muted small">Your turn ends when you send K, KN or BK, press Enter, or stop sending for {settings.overTimeout} s.</p>
           {#if !strict() && turn === 'you'}
             <div class="over" aria-live="polite">
               <span class="label">You, decoded</span>

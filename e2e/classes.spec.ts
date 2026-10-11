@@ -54,8 +54,8 @@ test('your own text, with Morse Browser markup, plays one card per line', async 
   await page.getByLabel('Name').fill('My story');
   await page.getByLabel('Text', { exact: true }).fill('{CQ|} cq\nTHE RIG IS ON\n{|that is all}');
   await page.getByRole('button', { name: 'Save text' }).click();
-  await expect(page.getByText('3 lines. One card per line.')).toBeVisible();
-  await page.getByText('Show text as it plays').click();
+  await expect(page.getByText('3 lines. Each line plays on its own.')).toBeVisible();
+  await page.getByText('Show each one after it plays').click();
   await page.getByRole('radio', { name: '30 wpm' }).click();
   await page.getByRole('button', { name: /Start/ }).click();
   await expect(page.getByText('ADV 1 · 30/30 wpm')).toBeVisible();
@@ -64,12 +64,12 @@ test('your own text, with Morse Browser markup, plays one card per line', async 
   // Saved for next time.
   await page.reload();
   await expect(page.getByLabel('Text', { exact: true })).toHaveValue(/.+/);
-  await expect(page.getByText('3 lines. One card per line.')).toBeVisible();
+  await expect(page.getByText('3 lines. Each line plays on its own.')).toBeVisible();
 });
 
 test('VET runs two minutes of groups with the spacing stepping up', async ({ page }, info) => {
   await open(page, 'practice/class/bc1/vet', { level: { koch: 'koch-1', licw: 'licw-bc1-REA' } });
-  await expect(page.getByText('Three-character groups. Spacing 8, 10, 11, 12 wpm, 30 s each.')).toBeVisible();
+  await expect(page.getByText('Groups of three to copy. The gaps between characters start wide and shrink every 30 seconds.')).toBeVisible();
   await page.getByRole('button', { name: /Start/ }).click();
   await expect(page.getByText(/^[12]:\d\d left$/)).toBeVisible();
   await expect(page.getByText('BC1 · REA · 12/8 wpm')).toBeVisible();

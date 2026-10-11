@@ -106,7 +106,7 @@
         bind:value={length}
         options={[{ value: '45', label: '45 s' }, { value: '90', label: '90 s' }, { value: '180', label: '3 min' }]}
       />
-      <p class="muted">Type as it plays. Skip what you miss and keep going. Nothing is marked until the end.</p>
+      <p class="muted">Type what you hear as it plays. If you miss one, skip it and keep going. You see how you did at the end.</p>
     </div>
   {:else if stage === 'playing'}
     <p class="typed mono" aria-live="off">{typed.slice(-40).join('') || ' '}</p>
@@ -117,7 +117,7 @@
       <div><dt class="label">Copied</dt><dd class="num big">{Math.round(result.accuracy * 100)}%</dd></div>
       <div><dt class="label">Miss runs</dt><dd class="num big">{result.missRuns.length}</dd></div>
     </dl>
-    <p class="muted">Recovery is the average run of characters missed after the first miss. Lower is better.</p>
+    <p class="muted">Recovery: after a miss, how many more characters you miss on average before you catch up. Lower is better.</p>
     {#if tapered}<p>Effective speed raised to {tapered} wpm.</p>{/if}
     <TokenText tokens={marked} size="m" label="Sent text, misses underlined" />
   {/if}

@@ -133,7 +133,7 @@
     <div class="note">
       <p class="muted small">
         {heatOf === 'rx' ? 'Characters you copied' : 'Characters you sent, as the decoder received them'}, last {days} days. Stronger colour
-        is more accurate. Blank cells have none yet.
+        means more accurate; blank cells have no answers yet.
       </p>
       {#if charRows.length}<button type="button" class="tbtn" onclick={() => (charTable = !charTable)}>{charTable ? 'Heatmap' : 'Table'}</button>{/if}
     </div>
@@ -156,7 +156,7 @@
           </tbody>
         </table>
       </div>
-      <p class="muted small">Answer time runs from the end of the sound to your first key. Timing error is how far elements and gaps inside the character were from standard, on average.</p>
+      <p class="muted small">Answer time: from the end of the sound to your first key press. Timing error: how far your dits, dahs and the gaps inside the character were from standard length, on average.</p>
     {:else}
       <ul class="heat">
         {#each chars as c (c.t)}

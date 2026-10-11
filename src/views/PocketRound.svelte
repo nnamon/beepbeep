@@ -277,12 +277,12 @@
 
   {#if phase === 'ready'}
     <div class="center">
-      <p class="muted">{ROUND} items{stage === 'characters' ? ` from ${level.known.length} characters` : ''}.</p>
+      <p class="muted">A round of {ROUND}{stage === 'characters' ? `, using the ${level.known.length} characters you know` : ''}.</p>
       <button type="button" class="play" onclick={begin} aria-label="Start the round"><Icon name="play" size={40} /></button>
       <span class="muted">Start</span>
     </div>
   {:else if phase === 'empty'}
-    <p class="muted">Not enough items for this stage at {level.name}. Pick another stage or add to the custom set.</p>
+    <p class="muted">There aren't enough of these yet that use only the characters in {level.name}. Pick another stage, or add your own to the custom set.</p>
   {:else if phase === 'learn'}
     <div class="center">
       <span class="label">New</span>
@@ -299,9 +299,9 @@
       <div><dt class="label">Replayed</dt><dd class="num big">{replayed.length}</dd></div>
     </dl>
     {#if opened}
-      <p class="opened">Above {Math.round(threshold * 100)}%: {opened.name} is open. It adds <span class="mono">{opened.added.map(displayToken).join(' ')}</span>.</p>
+      <p class="opened">You scored over {Math.round(threshold * 100)}%, so {opened.name} is open. It adds <span class="mono">{opened.added.map(displayToken).join(' ')}</span>.</p>
     {:else if stage === 'characters'}
-      <p class="muted">{Math.round(threshold * 100)}% or more in a round opens the next lesson.</p>
+      <p class="muted">Score {Math.round(threshold * 100)}% or more in a round to open the next lesson.</p>
     {/if}
     {#if replayed.length}
       <p class="muted">Replayed: <span class="mono">{[...new Set(replayed.map((l) => l.item))].join(' ')}</span></p>

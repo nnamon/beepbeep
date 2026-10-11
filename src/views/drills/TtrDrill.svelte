@@ -127,7 +127,7 @@
       {:else if running}
         <span class="muted big">Listen</span>
       {:else}
-        <p class="muted">Type each character before the voice names it. Target: about two-thirds before the voice.</p>
+        <p class="muted">A character plays, then a voice names it. Type it before the voice does. Aim to beat the voice about two times in three; as you get faster, the voice comes sooner.</p>
       {/if}
     </div>
   </div>

@@ -146,8 +146,8 @@
     } else if (vs >= 2 && (!mic || marks <= vs * 4 + 2)) {
       settings.sendWpm = Math.round(wpm);
       const where = mic && signal.pitch ? ` at ${Math.round(signal.pitch)} Hz` : '';
-      const gaps = inner !== null && inner >= 1.8 ? ` Gaps inside a letter run ${inner.toFixed(1)} dits; the standard is 1.` : '';
-      calNote = `${vs} V. ${Math.round(wpm)} wpm${where}, saved as your sending speed.${gaps}`;
+      const gaps = inner !== null && inner >= 1.8 ? ` The gaps inside your letters are ${inner.toFixed(1)} dits long; the standard is 1.` : '';
+      calNote = `Heard ${vs} V's at ${Math.round(wpm)} wpm${where}. Saved as your sending speed.${gaps}`;
     } else if (mic && marks > (vs || 3) * 4 + 2) {
       calNote = 'Tone breaking up. Lower the sidetone volume, move the mic or use a wired mic.';
     } else {
@@ -174,7 +174,7 @@
     const where = room === null ? '' : ` (room ${room} dBFS, tone ${room + rise} dBFS)`;
     if (good) {
       settings.squelchDb = Math.max(9, Math.min(20, Math.round(rise / 2)));
-      calLevelNote = `Tone ${rise} dB over the room${where}. Squelch set to ${settings.squelchDb} dB.`;
+      calLevelNote = `Tone ${rise} dB over the room${where}. Squelch set to ${settings.squelchDb} dB, so quieter sounds are ignored.`;
     } else {
       calLevelNote = `Tone ${rise} dB over the room${where}. Squelch left at ${settings.squelchDb ? `${settings.squelchDb} dB` : 'the default'}.`;
     }
@@ -310,7 +310,7 @@
             <Button kind={signal.pitch ? 'primary' : 'secondary'} onclick={() => setPitch(signal.pitch ?? 600)}>Pin {Math.round(signal.pitch ?? 600)} Hz</Button>
           {/if}
         </div>
-        <p class="muted small">Pinned, the decoder listens only at this pitch. Key a few V's and pin the pitch heard, or enter your sidetone's pitch.</p>
+        <p class="muted small">When a pitch is pinned, the decoder listens only at that pitch and ignores other sounds. Key a few V's and pin the pitch it hears, or enter your sidetone's pitch.</p>
         <div class="spec-wrap" bind:clientWidth={specWidth}>
         <svg class="spec" viewBox="0 0 {W} {H}" width={W} height={H} role="img" aria-label="Input spectrum, 200 to 1500 Hz">
           <rect x={xOf(300)} y="0" width={xOf(1200) - xOf(300)} height={H} class="band" />
@@ -343,7 +343,7 @@
     {#if calPin}
       <div class="row">
         <Button kind="primary" onclick={() => { pin(calPin); calPin = null; }}>Pin {calPin} Hz</Button>
-        <span class="muted small">Decode only at this pitch.</span>
+        <span class="muted small">Listen only at this pitch from now on.</span>
       </div>
     {/if}
     <div class="row">
