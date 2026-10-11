@@ -107,11 +107,11 @@ test.describe('desktop', () => {
       await open(page, 'qso', theme, { input: 'straight', sendWpm: 18, overTimeout: 2 });
       await page.getByText('Contest', { exact: true }).click();
       await page.getByRole('button', { name: 'Start QSO' }).click();
-      await expect(page.getByText('Your turn')).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByText('Your turn', { exact: true })).toBeVisible({ timeout: 30_000 });
       await key(page, 'K1ABC', 18);
       await page.keyboard.press('Enter');
       await expect(page.getByText('Station sending')).toBeVisible({ timeout: 10_000 });
-      await expect(page.getByText('Your turn')).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByText('Your turn', { exact: true })).toBeVisible({ timeout: 30_000 });
       const serial = (await page.locator('main').innerText()).match(/K1ABC 5NN (\d+)/)![1];
       await page.getByLabel('Serial').fill(serial);
       await page.getByRole('heading', { level: 1 }).click();

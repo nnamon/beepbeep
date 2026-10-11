@@ -13,12 +13,12 @@ Live decoder: simulated hand keying with fan noise and speech mixed in, fed to t
 <table>
 <tr>
 <td width="33%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/phone-pocket-dark.png"><img src="docs/images/phone-pocket-light.png" alt="Pocket round on a phone: the answer was I, M was typed, with both rhythms shown"></picture></td>
-<td width="33%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/phone-practice-dark.png"><img src="docs/images/phone-practice-light.png" alt="Practice screen on a phone: Koch level 14, session plan and drills"></picture></td>
+<td width="33%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/phone-practice-dark.png"><img src="docs/images/phone-practice-light.png" alt="Practice screen on a phone: Koch level 14 and today's checklist, with minutes for each step"></picture></td>
 <td width="33%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/phone-setup-dark.png"><img src="docs/images/phone-setup-light.png" alt="Input setup on a phone: tone heard at 600 Hz, spectrum, level 28 dB over noise"></picture></td>
 </tr>
 <tr>
 <td>Pocket: quiz by ear on a phone.</td>
-<td>Practice: lesson, session plan and drills.</td>
+<td>Practice: your lesson and today's checklist.</td>
 <td>Setup: the tone found in the room's spectrum.</td>
 </tr>
 </table>
@@ -48,6 +48,8 @@ Progress: speeds over time and accuracy by character.
 | Pocket | Phone quiz rounds by ear: characters, chunks, words, callsigns, phrases, custom sets |
 | QSO | Ragchew, LICW QSO protocol, SKCC, K1USN SST, POTA, SOTA, contest, DX pileup |
 | LICW exercises | The syllabus exercises for BC1 to BC3, INT 1 to 3, ADV 1 to 3, TTR+ and OverLearn: familiarity, recognition, TTR, VET and VST, groups, Speed Racer, CW-voice-CW and more, at each stage's speeds, with notes on how to do each one |
+
+Practice opens with today's session: a checklist for your lesson in a set order (new sounds, then naming them fast, then copying, then sending), sized to your session length. Steps tick themselves as you do them.
 
 Two course tracks: the classic Koch order (K M R S U…) and the LICW Beginners Carousel (BC1, BC2). Students in an LICW class can start the carousel at the group they joined. LICW strict mode applies the LICW Method Guide's guardrails: no rhythm visuals, decoded sending after each over, receive answers at the end of a drill.
 

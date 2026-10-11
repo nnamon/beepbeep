@@ -6,7 +6,8 @@
   import Select from '../ui/Select.svelte';
   import Exercise from './drills/Exercise.svelte';
   import { currentLevel, farnsworthDays, receiveSpeeds, trackLevels } from '../lib/train/session';
-  import { getItems, sessions } from '../lib/state/db';
+  import { getItems, getKv, qsos, sessions, setKv } from '../lib/state/db';
+  import { localDay, todaySteps, type Step } from '../lib/train/today';
   import { accuracy, windowStats } from '../lib/train/srs';
   import { displayToken } from '../lib/morse/code';
   import Segmented from '../ui/Segmented.svelte';
@@ -30,41 +31,40 @@
   const idx = $derived(levels.findIndex((l) => l.id === level.id));
   const speeds = $derived(receiveSpeeds());
 
-  // One to three objectives for today's session, from your own numbers.
-  let objectives = $state<{ text: string; to: string[] }[]>([]);
+  // Today's checklist. A step ticks itself when a session of its kind is
+  // recorded today; you can also tick it yourself.
+  const day = localDay();
+  let fresh = $state<string[]>([]);
+  let weak = $state<string[]>([]);
+  let doneModes = $state<Set<string>>(new Set());
+  let ticked = $state<string[]>([]);
   $effect(() => {
     const lvl = level;
-    const track = settings.track;
-    const minutes = settings.sessionMinutes;
-    const stretchWpm = settings.stretchWpm;
     void (async () => {
       try {
-        const [rx, list] = await Promise.all([getItems('rx:'), sessions()]);
-        const out: { text: string; to: string[] }[] = [];
-        const fresh = lvl.added.filter((c) => {
+        const [rx, list, logged, mine] = await Promise.all([getItems('rx:'), sessions(), qsos(), getKv<{ day: number; ids: string[] }>('today', { day, ids: [] })]);
+        fresh = lvl.added.filter((c) => {
           const st = rx.get(`rx:${c}`);
           return !st || st.seen < 10 || (accuracy(st) ?? 0) < 0.9;
         });
-        if (fresh.length) out.push({ text: `Learn ${fresh.map(displayToken).join(' ')}`, to: track === 'licw' ? ['familiarity'] : ['copy', 'chars'] });
         const since = Date.now() - 30 * 864e5;
-        const weak = lvl.known
+        weak = lvl.known
           .filter((c) => !lvl.added.includes(c))
           .map((c) => ({ c, w: windowStats(rx.get(`rx:${c}`), since) }))
           .filter((x) => x.w && x.w.n >= 5 && x.w.accuracy < 0.8)
           .sort((a, b) => a.w!.accuracy - b.w!.accuracy)
-          .slice(0, 3);
-        if (weak.length) out.push({ text: `Copy ${weak.map((x) => displayToken(x.c)).join(' ')}, under 80% this month`, to: ['copy', 'chars'] });
-        const week = list.filter((x) => x.at > Date.now() - 7 * 864e5);
-        const total = week.reduce((a, x) => a + x.seconds, 0);
-        const sent = week.filter((x) => x.sending).reduce((a, x) => a + x.seconds, 0);
-        if (!total || sent / total < 0.25) out.push({ text: `Send for ${Math.max(3, Math.round(minutes / 4))} min`, to: ['send'] });
-        if (out.length < 3) out.push({ text: `Stretch session at ${stretchWpm} wpm`, to: ['copy', 'stretch'] });
-        objectives = out.slice(0, 3);
+          .slice(0, 3)
+          .map((x) => x.c);
+        const modes = new Set(list.filter((x) => localDay(x.at) === day).map((x) => x.mode));
+        if (logged.some((q) => localDay(q.at) === day)) modes.add('qso');
+        doneModes = modes;
+        ticked = mine.day === day ? mine.ids : [];
       } catch {
-        objectives = [];
+        doneModes = new Set();
       }
     })();
   });
+
 
   // Flag extra spacing left on for more than two weeks.
   let wideDays = $state<number | null>(null);
@@ -91,6 +91,28 @@
     settings.licwClass = id;
     if (id !== 'bc1' && id !== 'bc2') return;
     if (!level.id.startsWith(`licw-${id}`)) settings.level.licw = levels.find((l) => l.id.startsWith(`licw-${id}`))!.id;
+  }
+
+  const steps = $derived(
+    todaySteps({
+      track: settings.track,
+      stage: cls.id,
+      fresh: fresh.map(displayToken),
+      weak: weak.map(displayToken),
+      added: level.added.map(displayToken),
+      sessionMinutes: settings.sessionMinutes,
+      day,
+    }),
+  );
+  const auto = (s: Step) => s.modes.some((m) => doneModes.has(m));
+  const isDone = (s: Step) => auto(s) || ticked.includes(s.id);
+  const required = $derived(steps.filter((s) => !s.optional));
+  const extras = $derived(steps.filter((s) => s.optional));
+
+  function toggle(s: Step) {
+    if (auto(s)) return;
+    ticked = ticked.includes(s.id) ? ticked.filter((x) => x !== s.id) : [...ticked, s.id];
+    void setKv('today', { day, ids: [...ticked] });
   }
   function setTrack(t: TrackId) {
     settings.track = t;
@@ -204,18 +226,36 @@
     </section>
 
     <section class="today" aria-labelledby="today-h">
-      <h2 id="today-h">Plan</h2>
-      <dl class="facts">
-        <div><dt class="label">Session</dt><dd><Value value={settings.sessionMinutes} unit="min" /></dd></div>
-        <div><dt class="label">Sending</dt><dd><Value value="25%" unit="or more" /></dd></div>
-        <div><dt class="label">Comfort</dt><dd><Value value={settings.comfortWpm} unit="wpm" /></dd></div>
-        <div><dt class="label">Stretch</dt><dd><Value value={settings.stretchWpm} unit="wpm" /></dd></div>
-      </dl>
-      {#if objectives.length}
-        <ol class="objectives">
-          {#each objectives as o (o.text)}<li><a href={href('practice', ...o.to)}>{o.text}</a></li>{/each}
+      <div class="today-head">
+        <h2 id="today-h">Today</h2>
+        <span class="muted">{required.filter(isDone).length} of {required.length} done · about {required.reduce((a, x) => a + x.minutes, 0)} min</span>
+      </div>
+      <p class="muted lead">In this order: new sounds first, then naming them fast, then copying, then sending.</p>
+      {#snippet stepList(list: Step[])}
+        <ol class="steps">
+          {#each list as s (s.id)}
+            <li class:done={isDone(s)}>
+              <button type="button" class="tick" role="checkbox" aria-checked={isDone(s)} aria-label="Done: {s.title}" onclick={() => toggle(s)}>
+                {#if isDone(s)}<Icon name="check" size={16} />{/if}
+              </button>
+              <a href={href(...s.to)}>
+                <span class="name">{s.title}</span>
+                <span class="text muted">{s.why}</span>
+              </a>
+              <span class="min muted num">{s.minutes} min</span>
+            </li>
+          {/each}
         </ol>
+      {/snippet}
+      {@render stepList(required)}
+      {#if extras.length}
+        <h3 class="ex-group">If you have time</h3>
+        {@render stepList(extras)}
       {/if}
+      <p class="muted small">
+        Extra copy practice: comfort is a speed you copy easily ({settings.comfortWpm} wpm), stretch is one that pushes you
+        ({settings.stretchWpm} wpm).
+      </p>
       <div class="sessions">
         <Button href={href('practice', 'copy', 'comfort')}>Comfort session</Button>
         <Button href={href('practice', 'copy', 'stretch')}>Stretch session</Button>
@@ -387,37 +427,76 @@
     gap: var(--s-1);
   }
 
-  .facts {
+  .today-head {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--s-2) var(--s-5);
-    margin: 0;
+    align-items: baseline;
+    gap: var(--s-1) var(--s-3);
   }
 
-  .facts div {
+  .lead {
+    max-width: var(--reading);
+  }
+
+  .steps {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border-top: var(--hairline) solid var(--line);
+    max-width: 760px;
+  }
+
+  .steps li {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--s-2);
+    padding: var(--s-1) 0;
+    border-bottom: var(--hairline) solid var(--line);
+  }
+
+  .tick {
+    width: 28px;
+    height: 28px;
+    border: 1.5px solid var(--muted);
+    border-radius: 50%;
+    background: none;
+    color: var(--signal-ink);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .done .tick {
+    background: var(--signal);
+    border-color: var(--signal);
+  }
+
+  .steps a {
     display: flex;
     flex-direction: column;
+    text-decoration: none;
+    min-width: 0;
   }
 
-  .facts dd {
-    margin: 0;
-  }
-
-  .objectives {
-    margin: var(--s-1) 0 0;
-    padding-left: var(--s-3);
-    display: flex;
-    flex-direction: column;
-    gap: var(--s-half);
-  }
-
-  .objectives a {
-    text-decoration-color: var(--line);
+  .steps a:hover .name {
+    text-decoration: underline;
+    text-decoration-color: var(--signal);
     text-underline-offset: 3px;
   }
 
-  .objectives a:hover {
-    text-decoration-color: var(--signal);
+  .done .name {
+    color: var(--muted);
+  }
+
+  .min {
+    font-size: var(--size-s);
+  }
+
+  .small {
+    font-size: var(--size-s);
+    max-width: var(--reading);
   }
 
   .sessions {

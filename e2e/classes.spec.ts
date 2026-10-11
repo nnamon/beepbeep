@@ -108,3 +108,46 @@ test('not in a class: stages, no carousel start, no class wording', async ({ pag
   await expect(page.getByRole('heading', { name: 'Class exercises' })).toBeVisible();
   await expect(page.getByLabel('Joined at')).toHaveValue('TIN');
 });
+
+test("Today: the session's steps in order, ticked by hand or by doing them", async ({ page }, info) => {
+  await open(page, 'practice', { level: { koch: 'koch-1', licw: 'licw-bc1-TIN' }, sessionMinutes: 15 });
+  const today = page.locator('section', { has: page.getByRole('heading', { name: 'Today' }) });
+  const names = today.locator('.steps .name');
+  await expect(names.first()).toHaveText('Familiarity on T I N');
+  await expect(names).toContainText(['Familiarity on T I N', 'Spot the new character', 'Recognition', 'TTR']);
+  await expect(today.getByText(/^0 of \d+ done · about 1[4-6] min$/)).toBeVisible();
+  // By hand.
+  await today.getByRole('checkbox', { name: 'Done: Recognition' }).click();
+  await expect(today.getByText(/^1 of \d+ done/)).toBeVisible();
+  await page.reload();
+  await expect(today.getByRole('checkbox', { name: 'Done: Recognition' })).toBeChecked();
+  // By doing it: a Copy drill session recorded today ticks the Copy drill step.
+  await page.evaluate(async () => {
+    const db: IDBDatabase = await new Promise((res, rej) => {
+      const r = indexedDB.open('beepbeep', 1);
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    });
+    const tx = db.transaction(['sessions'], 'readwrite');
+    tx.objectStore('sessions').add({ at: Date.now(), mode: 'copy', seconds: 200, sending: false, items: 20, accuracy: 0.85, wpm: 12 });
+    await new Promise((res) => (tx.oncomplete = res));
+    db.close();
+  });
+  await page.reload();
+  await expect(today.getByRole('checkbox', { name: 'Done: Copy drill' })).toBeChecked();
+  await expect(today.getByText(/^2 of \d+ done/)).toBeVisible();
+  // A step done by a session stays done.
+  await today.getByRole('checkbox', { name: 'Done: Copy drill' }).click();
+  await expect(today.getByRole('checkbox', { name: 'Done: Copy drill' })).toBeChecked();
+  await shot(page, 'today', info.project.name);
+  // Its link opens the exercise.
+  await today.getByRole('link', { name: /Familiarity on T I N/ }).click();
+  await expect(page).toHaveURL(/#\/practice\/class\/bc1\/familiarity$/);
+});
+
+test('Today on the Koch track starts with the new characters', async ({ page }) => {
+  await open(page, 'practice', { track: 'koch', level: { koch: 'koch-1', licw: 'licw-bc1-REA' } });
+  const today = page.locator('section', { has: page.getByRole('heading', { name: 'Today' }) });
+  await expect(today.locator('.steps .name').first()).toHaveText('Spot the new character: K M');
+  await expect(today.getByText('If you have time')).toBeVisible();
+});

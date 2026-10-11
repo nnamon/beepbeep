@@ -58,11 +58,11 @@ test('contest QSO with the bot, start to log', async ({ page }) => {
   await page.goto('./#/qso');
   await page.getByText('Contest', { exact: true }).click();
   await page.getByRole('button', { name: 'Start QSO' }).click();
-  await expect(page.getByText('Your turn')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText('Your turn', { exact: true })).toBeVisible({ timeout: 30_000 });
   await key(page, 'K1ABC');
   await page.keyboard.press('Enter');
   await expect(page.getByText('Station sending')).toBeVisible({ timeout: 10_000 });
-  await expect(page.getByText('Your turn')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText('Your turn', { exact: true })).toBeVisible({ timeout: 30_000 });
   await page.getByLabel('Serial').fill('42');
   await page.getByRole('heading', { level: 1 }).click(); // move focus off the field before keying
   await key(page, 'TU 5NN 001');

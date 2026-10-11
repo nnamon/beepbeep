@@ -268,9 +268,7 @@ function bc(n: 1 | 2): ClassInfo {
     carousel: n === 1 ? 'bc1' : 'bc2',
     routine: [
       'Exercises use the group you are on and every group before it.',
-      'Each day: Familiarity on the new group, then Recognition and TTR on everything so far.',
-      'Then one copy exercise: VET, VST or groups. Copy by hand, on paper.',
-      'Send every day, a few minutes at least.',
+      'Copy by hand, on paper, in the copy exercises.',
       'Fifteen to twenty minutes a day does more than an hour once a week.',
       ...(n === 2 ? ['Treat numbers and prosigns like any other character: say them as you hear them, such as five or A R.'] : []),
     ],
@@ -311,7 +309,7 @@ function intermediate(n: 1 | 2 | 3): ClassInfo {
     name: `INT ${n}`,
     band: `${w}/${w} wpm`,
     routine: [
-      'Learn to hear each word as one sound: work through Familiarity, then Recognition, then Speed Racing.',
+      'Learn to hear each word as one sound.',
       'Head copy where you can: follow it without writing.',
       'Any exercise can play a text of your own: load it under Your text.',
       'Send every day: the QSO simulator gives you someone to send to.',
@@ -494,7 +492,6 @@ const bc3: ClassInfo = {
   band: '12/12 wpm',
   routine: [
     'BC3 is about operating: call signs, contest exchanges and the QSO protocol.',
-    'Familiarity on QSO words and phrases first; then call signs and contests.',
     'Put it together in the QSO simulator: LICW protocol, SKCC, SST, POTA.',
   ],
   exercises: [
