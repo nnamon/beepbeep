@@ -4,6 +4,7 @@
   import Icon from './ui/Icon.svelte';
   import VisualCue from './ui/VisualCue.svelte';
   import TouchKey from './ui/TouchKey.svelte';
+  import SoundGate from './ui/SoundGate.svelte';
   import Guide from './views/Guide.svelte';
   import Practice from './views/Practice.svelte';
   import Pocket from './views/Pocket.svelte';
@@ -55,6 +56,7 @@
     <a class="guide-link" href={href('guide')} class:on={top === 'guide'}>Guide</a>
     <a class="gear" href={href('settings')} aria-label="Settings"><Icon name="settings" /></a>
   </header>
+  <SoundGate />
   {#if top !== 'pocket'}<div class="signal-strip"><SignalBar compact /></div>{/if}
 
   <main class="main">
@@ -171,6 +173,18 @@
 
   .guide-link {
     display: none;
+  }
+
+  /* While keying on the touch key, quick taps must not select text anywhere. Fields stay editable. */
+  .shell.keying {
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  .shell.keying :global(:is(input, textarea)) {
+    user-select: text;
+    -webkit-user-select: text;
   }
 
   /* Room for the touch key pad (96 px plus its padding) under the content. */

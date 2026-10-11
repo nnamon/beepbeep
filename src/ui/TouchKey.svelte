@@ -6,6 +6,20 @@
   import { signal } from '../lib/state/signal.svelte';
 
   let pressed = $state(false);
+  let pad: HTMLButtonElement;
+
+  // iOS runs its own touch gestures (text selection, the magnifier, double-tap
+  // zoom) from touch events, which cancelling pointer events does not stop.
+  // These listeners must be non-passive to cancel them.
+  $effect(() => {
+    const stop = (e: TouchEvent) => {
+      if (e.cancelable) e.preventDefault();
+    };
+    for (const type of ['touchstart', 'touchmove', 'touchend'] as const) pad.addEventListener(type, stop, { passive: false });
+    return () => {
+      for (const type of ['touchstart', 'touchmove', 'touchend'] as const) pad.removeEventListener(type, stop);
+    };
+  });
 
   function down(e: PointerEvent) {
     e.preventDefault();
@@ -28,6 +42,7 @@
 
 <div class="dock">
   <button
+    bind:this={pad}
     type="button"
     class="pad"
     class:on={pressed || signal.keyDown}
@@ -45,6 +60,13 @@
 </div>
 
 <style>
+  .dock,
+  .dock * {
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
+
   .dock {
     position: fixed;
     left: 0;

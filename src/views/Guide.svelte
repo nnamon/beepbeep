@@ -86,6 +86,7 @@
       <li><span class="mono">Enter</span> starts a drill. <span class="mono">Esc</span> leaves it.</li>
       <li><span class="mono">Alt + ↑</span> and <span class="mono">Alt + ↓</span> change receive speed.</li>
       <li>On a phone or tablet every shortcut has a button.</li>
+      <li>On iPhone and iPad, sound starts from a tap: use Turn sound on, or any Start button. It then plays with the silent switch on.</li>
     </ul>
   </div>
 </section>

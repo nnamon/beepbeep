@@ -7,6 +7,7 @@ import type { WorkletCommand, WorkletMessage } from './detector.worklet';
 import type { DetectorEvent } from '../dsp/detector';
 import { renderSchedule, type Conditions } from '../morse/render';
 import { buildSchedule, type FistOptions, type Schedule } from '../morse/schedule';
+import { writeWav } from '../util/wav';
 
 export interface MicInfo {
   label: string;
@@ -41,6 +42,26 @@ export interface PlayTextOptions extends Conditions {
 type Listener = (events: DetectorEvent[], time: number) => void;
 
 const BLUETOOTH = /bluetooth|airpods|hands-?free|headset|\bbt\b|hfp|buds/i;
+
+/** iPhone, iPod, or an iPad (which reports itself as a Mac with touch). */
+export const IS_IOS =
+  typeof navigator !== 'undefined' &&
+  (/iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+
+/**
+ * iOS 17+ Audio Session API. 'playback' is not muted by the silent switch;
+ * the mic needs 'play-and-record', which is not muted either.
+ */
+function setAudioSession(type: 'playback' | 'play-and-record'): boolean {
+  const s = (navigator as Navigator & { audioSession?: { type: string } }).audioSession;
+  if (!s) return false;
+  try {
+    s.type = type;
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 class AudioEngine {
   ctx: AudioContext | null = null;
@@ -83,6 +104,9 @@ class AudioEngine {
 
   /** Creates or resumes the audio context. Call from a tap or key press. */
   async ensure(): Promise<AudioContext> {
+    if (typeof navigator !== 'undefined') {
+      if (!setAudioSession(this.mic ? 'play-and-record' : 'playback')) this.unlockOlderIos();
+    }
     if (!this.ctx) {
       this.ctx = new AudioContext({ latencyHint: 'interactive' });
       this.master = this.ctx.createGain();
@@ -91,6 +115,27 @@ class AudioEngine {
     }
     if (this.ctx.state !== 'running') await this.ctx.resume();
     return this.ctx;
+  }
+
+  private silentEl: HTMLAudioElement | null = null;
+
+  /**
+   * iOS before 17 has no Audio Session API. A media element playing silence
+   * moves the page into the playback category, which the silent switch does
+   * not mute; Web Audio then plays too. Started from the same tap as ensure().
+   */
+  private unlockOlderIos() {
+    if (!IS_IOS || this.silentEl) return;
+    const wav = writeWav(new Float32Array(4800), 48000);
+    const el = new Audio(URL.createObjectURL(new Blob([wav as Uint8Array<ArrayBuffer>], { type: 'audio/wav' })));
+    el.loop = true;
+    el.setAttribute('playsinline', '');
+    void el.play().catch(() => undefined);
+    this.silentEl = el;
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) el.pause();
+      else void el.play().catch(() => undefined);
+    });
   }
 
   setVolume(v: number) {
@@ -216,6 +261,7 @@ class AudioEngine {
     if (!this.micSupported) throw new Error('This browser only allows the microphone on a secure (https) page.');
     const ctx = await this.ensure();
     this.stopMic();
+    setAudioSession('play-and-record');
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         deviceId: deviceId ? { exact: deviceId } : undefined,
@@ -261,10 +307,12 @@ class AudioEngine {
     this.micNode?.disconnect();
     this.worklet?.disconnect();
     this.worklet?.port.close();
+    const hadMic = !!this.mic;
     this.mic?.getTracks().forEach((t) => t.stop());
     this.mic = null;
     this.micNode = null;
     this.worklet = null;
+    if (hadMic) setAudioSession('playback');
   }
 
   async inputDevices(): Promise<MediaDeviceInfo[]> {

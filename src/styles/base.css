@@ -13,6 +13,9 @@
 html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
+
+  /* No double-tap zoom: the app is tapped fast (keys, the touch key). Pinch zoom still works. */
+  touch-action: manipulation;
 }
 
 body {
