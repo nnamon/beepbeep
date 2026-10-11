@@ -356,7 +356,7 @@
             <label><span class="label">Call</span><input class="mono" bind:value={settings.you.call} autocapitalize="characters" spellcheck="false" /></label>
             <label><span class="label">Name</span><input class="mono" bind:value={settings.you.name} autocapitalize="characters" spellcheck="false" /></label>
             <label><span class="label">QTH</span><input class="mono" bind:value={settings.you.qth} autocapitalize="characters" spellcheck="false" /></label>
-            <label><span class="label">Region</span><input class="mono" bind:value={settings.you.state} autocapitalize="characters" spellcheck="false" placeholder="MA, ON, JAPAN" /></label>
+            <label><span class="label">Region (optional)</span><input class="mono" bind:value={settings.you.state} autocapitalize="characters" spellcheck="false" placeholder="MA, ON, JAPAN" /></label>
             {#if format === 'skcc'}<label><span class="label">SKCC nr</span><input class="mono" bind:value={settings.you.skcc} autocapitalize="characters" spellcheck="false" /></label>{/if}
           </div>
           <p class="muted small">Saved for next time. Also in <a href={href('settings')}>Settings</a>, Your station.</p>
@@ -556,7 +556,7 @@
     border: var(--hairline) solid var(--muted);
     border-radius: var(--radius);
     background: var(--surface);
-    font-size: var(--size-m);
+    font-size: var(--size-field);
     text-transform: uppercase;
     width: 100%;
   }

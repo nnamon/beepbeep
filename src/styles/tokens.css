@@ -24,6 +24,8 @@
   --size-m: 15px;
   --size-l: 20px;
   --size-xl: 40px;
+  /* Text in text boxes. iOS Safari zooms into any text box under 16 px and stays zoomed, so touch screens get 16. */
+  --size-field: var(--size-m);
   --weight-regular: 400;
   --weight-strong: 600;
   --leading: 1.45;
@@ -113,5 +115,11 @@
 @media (prefers-reduced-motion: reduce) {
   :root {
     --transition: 0ms;
+  }
+}
+
+@media (pointer: coarse) {
+  :root {
+    --size-field: 16px;
   }
 }

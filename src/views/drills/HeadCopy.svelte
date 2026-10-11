@@ -226,7 +226,7 @@
     border: var(--hairline) solid var(--muted);
     border-radius: var(--radius);
     background: var(--surface);
-    font-size: var(--size-m);
+    font-size: var(--size-field);
     text-transform: uppercase;
   }
 

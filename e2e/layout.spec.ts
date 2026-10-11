@@ -42,3 +42,20 @@ for (const phone of PHONES) for (const s of SCREENS) {
     expect(m.kbBottom, 'keyboard ends above the tab bar').toBeLessThanOrEqual(m.barTop);
   });
 }
+
+// iOS Safari zooms into any text box under 16 px and stays zoomed, cutting the page off.
+for (const route of ['qso/learn', 'settings', 'qso', 'pocket/custom', 'setup']) {
+  test(`${route}: text boxes are 16 px or more on a touch screen`, async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('beepbeep.settings.v1', JSON.stringify({ voice: 'off', guideSeen: true })));
+    await page.goto(`./#/${route}`);
+    await page.waitForTimeout(300);
+    expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches), 'the phone project has a touch screen').toBe(true);
+    const small = await page.evaluate(() =>
+      [...document.querySelectorAll('input, textarea, select')]
+        .filter((e) => !['checkbox', 'radio', 'range', 'file'].includes((e as HTMLInputElement).type))
+        .map((e) => ({ what: e.outerHTML.slice(0, 60), px: parseFloat(getComputedStyle(e).fontSize) }))
+        .filter((x) => x.px < 16),
+    );
+    expect(small).toEqual([]);
+  });
+}

@@ -28,7 +28,7 @@
 
   // Your station: what you send in the lessons.
   const me = $derived<Me>({ call: settings.you.call, name: settings.you.name, qth: settings.you.qth, state: settings.you.state });
-  const ready = $derived(!!(me.call.trim() && me.name.trim() && me.qth.trim() && me.state.trim()));
+  const ready = $derived(!!(me.call.trim() && me.name.trim() && me.qth.trim()));
 
   let done = $state<Record<string, number>>({});
   void getKv<Record<string, number>>('qsoLessons', {}).then((d) => (done = d));
@@ -233,10 +233,13 @@
       <div class="fields">
         <label><span class="label">Call</span><input bind:value={settings.you.call} autocapitalize="characters" autocomplete="off" spellcheck="false" /></label>
         <label><span class="label">Name</span><input bind:value={settings.you.name} autocapitalize="characters" autocomplete="off" spellcheck="false" /></label>
-        <label><span class="label">QTH (town)</span><input bind:value={settings.you.qth} autocapitalize="characters" autocomplete="off" spellcheck="false" /></label>
-        <label><span class="label">State or country</span><input bind:value={settings.you.state} autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="MA, ON, JAPAN" /></label>
+        <label><span class="label">QTH, where you are</span><input bind:value={settings.you.qth} autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="SALEM, LONDON, SINGAPORE" /></label>
+        <label><span class="label">State, province or country (optional)</span><input bind:value={settings.you.state} autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="MA, ON, JAPAN" /></label>
       </div>
-      <p class="muted small">Used in what you send. Not licensed yet? Use any practice call, such as N0CALL.</p>
+      <p class="muted small">
+        Used in what you send. If you aren't licensed yet, use any practice call, such as N0CALL. The state, province or
+        country goes in contest and POTA exchanges; leave it blank if it would repeat your QTH.
+      </p>
     </div>
 
     <div class="options">
@@ -262,7 +265,7 @@
         </li>
       {/each}
     </ol>
-    {#if !ready}<p class="warn">Fill in your call, name, town and state or country first: the lessons put them in what you send.</p>{/if}
+    {#if !ready}<p class="warn">Fill in your call, name and QTH first: the lessons put them in what you send.</p>{/if}
   </section>
 {:else}
   <DrillFrame
@@ -445,6 +448,7 @@
     color: var(--ink);
     padding: 0 var(--s-1);
     font: inherit;
+    font-size: var(--size-field);
     text-transform: uppercase;
     max-width: 100%;
   }

@@ -362,6 +362,7 @@
     color: var(--ink);
     padding: var(--s-1);
     font: inherit;
+    font-size: var(--size-field);
     max-width: 560px;
   }
 

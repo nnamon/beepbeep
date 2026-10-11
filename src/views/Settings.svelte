@@ -89,10 +89,13 @@
       <label><span class="label">Callsign</span><input id="you-call" class="mono" bind:value={settings.you.call} autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="K1ABC" /></label>
       <label><span class="label">Name</span><input id="you-name" class="mono" bind:value={settings.you.name} autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="TOM" /></label>
       <label><span class="label">QTH</span><input id="you-qth" class="mono" bind:value={settings.you.qth} autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="BOSTON" /></label>
-      <label><span class="label">State, province or country</span><input id="you-region" class="mono" bind:value={settings.you.state} autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="MA, ON, JAPAN" /></label>
+      <label><span class="label">State, province or country (optional)</span><input id="you-region" class="mono" bind:value={settings.you.state} autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="MA, ON, JAPAN" /></label>
       <label><span class="label">SKCC number</span><input id="you-skcc" class="mono" bind:value={settings.you.skcc} autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="Optional" /></label>
     </div>
-    <p class="muted small">Used in QSOs and in the send drill's My station material. Send your region as you would on the air.</p>
+    <p class="muted small">
+      Used in QSOs and the send drill's My station practice. QTH is where you are, as you would send it. The state, province
+      or country goes in contest and POTA exchanges; leave it blank if it would repeat your QTH.
+    </p>
     <div class="field">
       <span class="label">Stations you hear</span>
       <Segmented
@@ -313,7 +316,7 @@
     border-radius: var(--radius);
     background: var(--surface);
     color: var(--ink);
-    font-size: var(--size-m);
+    font-size: var(--size-field);
     text-transform: uppercase;
     width: 100%;
   }

@@ -40,12 +40,11 @@ async function key(page: Page, text: string) {
 test('lessons wait for your station details', async ({ page }) => {
   await open(page, 'qso/learn', { you: { call: '', name: '', qth: '', state: '', skcc: '' } });
   await expect(page.getByRole('heading', { name: 'Learn QSOs' })).toBeVisible();
-  await expect(page.getByText(/Fill in your call, name, town/)).toBeVisible();
+  await expect(page.getByText(/Fill in your call, name and QTH/)).toBeVisible();
   await page.getByLabel('Call').fill('k1xyz');
   await page.getByLabel('Name').fill('tom');
-  await page.getByLabel('QTH (town)').fill('salem');
-  await page.getByLabel('State or country').fill('ma');
-  await expect(page.getByText(/Fill in your call, name, town/)).toHaveCount(0);
+  await page.getByLabel('QTH, where you are').fill('singapore');
+  await expect(page.getByText(/Fill in your call, name and QTH/)).toHaveCount(0);
   await page.getByRole('link', { name: /^1\s*Answer a CQ/ }).click();
   await expect(page).toHaveURL(/#\/qso\/learn\/answer-cq$/);
 });

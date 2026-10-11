@@ -47,5 +47,6 @@
     padding: 0 var(--s-1);
     max-width: 320px;
     font: inherit;
+    font-size: var(--size-field);
   }
 </style>

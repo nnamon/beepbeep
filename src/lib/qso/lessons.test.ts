@@ -5,10 +5,13 @@ import { mulberry32 } from '../util/random';
 
 const ME: Me = { call: 'k1xyz', name: 'tom', qth: 'salem', state: 'ma' };
 const ME2: Me = { call: 'VK2ABC', name: 'Annabel', qth: 'San Diego', state: 'CA' };
+// A city-state: the QTH says it all, with or without the region filled in.
+const SG: Me = { call: '9v1ne', name: 'Jeremy', qth: 'Singapore', state: '' };
+const SG2: Me = { call: '9V1NE', name: 'JEREMY', qth: 'SINGAPORE', state: 'singapore' };
 
 describe('guided QSO lessons', () => {
   it("every step's model passes its own check, for many stations", () => {
-    for (const me of [ME, ME2]) {
+    for (const me of [ME, ME2, SG, SG2]) {
       for (let seed = 1; seed <= 50; seed++) {
         const them = newStation(mulberry32(seed), 'world');
         for (const l of LESSONS) {
@@ -66,5 +69,21 @@ describe('guided QSO lessons', () => {
     expect(checkField('5NN', '599', 'rst').result).toBe('right');
     expect(checkField('Salem MA', 'SALEM', 'qth').result).toBe('right');
     expect(checkField('SAN FRANCISCO', 'SAN DIEGO', 'qth').result).toBe('wrong');
+  });
+});
+
+describe('where you are', () => {
+  it('sends the QTH once, with a region only when it adds something', () => {
+    const them = newStation(mulberry32(8), 'world');
+    const qth = (me: Me) => {
+      const s = LESSONS.find((l) => l.id === 'send-over')!.steps({ me, them }).find((x) => x.title === 'Where you are')!;
+      return s.kind === 'send' ? s.model : '';
+    };
+    expect(qth(SG)).toBe('QTH SINGAPORE');
+    expect(qth(SG2)).toBe('QTH SINGAPORE');
+    expect(qth(ME)).toBe('QTH SALEM MA');
+    // In a POTA exchange the region is your QTH when you left it blank.
+    const pota = LESSONS.find((l) => l.id === 'pota')!.steps({ me: SG, them }).find((x) => x.title === 'Your report and state')!;
+    expect(pota.kind === 'send' && pota.model).toBe('BK TU 5NN SINGAPORE SINGAPORE BK');
   });
 });

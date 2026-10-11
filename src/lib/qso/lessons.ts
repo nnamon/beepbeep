@@ -45,6 +45,10 @@ export interface Ctx {
 
 const up = (s: string) => s.trim().toUpperCase().replace(/\s+/g, ' ');
 const first = (s: string) => up(s).split(' ')[0];
+/** What you send after QTH: the place, and the region only when it adds something (not SINGAPORE SINGAPORE). */
+const where = (me: Me) => (me.state.trim() && up(me.state) !== up(me.qth) ? `${up(me.qth)} ${up(me.state)}` : up(me.qth));
+/** Your state, province or country for exchanges; your QTH when you left it blank. */
+const region = (me: Me) => up(me.state) || up(me.qth);
 
 // ---- Slots: the parts of an over ----
 
@@ -129,7 +133,7 @@ const exchangeSlots = (c: Ctx): Slot[] => [
   { role: 'NAME', accept: ['NAME', 'OP'], missing: 'Say NAME before your name.' },
   { role: 'your name', accept: [first(c.me.name)], max: 2, missing: `Send your name, ${first(c.me.name)}.` },
   { role: 'QTH', accept: ['QTH'], missing: 'Say QTH before where you are.' },
-  { role: 'your town', accept: [first(c.me.qth)], max: 2, missing: `Send your town, ${up(c.me.qth)}.` },
+  { role: 'where you are', accept: [first(c.me.qth)], max: 2, missing: `Send where you are, ${up(c.me.qth)}.` },
   { role: 'HW?', accept: ['HW?', 'HW'], optional: true, missing: '' },
   theirCall(c),
   de,
@@ -143,11 +147,11 @@ function sendWholeOver(c: Ctx): Step {
     kind: 'send',
     title: 'Send your first over',
     explain: [
-      'All of it in one go: who it is to and from, thanks, a report, your name and your town, then hand it back.',
+      'All of it in one go: who it is to and from, thanks, a report, your name and where you are, then hand it back.',
       'Take it slowly. A clean over at a slow speed is better than a fast one with mistakes.',
     ],
-    model: `${c.them.call} DE ${up(me.call)} R TNX ${first(c.them.name)} <BT> UR RST 579 579 <BT> NAME ${first(me.name)} ${first(me.name)} <BT> QTH ${up(me.qth)} ${up(me.state)} <BT> HW? ${c.them.call} DE ${up(me.call)} K`,
-    outline: 'their call · DE · your call · R TNX and their name · UR RST and a report twice · NAME and yours twice · QTH and your town · HW? · their call DE your call · K',
+    model: `${c.them.call} DE ${up(me.call)} R TNX ${first(c.them.name)} <BT> UR RST 579 579 <BT> NAME ${first(me.name)} ${first(me.name)} <BT> QTH ${where(me)} <BT> HW? ${c.them.call} DE ${up(me.call)} K`,
+    outline: 'their call · DE · your call · R TNX and their name · UR RST and a report twice · NAME and yours twice · QTH and where you are · HW? · their call DE your call · K',
     slots: exchangeSlots(c),
   };
 }
@@ -292,12 +296,12 @@ export const LESSONS: Lesson[] = [
       {
         kind: 'send',
         title: 'Where you are',
-        explain: ['QTH, then your town and your state, province or country.'],
-        model: `QTH ${up(c.me.qth)} ${up(c.me.state)}`,
-        outline: 'QTH · your town · your region',
+        explain: ['QTH, then where you are: your town, and your state, province or country if it adds something.'],
+        model: `QTH ${where(c.me)}`,
+        outline: 'QTH · where you are',
         slots: [
           { role: 'QTH', accept: ['QTH'], missing: 'Start with QTH.' },
-          { role: 'your town', accept: [first(c.me.qth)], max: 2, missing: `Send your town, ${up(c.me.qth)}.` },
+          { role: 'where you are', accept: [first(c.me.qth)], max: 2, missing: `Send where you are, ${up(c.me.qth)}.` },
         ],
       },
       {
@@ -403,14 +407,14 @@ export const LESSONS: Lesson[] = [
       {
         kind: 'send',
         title: 'Your report and state',
-        explain: ['BK, then TU (thank you), 5NN and your state twice, then BK.'],
-        model: `BK TU 5NN ${up(c.me.state)} ${up(c.me.state)} BK`,
-        outline: 'BK · TU · 5NN · your state twice · BK',
+        explain: ['BK, then TU (thank you), 5NN and your state, province or country twice, then BK.'],
+        model: `BK TU 5NN ${region(c.me)} ${region(c.me)} BK`,
+        outline: 'BK · TU · 5NN · your state, province or country twice · BK',
         slots: [
           { role: 'BK', accept: ['BK'], optional: true, missing: '' },
           { role: 'TU', accept: ['TU', 'TNX'], optional: true, missing: '' },
           { role: 'report', accept: [], kind: 'rst', missing: 'Send a report: 5NN.' },
-          { role: 'your state', accept: [up(c.me.state)], max: 2, missing: `Send your state, ${up(c.me.state)}.` },
+          { role: 'your state, province or country', accept: [first(region(c.me))], max: 2, missing: `Send ${region(c.me)}.` },
         ],
       },
       { kind: 'note', title: 'Done', explain: ['They finish with TU 73 and go on to the next hunter. A whole POTA contact takes about twenty seconds.'], play: 'TU 73 EE' },
