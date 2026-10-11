@@ -35,6 +35,7 @@
     if (poll) clearInterval(poll);
     calLive?.stop();
     calUnsub?.();
+    stopCalTimer();
   });
 
   async function refreshDevices() {
@@ -61,13 +62,28 @@
   let calUnsub: (() => void) | null = null;
   let calPin = $state<number | null>(null);
   let calLevelNote = $state('');
+  const CAL_SECONDS = 9;
+  let calLeft = $state(CAL_SECONDS);
+  let calTimer: ReturnType<typeof setInterval> | null = null;
+  /** Each start, or start over, of a calibration; an older one still starting gives way. */
+  let calRun = 0;
+
+  function stopCalTimer() {
+    if (calTimer) clearInterval(calTimer);
+    calTimer = null;
+  }
 
   async function calibrate() {
+    const run = ++calRun;
+    stopCalTimer();
     if (settings.input === 'mic' && !signal.micOn) await micOn();
+    if (run !== calRun) return;
+    calReq++;
     calText = '';
     calNote = '';
     calLevelNote = '';
     calPin = null;
+    calLeft = CAL_SECONDS;
     cal = 'listening';
     if (settings.input === 'mic') {
       // Measure from scratch: an old squelch must not hide a quieter tone.
@@ -83,7 +99,7 @@
       });
     }
     calLive?.stop();
-    calLive = new LiveDecoder({
+    const live = (calLive = new LiveDecoder({
       source: sendInput(),
       charWpm: settings.sendWpm,
       pitch: settings.pitch,
@@ -93,15 +109,23 @@
           if (n === calReq && cal === 'listening') calText = outputsToText(o);
         });
       },
-    });
-    await calLive.start();
-    setTimeout(finishCal, 9000);
+    }));
+    await live.start();
+    if (run !== calRun) {
+      // Started over while this one was starting: it was stopped before it attached.
+      live.stop();
+      return;
+    }
+    calTimer = setInterval(() => {
+      if (--calLeft <= 0) void finishCal();
+    }, 1000);
   }
 
   let calReq = 0;
 
   async function finishCal() {
     if (!calLive || cal !== 'listening') return;
+    stopCalTimer();
     cal = 'settling';
     calLive.flush();
     // The second pass: decoded again with the whole calibration's timing.
@@ -311,7 +335,7 @@
     <h2>Calibrate</h2>
     <p class="muted">Send <span class="mono">V V V</span>. Sets your sending speed and checks the tone.</p>
     {#if cal === 'listening'}
-      <p class="muted">Listening for 9 s</p>
+      <p class="muted">Listening, {calLeft} s left</p>
     {/if}
     {#if calText}<TokenText tokens={textTokens(calText).map((t) => ({ t }))} size="l" />{/if}
     {#if calNote}<p>{calNote}</p>{/if}
@@ -322,7 +346,14 @@
         <span class="muted small">Listen only at your tone, so other sounds can't take over.</span>
       </div>
     {/if}
-    <div><Button kind={cal === 'idle' ? 'primary' : 'secondary'} onclick={calibrate} disabled={cal === 'listening' || cal === 'settling'}>Calibrate</Button></div>
+    <div class="row">
+      {#if cal === 'listening'}
+        <Button kind="primary" onclick={finishCal}>Done</Button>
+        <Button kind="secondary" onclick={calibrate}>Start over</Button>
+      {:else}
+        <Button kind={cal === 'idle' ? 'primary' : 'secondary'} onclick={calibrate} disabled={cal === 'settling'}>Calibrate</Button>
+      {/if}
+    </div>
   </div>
 
   <div class="block notes">
