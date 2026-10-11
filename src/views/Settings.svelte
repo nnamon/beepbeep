@@ -128,6 +128,11 @@
       detail="LICW track only. Hides rhythm bars and the character reference; answers show at the end of a drill."
     />
     <Toggle
+      bind:checked={settings.licwEnrolled}
+      label="In an LICW class"
+      detail="LICW track. Lets the carousel start at the group you joined, and names exercise sets by class."
+    />
+    <Toggle
       bind:checked={settings.useCourseSpeeds}
       label="Use lesson speeds"
       detail="LICW track: 12/8 in BC1, 12/10 in BC2."

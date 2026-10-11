@@ -5,7 +5,7 @@ import { engine, type Playback } from '../audio/engine';
 import { renderSchedule, type Conditions } from '../morse/render';
 import { scheduleFromMarks, type FistOptions } from '../morse/schedule';
 import { settings, strict } from '../state/settings.svelte';
-import { KOCH_LEVELS, licwLevels, type Level, type TrackId } from './courses';
+import { DEFAULT_CAROUSEL, KOCH_LEVELS, licwLevels, type Level, type TrackId } from './courses';
 import { addConfusion, addSession, getItems, getKv, putItem, setKv, type SessionRecord } from '../state/db';
 import { newStat, recordAnswer, type ItemStat } from './srs';
 import { randomSeed } from '../util/random';
@@ -15,11 +15,12 @@ import type { DecodedChar } from '../decoder/decoder';
 
 let licwCache: { key: string; levels: Level[] } | null = null;
 
-/** A track's levels; the LICW carousel runs from the groups you joined at. */
+/** A track's levels. The LICW carousel runs from REA and KMY, or in a class from the groups you joined at. */
 export function trackLevels(track: TrackId = settings.track): Level[] {
   if (track === 'koch') return KOCH_LEVELS;
-  const key = `${settings.carousel.bc1}|${settings.carousel.bc2}`;
-  if (licwCache?.key !== key) licwCache = { key, levels: licwLevels(settings.carousel) };
+  const c = settings.licwEnrolled ? settings.carousel : DEFAULT_CAROUSEL;
+  const key = `${c.bc1}|${c.bc2}`;
+  if (licwCache?.key !== key) licwCache = { key, levels: licwLevels(c) };
   return licwCache.levels;
 }
 

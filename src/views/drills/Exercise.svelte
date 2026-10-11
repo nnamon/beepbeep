@@ -1,5 +1,5 @@
 <script lang="ts">
-  // One class exercise: the player runs its pattern of CW, voice and silence
+  // One LICW exercise: the player runs its pattern of CW, voice and silence
   // over cards from your lesson or your own text, with notes on how to do it.
   import { onDestroy, onMount, untrack } from 'svelte';
   import DrillFrame from '../../ui/DrillFrame.svelte';
@@ -33,8 +33,7 @@
     settings.exercisePrefs[key] = { ...prefs, [k]: v };
   }
 
-  // BC1 and BC2 follow your carousel group (or start at the group you joined);
-  // later classes know every character.
+  // BC1 and BC2 follow your carousel group; later stages know every character.
   const licw = trackLevels('licw');
   const mine = licw.find((l) => l.id === settings.level.licw);
   const level = cls?.carousel
@@ -249,7 +248,7 @@
             </div>
             {#if chosen}<p class="muted small">{cardsFromText(chosen.text, ex.perLine ?? false).length} {ex.perLine ? 'lines' : 'words'}. One card per {ex.perLine ? 'line' : 'word'}.</p>{/if}
           {:else}
-            <p class="muted">No texts yet. Paste one or open a .txt file, such as a class handout. {"{cw|speech}"} markup from Morse Browser files works.</p>
+            <p class="muted">No texts yet. Paste one or open a .txt file{settings.licwEnrolled ? ', such as a class handout' : ''}. {"{cw|speech}"} markup from Morse Browser files works.</p>
           {/if}
           {#if adding}
             <label class="field"><span class="label">Name</span><input bind:value={newName} placeholder="BC2 phrases" /></label>

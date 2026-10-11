@@ -148,6 +148,14 @@ describe('lesson advance', () => {
     expect(lessonOpenedBy(0.8)?.id).toBe('licw-bc1-TIN');
     settings.level.licw = licwLevels().at(-1)!.id;
     expect(lessonOpenedBy(1)).toBeNull();
+    // A carousel start only counts in a class.
+    const { trackLevels } = await import('./session');
+    settings.carousel = { bc1: 'TIN', bc2: 'QXV' };
+    settings.licwEnrolled = false;
+    expect(trackLevels('licw')[0].id).toBe('licw-bc1-REA');
+    settings.licwEnrolled = true;
+    expect(trackLevels('licw')[0].id).toBe('licw-bc1-TIN');
+    expect(trackLevels('licw')[6].id).toBe('licw-bc2-QXV');
   });
 });
 

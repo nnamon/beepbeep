@@ -62,8 +62,8 @@
     <ul>
       <li>The lesson sets which characters the drills and Pocket use. Change it with the arrows on Practice or Pocket.</li>
       <li>A Copy drill, or a Pocket Characters round, at 90% (Koch) or 80% (LICW) opens the next lesson.</li>
-      <li>Koch adds one character per level. LICW adds a group of up to three, BC1 then BC2, in carousel order from the group you joined at.</li>
-      <li>On the LICW track, Practice lists the exercises for your class, BC1 to ADV 3, TTR+ and OverLearn, with notes on how to do each one. Any exercise can play your own text: paste it or open a .txt file.</li>
+      <li>Koch adds one character per level. LICW adds a group of up to three, BC1 then BC2. Students in an LICW class can start the carousel at the group they joined: turn on In an LICW class in Settings.</li>
+      <li>On the LICW track, Practice lists the syllabus exercises for each stage, BC1 to ADV 3, TTR+ and OverLearn, with notes on how to do each one. Any exercise can play your own text: paste it or open a .txt file.</li>
       <li>LICW strict mode, in Settings, follows the LICW guardrails: no rhythm visuals, answers at the end, straight key only in BC.</li>
     </ul>
   </div>

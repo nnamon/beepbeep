@@ -1,6 +1,7 @@
 <script lang="ts">
-  // LICW BC1 familiarity: a new character plays unnamed among others; tap each
-  // time it plays. Its name is revealed once the taps land reliably.
+  // Spot the new character: one of the group's new characters plays alone three
+  // times, unnamed, then mixed in with others; tap each time it plays. Its name
+  // is revealed once the taps land reliably.
   import { onDestroy } from 'svelte';
   import DrillFrame from '../../ui/DrillFrame.svelte';
   import Button from '../../ui/Button.svelte';
@@ -8,7 +9,7 @@
   import { engine } from '../../lib/audio/engine';
   import { say } from '../../lib/audio/speech';
   import { signal } from '../../lib/state/signal.svelte';
-  import { currentLevel, playCw, receiveSpeeds, saveSession } from '../../lib/train/session';
+  import { currentLevel, playCw, receiveSpeeds, saveSession, wait } from '../../lib/train/session';
   import { mulberry32, pick, randomSeed, shuffle } from '../../lib/util/random';
   import { keepAwake } from '../../lib/util/wakelock';
 
@@ -19,7 +20,7 @@
   signal.receiving = true;
 
   let idx = $state(0);
-  let stage = $state<'ready' | 'playing' | 'scored' | 'revealed' | 'done'>('ready');
+  let stage = $state<'ready' | 'intro' | 'playing' | 'scored' | 'revealed' | 'done'>('ready');
   let hits = $state(0);
   let occurrences = $state(0);
   let extra = $state(0);
@@ -42,9 +43,15 @@
   async function play() {
     const seq = stream(target);
     taps = [];
-    stage = 'playing';
     void keepAwake(true);
     const sp = receiveSpeeds();
+    // The one to catch, on its own first.
+    stage = 'intro';
+    const intro = await playCw(`${target} ${target} ${target}`, { charWpm: sp.charWpm, effectiveWpm: sp.effectiveWpm, plain: true });
+    await intro.done;
+    await wait(1500);
+    if (stage !== 'intro') return;
+    stage = 'playing';
     const pb = await playCw(seq.join(' '), { charWpm: sp.charWpm, effectiveWpm: sp.effectiveWpm, plain: true });
     startTime = pb.startTime;
     await pb.done;
@@ -116,12 +123,17 @@
 
 <DrillFrame title="Spot the new character" eyebrow="{level.name} · new character {idx + 1} of {targets.length}">
   {#if stage === 'ready'}
-    <p class="muted lead">A new character plays unnamed, mixed with others. Tap each time it plays.</p>
+    <p class="lead">One of this group's new characters plays alone three times, without its name. That is the one to catch.</p>
+    <p class="muted lead">Then it plays mixed in with other characters. Tap each time you hear it. Its name comes once you catch most of them.</p>
+  {:else if stage === 'intro'}
+    <p class="big">Listen: this is the one to catch.</p>
+    <p class="muted">It plays three times.</p>
   {:else if stage === 'playing'}
+    <p class="muted">Tap each time you hear it.</p>
     <button type="button" class="tap" onpointerdown={tap}>Tap<span class="muted">Space</span></button>
   {:else if stage === 'scored'}
     <p class="big">{hits} of {occurrences} caught{extra ? `, ${extra} extra taps` : ''}</p>
-    <p class="muted">Catch 80% with no more than 2 extra taps to hear its name.</p>
+    <p class="muted">Catch 80% with no more than 2 extra taps to hear its name. Again plays it alone first.</p>
   {:else if stage === 'revealed'}
     <span class="label">It was</span>
     <TokenText tokens={[{ t: target }]} size="xl" />

@@ -231,15 +231,16 @@
     {#if settings.track === 'licw'}
       <section class="bc" aria-labelledby="bc-h">
         <div class="bc-head">
-          <h2 id="bc-h">Class exercises</h2>
-          <Select label="Class" options={CLASSES.map((c) => ({ value: c.id, label: c.name }))} value={cls.id} onchange={pickClass} />
-          {#if cls.carousel}
+          <h2 id="bc-h">{settings.licwEnrolled ? 'Class exercises' : 'LICW exercises'}</h2>
+          <Select label={settings.licwEnrolled ? 'Class' : 'Stage'} options={CLASSES.map((c) => ({ value: c.id, label: c.name }))} value={cls.id} onchange={pickClass} />
+          {#if cls.carousel && settings.licwEnrolled}
             {@const which = cls.carousel}
             <Select label="Joined at" options={CAROUSEL_GROUPS[which]} value={settings.carousel[which]} onchange={(v) => (settings.carousel[which] = v)} />
           {/if}
           <span class="band muted">{cls.band}</span>
         </div>
         <ul class="routine">
+          {#if cls.carousel && settings.licwEnrolled}<li>Set the group your class is on with the arrows above, and where you started under Joined at.</li>{/if}
           {#each cls.routine as r (r)}<li>{r}</li>{/each}
         </ul>
         {#each exerciseGroups as { g, items } (g)}

@@ -29,7 +29,9 @@ export interface Settings {
   /** The guide has been opened; hides the pointer to it on Practice. */
   guideSeen: boolean;
   level: Record<TrackId, string>;
-  /** LICW: the carousel group you joined BC1 and BC2 at. */
+  /** LICW: in an LICW class. Off, the carousel runs from REA and KMY and Practice says stage, not class. */
+  licwEnrolled: boolean;
+  /** LICW: the carousel group you joined BC1 and BC2 at (in a class). */
   carousel: Carousel;
   /** LICW: the class whose exercises Practice lists. */
   licwClass: ClassId;
@@ -92,6 +94,7 @@ const DEFAULTS: Settings = {
   licwAsked: false,
   guideSeen: false,
   level: { koch: 'koch-1', licw: 'licw-bc1-REA' },
+  licwEnrolled: false,
   carousel: { ...DEFAULT_CAROUSEL },
   licwClass: 'bc1',
   exercisePrefs: {},

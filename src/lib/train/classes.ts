@@ -1,7 +1,8 @@
-// Class exercises for LICW students: for each class, the exercises its
-// instructors set, with the timings they use, and our own notes on how to do
-// each one. The material is generated from your lesson or comes from text you
-// load; none of LICW's class texts are included.
+// LICW exercises: for each stage of the syllabus (BC1 to ADV 3, TTR+,
+// OverLearn), the exercises its classes use, with their timings, and our own
+// notes on how to do each one. For students and for anyone following the
+// syllabus alone. The material is generated from your lesson or comes from
+// text you load; none of LICW's class texts are included.
 
 import type { Recipe } from './player';
 import type { Source } from './cards';
@@ -264,7 +265,7 @@ function bc(n: 1 | 2): ClassInfo {
     band: `12/${eff} wpm`,
     carousel: n === 1 ? 'bc1' : 'bc2',
     routine: [
-      'Pick the group your class is on. Exercises use it and every group since you joined.',
+      'Exercises use the group you are on and every group before it.',
       'Each day: Familiarity on the new group, then Recognition and TTR on everything so far.',
       'Then one copy exercise: VET, VST or groups. Copy by hand, on paper.',
       'Send every day, a few minutes at least.',
@@ -310,7 +311,7 @@ function intermediate(n: 1 | 2 | 3): ClassInfo {
     routine: [
       'Hear each word as one sound. Familiarity first, then Recognition, then Speed Racing.',
       'Head copy where you can: follow it without writing.',
-      'Load your class text under Your text to play it in any exercise.',
+      'Any exercise can play a text of your own: load it under Your text.',
       'Send every day: the QSO simulator gives you someone to send to.',
     ],
     exercises: [
@@ -344,7 +345,7 @@ function advanced(n: 1 | 2 | 3): ClassInfo {
     band: `${w}/${w} wpm`,
     routine: [
       "Follow the meaning; don't spell words out. Write only what you need to keep.",
-      'Stories and sentences from your class text play under Your text.',
+      'Stories and sentences of your own play under Your text.',
       'Recognition and Speed Racing keep words coming as single sounds at speed.',
     ],
     exercises: [
@@ -361,7 +362,7 @@ function advanced(n: 1 | 2 | 3): ClassInfo {
       {
         id: 'stories',
         name: 'Stories',
-        summary: `Your class stories, a line at a time, each said after it plays. ${w} wpm.`,
+        summary: `Stories from your own text, a line at a time, each said after it plays. ${w} wpm.`,
         recipe: { wpm: w, fwpm: w, wait: 2, voice: word('after', 1.25) },
         source: 'text',
         perLine: true,
@@ -440,7 +441,7 @@ const overlearnClass: ClassInfo = {
   routine: [
     'Material you already know, at 23 to 31 wpm, until it is automatic.',
     'Pick the speed that is just uncomfortable. Move up when it stops being hard.',
-    'Stories and sentences from your class text play under Your text.',
+    'Stories and sentences of your own play under Your text.',
   ],
   exercises: [
     ol('characters', 'Characters', 'Single characters, one second apart.', { wait: 1 }, 'chars', 'Name each character to yourself as it plays.', { count: 40 }),
@@ -463,7 +464,7 @@ const overlearnClass: ClassInfo = {
     {
       id: 'stories',
       name: 'Stories',
-      summary: 'Your class stories, a line at a time, each said after it plays.',
+      summary: 'Stories from your own text, a line at a time, each said after it plays.',
       recipe: { wpm: 20, fwpm: 20, wait: 2, voice: word('after', 1.25) },
       source: 'text',
       perLine: true,

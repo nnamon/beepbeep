@@ -12,8 +12,8 @@ async function open(page: Page, route: string, extra: Record<string, unknown> = 
 
 const shot = (page: Page, name: string, project: string) => page.screenshot({ path: `test-results/screens/${project}-classes-${name}.png`, fullPage: true });
 
-test('Practice lists the class exercises for your carousel group', async ({ page }, info) => {
-  await open(page, 'practice', { level: { koch: 'koch-1', licw: 'licw-bc1-PSG' }, carousel: { bc1: 'TIN', bc2: 'KMY' } });
+test('in a class, Practice lists the class exercises for your carousel group', async ({ page }, info) => {
+  await open(page, 'practice', { licwEnrolled: true, level: { koch: 'koch-1', licw: 'licw-bc1-PSG' }, carousel: { bc1: 'TIN', bc2: 'KMY' } });
   const section = page.locator('section', { has: page.getByRole('heading', { name: 'Class exercises' }) });
   await expect(section.getByLabel('Class')).toHaveValue('bc1');
   await expect(section.getByLabel('Joined at')).toHaveValue('TIN');
@@ -88,4 +88,23 @@ test('an exercise with too little material says so and waits', async ({ page }) 
 test('a BC2 exercise opened from the Koch track uses your BC2 group', async ({ page }) => {
   await open(page, 'practice/class/bc2/vst', { track: 'koch', level: { koch: 'koch-3', licw: 'licw-bc1-TIN' } });
   await expect(page.getByText('BC2 · KMY · 24/10 wpm')).toBeVisible();
+});
+
+test('not in a class: stages, no carousel start, no class wording', async ({ page }) => {
+  // A starting group saved earlier is ignored until you say you are in a class.
+  await open(page, 'practice', { level: { koch: 'koch-1', licw: 'licw-bc1-REA' }, carousel: { bc1: 'TIN', bc2: 'KMY' } });
+  const section = page.locator('section', { has: page.getByRole('heading', { name: 'LICW exercises' }) });
+  await expect(section.getByLabel('Stage')).toHaveValue('bc1');
+  await expect(section.getByLabel('Joined at')).toHaveCount(0);
+  await expect(section.getByText(/your class/)).toHaveCount(0);
+  await expect(page.getByText('BC1 · REA')).toBeVisible();
+  await page.getByRole('button', { name: 'Next lesson' }).click();
+  await expect(page.getByText('BC1 · TIN')).toBeVisible();
+  await expect(page.getByText('Characters known').locator('..')).toContainText('6');
+  // Turning it on in Settings brings the class controls back.
+  await page.goto('./#/settings');
+  await page.getByText('In an LICW class').click();
+  await page.goto('./#/practice');
+  await expect(page.getByRole('heading', { name: 'Class exercises' })).toBeVisible();
+  await expect(page.getByLabel('Joined at')).toHaveValue('TIN');
 });
