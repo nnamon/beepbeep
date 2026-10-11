@@ -16,5 +16,5 @@
     "allowJs": false,
     "checkJs": false
   },
-  "include": ["src/**/*.ts", "src/**/*.svelte", "e2e/**/*.ts", "*.config.ts"]
+  "include": ["src/**/*.ts", "src/**/*.svelte", "e2e/**/*.ts", "bench/**/*.ts", "*.config.ts"]
 }

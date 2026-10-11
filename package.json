@@ -12,7 +12,8 @@
     "lint:css": "stylelint \"src/**/*.{css,svelte}\"",
     "test": "vitest run",
     "test:watch": "vitest",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "bench": "vitest run --config vitest.bench.config.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",

@@ -63,6 +63,9 @@ export interface TraceStep {
   offThr: number;
   toneLike: boolean;
   clear: boolean;
+  /** The timbre test is on: the tone is taken to carry a third harmonic. */
+  harmonic: boolean;
+  voiced: boolean;
   coherence: number;
   offset: number;
   markLevel: number;
@@ -271,6 +274,7 @@ export class Detector {
   private lastRoom = 0;
   private lastEnv = -180;
   private lastToneLike = false;
+  private lastVoiced = true;
   private lastOffThr = 0;
   /** Recent tone-channel phasors at 1 kHz, and the smoothed lagged product. */
   private readonly zRe = new Float64Array(32);
@@ -808,6 +812,7 @@ export class Detector {
     const voiced = !timbre || (ovt - this.overtoneNoise >= timbreTuning.rise && ovt - env >= this.harmonicGap - timbreTuning.slack);
     const toneLike = clear && steady && voiced;
     this.lastToneLike = toneLike;
+    this.lastVoiced = voiced;
     // While a mark lasts: when did its pitch last sit at the sender's?
     if (this.keyDown && coherence >= steadyTuning.coherence && Math.abs(offset - this.toneOffset) <= tol) this.onPitchT = t;
 
@@ -904,7 +909,7 @@ export class Detector {
       this.pendingState = null;
     }
 
-    this.trace?.({ t, env, refs: [ref0, ref1], floor: this.noise, refFloors: [this.refNoise[0], this.refNoise[1]], peak: this.peak, onThr, offThr, toneLike, clear, coherence, offset, markLevel: this.markLevel, keyDown: this.keyDown, pending: this.pendingState });
+    this.trace?.({ t, env, refs: [ref0, ref1], floor: this.noise, refFloors: [this.refNoise[0], this.refNoise[1]], peak: this.peak, onThr, offThr, toneLike, clear, harmonic: this.hasHarmonic(), voiced: this.lastVoiced, coherence, offset, markLevel: this.markLevel, keyDown: this.keyDown, pending: this.pendingState });
     this.envPrev = env;
     this.tPrev = t;
   }

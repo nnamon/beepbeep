@@ -11,7 +11,15 @@
   import { saved, upload, wav } from '../lib/debug/samples';
   import type { DetectorEvent } from '../lib/dsp/detector';
 
-  type Kind = 'noise' | 'keying' | 'keying-noise';
+  type Kind = 'noise' | 'keying' | 'keying-noise' | 'playback';
+  type Hand = 'steady' | 'hand';
+
+  // Playback: the app keys a known text through the speaker while recording,
+  // so the take carries its exact keying. Any place, no keying needed.
+  let playText = $state('CQ CQ DE K1ABC K PARIS VVV');
+  let playWpm = $state(15);
+  let playHand = $state<Hand>('hand');
+  let playback: { text: string; wpm: number; hand: Hand; pitch: number; seed: number; startCtx: number; recStartCtx: number; marks: { start: number; end: number }[] } | null = null;
 
   let kind = $state<Kind>('noise');
   let keyed = $state('');
@@ -30,6 +38,7 @@
     { id: 't4', title: 'Talking only', how: 'No keying. About 20 s of talking near the laptop.', kind: 'noise', keyed: '', notes: 'talking' },
     { id: 't5', title: 'Weak tone', how: 'Sidetone turned down, or the key further from the laptop.', kind: 'keying', keyed: 'CQ CQ DE', notes: 'quieter sidetone' },
     { id: 't6', title: 'Pause and resume', how: 'VVV, wait about 5 s, then VVV again.', kind: 'keying', keyed: 'VVV VVV', notes: '5 s pause' },
+    { id: 'p1', title: 'Playback, anywhere', how: 'The app keys a known text through the speaker. Take the laptop or phone where it is noisy: a radio on, people talking, outdoors. No keying.', kind: 'playback', keyed: '', notes: '' },
   ];
   let take = $state<string | null>(null);
 
@@ -63,6 +72,7 @@
     unsub = engine.onEvents((evs) => events.push(...evs));
     live = new LiveDecoder({ source: 'mic', charWpm: settings.sendWpm, pitch: settings.pitch, onOutput: () => (decoded = live?.text ?? '') });
     await live.start();
+    const recStartCtx = engine.now;
     engine.startRecording();
     recording = true;
     started = performance.now();
@@ -71,6 +81,20 @@
       seconds = Math.floor((performance.now() - started) / 1000);
       if (seconds >= 90) void stop();
     }, 250);
+    playback = null;
+    if (kind === 'playback') {
+      // A second of the room first, then the text, then a second more.
+      await new Promise((r) => setTimeout(r, 1000));
+      if (!recording) return;
+      const pitch = settings.pinnedHz ?? settings.pitch;
+      const seed = Math.floor(Math.random() * 1e6);
+      const fist = playHand === 'hand' ? { jitter: 0.15, charGapScale: 1.25, wordGapScale: 1.2, seed } : { jitter: 0.03, seed };
+      const pb = await engine.playText(playText.trim().toUpperCase(), { charWpm: playWpm, pitch, fist, seed, leadIn: 0 });
+      playback = { text: playText.trim().toUpperCase(), wpm: playWpm, hand: playHand, pitch, seed, startCtx: pb.startTime, recStartCtx, marks: pb.schedule?.marks ?? [] };
+      await pb.done;
+      await new Promise((r) => setTimeout(r, 1000));
+      await stop();
+    }
   }
 
   async function stop() {
@@ -94,7 +118,10 @@
     const meta = {
       kind,
       take,
-      keyed: keyed.trim().toUpperCase(),
+      keyed: kind === 'playback' ? (playback?.text ?? '') : keyed.trim().toUpperCase(),
+      // Playback: the exact keying, its start on the audio clock, and the audio-clock time recording began
+      // (the recording's own clock starts at t0; speaker and microphone latency are found by alignment).
+      playback,
       notes: notes.trim(),
       at: d.toISOString(),
       sampleRate: rec.sampleRate,
@@ -143,10 +170,19 @@
       { value: 'noise' as Kind, label: 'Room only' },
       { value: 'keying' as Kind, label: 'Keying' },
       { value: 'keying-noise' as Kind, label: 'Keying with noise' },
+      { value: 'playback' as Kind, label: 'Playback' },
     ]}
   />
+  {#if kind === 'playback'}
+    <div class="fields">
+      <label><span class="label">Text it keys</span><input class="mono" bind:value={playText} autocapitalize="characters" autocomplete="off" spellcheck="false" disabled={recording} /></label>
+      <label><span class="label">Speed, wpm</span><input class="num" type="number" min="5" max="40" bind:value={playWpm} disabled={recording} /></label>
+    </div>
+    <Segmented label="Keying" bind:value={playHand} options={[{ value: 'hand' as Hand, label: 'Like a hand' }, { value: 'steady' as Hand, label: 'Steady' }]} />
+    <p class="muted small">Uses your pitch ({settings.pinnedHz ?? settings.pitch} Hz) and the device speaker. The take stops by itself.</p>
+  {/if}
   <div class="fields">
-    <label><span class="label">What you key</span><input class="mono" bind:value={keyed} autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="VVV CQ DE 9V1XX" disabled={kind === 'noise' || recording} /></label>
+    <label><span class="label">What you key</span><input class="mono" bind:value={keyed} autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="VVV CQ DE 9V1XX" disabled={kind === 'noise' || kind === 'playback' || recording} /></label>
     <label><span class="label">Notes</span><input bind:value={notes} autocomplete="off" placeholder="Fan on, typing, key 30 cm away" disabled={recording} /></label>
   </div>
   <div class="row">
