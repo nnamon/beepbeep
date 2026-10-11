@@ -48,6 +48,8 @@ export interface DetectorOptions {
   squelchDb?: number | null;
   /** Tests: the envelope stage's state at every step (1 kHz). */
   trace?: (s: TraceStep) => void;
+  /** Internal: a second ear at the tone's third harmonic (pinned, no search, no ear of its own). */
+  overtone?: boolean;
 }
 
 export interface TraceStep {
@@ -77,15 +79,17 @@ class Channel {
   private renorm = 0;
   private i = 0;
   private q = 0;
-  private readonly lpI: LowPass;
-  private readonly lpQ: LowPass;
+  private readonly lpI: LowPass[];
+  private readonly lpQ: LowPass[];
 
   constructor(
     private readonly fs: number,
     cutoff: number,
   ) {
-    this.lpI = new LowPass(fs, cutoff);
-    this.lpQ = new LowPass(fs, cutoff);
+    // Butterworth of order 2 or 4: two sections with their own Q for 4.
+    const qs = filterTuning.order === 4 ? [0.5412, 1.3066] : [Math.SQRT1_2];
+    this.lpI = qs.map((q) => new LowPass(fs, cutoff, q));
+    this.lpQ = qs.map((q) => new LowPass(fs, cutoff, q));
   }
 
   /** Retunes without a phase jump (following drift). */
@@ -96,15 +100,13 @@ class Channel {
   }
 
   setCutoff(fc: number) {
-    this.lpI.setCutoff(fc);
-    this.lpQ.setCutoff(fc);
+    for (const f of [...this.lpI, ...this.lpQ]) f.setCutoff(fc);
   }
 
   reset() {
     this.cos = 1;
     this.sin = 0;
-    this.lpI.reset();
-    this.lpQ.reset();
+    for (const f of [...this.lpI, ...this.lpQ]) f.reset();
   }
 
   step(x: number) {
@@ -119,8 +121,12 @@ class Channel {
       this.cos /= m;
       this.sin /= m;
     }
-    this.i = this.lpI.step(x * c);
-    this.q = this.lpQ.step(x * s);
+    let i = x * c;
+    let q = x * s;
+    for (const f of this.lpI) i = f.step(i);
+    for (const f of this.lpQ) q = f.step(q);
+    this.i = i;
+    this.q = q;
   }
 
   get re(): number {
@@ -138,6 +144,8 @@ class Channel {
 }
 
 const STATUS_INTERVAL = 0.05;
+/** The lock-in low-pass: Butterworth `order`, cutoff `perDit` / dit (at least `min` Hz). Tests sweep it. */
+export const filterTuning = { order: 2, perDit: 4, min: 30 };
 /** How fast the noise floors follow the room, dB per second (they track the median level). */
 const FLOOR_RATE = 10;
 /** Room gate settings; tests sweep them. */
@@ -170,6 +178,16 @@ export const steadyTuning = { lag: 4, smooth: 4, coherence: 0.4, tol: 10, wide: 
  * lacks it. A pure sine never qualifies, and the test stays off.
  */
 export const timbreTuning = { learn: 3, strong: -15, minRise: 12, rise: 6, slack: 10, markSlack: 8 };
+/**
+ * Two ears: once the sender's tone is known to carry a strong third harmonic,
+ * a second detector listens at three times its pitch. Speech and radio voices
+ * crowd the fundamental far more than the harmonic, so when something covers
+ * the fundamental the harmonic often still hears the key. Its marks count
+ * only where the fundamental hears something that is not the tone: not
+ * silence (level within `silence` dB of its floor, the room quiet), and not
+ * a tone it is itself deciding on.
+ */
+export const earTuning = { overtone: true, silence: 6 };
 export const markTuning = { lag: 10, tol: 3, wide: 8, pinned: 4, learn: 3, coherence: 0.5, leave: 0.6, short: 120 };
 
 export class Detector {
@@ -239,6 +257,21 @@ export class Detector {
   private markLevel = 0;
   /** When the last mark ended. */
   private lastOff = -1;
+  /** The second ear, at the third harmonic, and how the two are joined. */
+  private readonly isOvertone: boolean;
+  private inner: Detector | null = null;
+  private innerT0 = 0;
+  private ears = { a: Detector.ear(), b: Detector.ear() };
+  private lastFusedUp = -1;
+  private fusedDown = false;
+  private fusedStart = 0;
+  private fusedEnd = -1;
+  /** The fundamental's last rise over its floor and the room's, for trusting the second ear. */
+  private lastRise = 0;
+  private lastRoom = 0;
+  private lastEnv = -180;
+  private lastToneLike = false;
+  private lastOffThr = 0;
   /** Recent tone-channel phasors at 1 kHz, and the smoothed lagged product. */
   private readonly zRe = new Float64Array(32);
   private readonly zIm = new Float64Array(32);
@@ -290,6 +323,7 @@ export class Detector {
     this.minSnrDb = opts.minSnrDb ?? 9;
     this.contrastDb = opts.contrastDb ?? gateTuning.contrast;
     this.squelchDb = opts.squelchDb ?? null;
+    this.isOvertone = opts.overtone ?? false;
     this.trace = opts.trace ?? null;
     this.dit = opts.dit ?? 0.08;
     this.fftSize = sampleRate > 30000 ? 4096 : 2048;
@@ -320,6 +354,7 @@ export class Detector {
   /** Feedback from the decoder: current dit estimate in seconds. */
   setDit(dit: number) {
     if (!(dit > 0)) return;
+    this.inner?.setDit(dit);
     const prev = this.cutoff();
     this.dit = Math.min(0.4, Math.max(0.02, dit));
     const next = this.cutoff();
@@ -345,6 +380,7 @@ export class Detector {
   /** While the app itself is sending, ignore input so it cannot decode itself. */
   setMuted(muted: boolean) {
     this.muted = muted;
+    this.inner?.setMuted(muted);
   }
 
   /** Smoothed spectrum (dB) between lo and hi Hz, for the setup screen. */
@@ -360,6 +396,103 @@ export class Detector {
   }
 
   process(input: Float32Array): DetectorEvent[] {
+    const out = this.processOwn(input);
+    if (this.isOvertone || !earTuning.overtone) return out;
+    // The second ear starts once the tone is known to carry its third harmonic.
+    if (!this.inner && this.lockedHz !== null && this.hasHarmonic() && 3 * (this.lockedHz + this.toneOffset) < this.fs / 2 - 500) {
+      this.inner = new Detector(this.fs, { pinnedHz: 3 * (this.lockedHz + this.toneOffset), dit: this.dit, minSnrDb: this.minSnrDb, overtone: true });
+      this.inner.setMuted(this.muted);
+      // Its clock starts now; its times are shifted onto ours.
+      this.innerT0 = this.time;
+    }
+    const joined: DetectorEvent[] = [];
+    for (const e of out) {
+      if (e.type === 'key') this.join('a', e.down, e.t, joined);
+      else if (e.type === 'status') joined.push({ ...e, keyDown: this.fusedDown });
+      else joined.push(e);
+    }
+    for (const e of this.inner?.process(input) ?? []) if (e.type === 'key') this.join('b', e.down, e.t + this.innerT0, joined);
+    this.releaseUps(joined);
+    return joined;
+  }
+
+  private static ear() {
+    return { down: false, start: 0, ignored: false, upAt: null as number | null };
+  }
+
+  /** Still deciding: down, about to go down, or above its key-up level. */
+  get hearing(): boolean {
+    return this.keyDown || this.pendingState === true || this.lastEnv > this.lastOffThr;
+  }
+
+  /**
+   * One ear's key event into the joined marks: a mark lasts while either ear
+   * hears it. The second ear (b) only counts while the fundamental cannot
+   * clearly hear silence. A mark both ears withdrew is withdrawn. An ear's
+   * key-up waits while the other is still deciding (its decision can come
+   * late and be timed earlier), so joined marks stay in order.
+   */
+  private join(ear: 'a' | 'b', down: boolean, t: number, out: DetectorEvent[]) {
+    const me = this.ears[ear];
+    if (down) {
+      // The second ear steps in only where the fundamental hears something but
+      // not the tone: covered by a voice or a radio. Hearing silence, or the
+      // tone itself, the fundamental decides.
+      const silent = !this.keyDown && this.lastRise < earTuning.silence && this.lastRoom < gateTuning.quiet;
+      const deciding = this.keyDown || this.pendingState === true || this.lastToneLike;
+      if (ear === 'b' && (silent || deciding)) {
+        me.ignored = true;
+        return;
+      }
+      // A key-down from before a joined mark already closed continues from there.
+      const at = Math.max(t, this.lastFusedUp + 1e-3);
+      if (me.upAt !== null) me.upAt = null;
+      me.down = true;
+      me.start = at;
+      // The last mark was only waiting to close, and this one starts after a gap: close it first.
+      if (this.fusedDown && !this.ears.a.down !== !this.ears.b.down && this.fusedEnd >= 0 && at > this.fusedEnd + 0.005) {
+        const other = this.ears[ear === 'a' ? 'b' : 'a'];
+        if (!other.down) {
+          this.fusedDown = false;
+          this.ears.a.upAt = this.ears.b.upAt = null;
+          this.lastFusedUp = this.fusedEnd;
+          out.push({ type: 'key', down: false, t: this.fusedEnd });
+        }
+      }
+      if (!this.fusedDown) {
+        this.fusedDown = true;
+        this.fusedStart = at;
+        this.fusedEnd = -1;
+        out.push({ type: 'key', down: true, t: at });
+      }
+      return;
+    }
+    if (me.ignored) {
+      me.ignored = false;
+      return;
+    }
+    if (!me.down) return;
+    // An up at the mark's own start withdraws it.
+    if (t > me.start + 1e-9) this.fusedEnd = Math.max(this.fusedEnd, t);
+    me.down = false;
+    me.upAt = this.time;
+    this.releaseUps(out);
+  }
+
+  /** Closes the joined mark once neither ear is down and neither is still deciding (150 ms at most). */
+  private releaseUps(out: DetectorEvent[]) {
+    if (!this.fusedDown || this.ears.a.down || this.ears.b.down) return;
+    const waited = Math.max(...[this.ears.a.upAt, this.ears.b.upAt].map((u) => (u === null ? 0 : this.time - u)));
+    const deciding = this.hearing || (this.inner?.hearing ?? false);
+    if (deciding && waited < 0.15) return;
+    this.fusedDown = false;
+    this.ears.a.upAt = this.ears.b.upAt = null;
+    const t = this.fusedEnd >= 0 ? this.fusedEnd : this.fusedStart;
+    this.lastFusedUp = t;
+    out.push({ type: 'key', down: false, t });
+  }
+
+  private processOwn(input: Float32Array): DetectorEvent[] {
     const out: DetectorEvent[] = [];
     for (let i = 0; i < input.length; i++) {
       let x = input[i];
@@ -371,7 +504,7 @@ export class Detector {
       this.historyPos = (this.historyPos + 1) % this.history.length;
       if (this.historyCount < this.history.length) this.historyCount++;
 
-      this.fftBuf[this.fftFill++] = x;
+      if (!this.isOvertone) this.fftBuf[this.fftFill++] = x;
       if (this.fftFill === this.fftSize) {
         this.analyse(out);
         this.fftBuf.copyWithin(0, this.hop);
@@ -401,7 +534,7 @@ export class Detector {
   }
 
   private cutoff(): number {
-    return Math.min(250, Math.max(30, 4 / this.dit));
+    return Math.min(250, Math.max(filterTuning.min, filterTuning.perDit / this.dit));
   }
 
   private snrDb(): number {
@@ -500,6 +633,10 @@ export class Detector {
     this.tone.reset();
     for (const r of this.refs) r.reset();
     this.overtone.reset();
+    this.inner = null;
+    if (this.fusedDown) out.push({ type: 'key', down: false, t: this.time });
+    this.fusedDown = false;
+    this.ears = { a: Detector.ear(), b: Detector.ear() };
     this.harmonicGap = 0;
     this.harmonicRise = 0;
     this.harmonicMarks = 0;
@@ -571,7 +708,7 @@ export class Detector {
 
   /** The sender's tone has a third harmonic that rises with it, close to its level. */
   private hasHarmonic(): boolean {
-    return this.harmonicMarks >= timbreTuning.learn && this.harmonicGap > timbreTuning.strong && this.harmonicRise >= timbreTuning.minRise;
+    return !this.isOvertone && this.harmonicMarks >= timbreTuning.learn && this.harmonicGap > timbreTuning.strong && this.harmonicRise >= timbreTuning.minRise;
   }
 
   /**
@@ -658,6 +795,8 @@ export class Detector {
     const lo = Math.min(r0, r1);
     const hi = Math.max(r0, r1);
     const room = Math.max(0, lo + gateTuning.weight * (hi - lo));
+    this.lastRise = env - this.noise;
+    this.lastRoom = room;
     // In a quiet room there is nothing to tell apart: any rise counts.
     const clear = room < gateTuning.quiet || env - this.noise - room >= this.contrastDb;
     // And it must be the sender's tone: steady, at the pitch of their marks so far.
@@ -668,6 +807,7 @@ export class Detector {
     const timbre = this.hasHarmonic();
     const voiced = !timbre || (ovt - this.overtoneNoise >= timbreTuning.rise && ovt - env >= this.harmonicGap - timbreTuning.slack);
     const toneLike = clear && steady && voiced;
+    this.lastToneLike = toneLike;
     // While a mark lasts: when did its pitch last sit at the sender's?
     if (this.keyDown && coherence >= steadyTuning.coherence && Math.abs(offset - this.toneOffset) <= tol) this.onPitchT = t;
 
@@ -684,9 +824,11 @@ export class Detector {
     // span is capped so a mark's fading tail does not count as the mark.
     const span = this.peak - this.noise;
     const used = Math.min(span, 30);
+    this.lastEnv = env;
     const least = Math.max(this.minSnrDb, this.squelchDb ?? 0);
     const onThr = this.peak - used + Math.max(least, 0.5 * used);
     const offThr = this.peak - used + Math.max(least - 3, 0.4 * used);
+    this.lastOffThr = offThr;
 
     this.histEnv[this.histPos] = env;
     this.histT[this.histPos] = t;
