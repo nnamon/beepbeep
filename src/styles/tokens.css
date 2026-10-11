@@ -41,6 +41,11 @@
   --radius: 4px;
   --hairline: 1px;
   --target: 48px;
+  /* Notch and home bar on phones; tests set these to emulate a device. */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  /* The phone tab bar: links, their top rule, its border, the home bar. */
+  --tabbar: calc(var(--target) + 3px + var(--safe-bottom));
   --reading: 72ch;
   --transition: 120ms;
 

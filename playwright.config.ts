@@ -35,7 +35,7 @@ export default defineConfig({
   },
   projects: [
     { name: 'desktop', use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 860 } }, testMatch: /(screens|visual|a11y|classes)\.spec/ },
-    { name: 'phone', use: { ...devices['iPhone 13'] }, testMatch: /(screens|touch|ios|calibrate|classes)\.spec/ },
+    { name: 'phone', use: { ...devices['iPhone 13'] }, testMatch: /(screens|touch|ios|calibrate|classes|layout)\.spec/ },
     { name: 'pixel', use: { ...devices['Pixel 7'] }, testMatch: /screens\.spec/ },
     // Small Android phones: 360 px is the narrowest common width.
     { name: 'small', use: { ...devices['Pixel 7'], viewport: { width: 360, height: 740 } }, testMatch: /screens\.spec/ },

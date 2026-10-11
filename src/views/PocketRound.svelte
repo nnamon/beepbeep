@@ -352,7 +352,8 @@
     gap: var(--s-2);
     max-width: 560px;
     margin: 0 auto;
-    min-height: calc(100dvh - 200px);
+    /* Roughly the screen less the header, its padding and the notch and home bar. */
+    min-height: calc(100dvh - 200px - var(--safe-top) - var(--safe-bottom));
   }
 
   .top {
@@ -456,5 +457,16 @@
     display: flex;
     gap: var(--s-1);
     flex-wrap: wrap;
+  }
+
+  /* On phones the answer keys stay on screen just above the tab bar, whatever the screen height. */
+  @media (max-width: 760px) {
+    .kb {
+      position: sticky;
+      bottom: calc(var(--tabbar) + var(--s-1));
+      background: var(--bg);
+      padding-top: var(--s-1);
+      z-index: 5;
+    }
   }
 </style>

@@ -34,7 +34,7 @@
 <style>
   .cue {
     position: fixed;
-    top: max(var(--s-2), env(safe-area-inset-top));
+    top: max(var(--s-2), var(--safe-top));
     right: var(--s-2);
     width: 14px;
     height: 14px;

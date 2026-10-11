@@ -114,7 +114,7 @@
     align-items: center;
     gap: var(--s-4);
     padding: var(--s-2) var(--s-3);
-    padding-top: max(var(--s-2), env(safe-area-inset-top));
+    padding-top: max(var(--s-2), var(--safe-top));
     border-bottom: var(--hairline) solid var(--line);
   }
 
@@ -206,7 +206,7 @@
 
   /* Room for the touch key pad (96 px plus its padding) under the content. */
   .shell.keying .main {
-    padding-bottom: calc(96px + var(--s-6) + env(safe-area-inset-bottom));
+    padding-bottom: calc(96px + var(--s-6) + var(--safe-bottom));
   }
 
   @media (max-width: 760px) {
@@ -242,7 +242,7 @@
     .head {
       gap: var(--s-1);
       padding: var(--s-1) var(--s-2);
-      padding-top: max(var(--s-1), env(safe-area-inset-top));
+      padding-top: max(var(--s-1), var(--safe-top));
     }
 
     /* The narrowest phones (360 px) cut the build short rather than overflow. */
@@ -259,7 +259,7 @@
     }
 
     .main {
-      padding: var(--s-2) var(--s-2) calc(var(--s-8) + var(--s-6) + env(safe-area-inset-bottom));
+      padding: var(--s-2) var(--s-2) calc(var(--s-8) + var(--s-6) + var(--safe-bottom));
     }
 
     .tabbar {
@@ -271,7 +271,7 @@
       justify-content: space-around;
       background: var(--bg);
       border-top: var(--hairline) solid var(--line);
-      padding-bottom: env(safe-area-inset-bottom);
+      padding-bottom: var(--safe-bottom);
       z-index: 10;
     }
 

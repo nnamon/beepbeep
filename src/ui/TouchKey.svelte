@@ -79,7 +79,7 @@
     z-index: 11;
     display: flex;
     justify-content: center;
-    padding: var(--s-1) var(--s-2) calc(var(--s-1) + env(safe-area-inset-bottom));
+    padding: var(--s-1) var(--s-2) calc(var(--s-1) + var(--safe-bottom));
     background: var(--bg);
     border-top: var(--hairline) solid var(--line);
   }
