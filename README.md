@@ -6,6 +6,38 @@ CW trainer for the browser. It decodes your keying from the microphone, so it wo
 
 Runs in desktop and phone browsers (Safari on iOS 16.4+, current Chrome on Android). It can be installed as an app and works offline. Progress is stored in the browser.
 
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/live-decoder-dark.png"><img src="docs/images/live-decoder-light.png" alt="Live decoder reading VVV CQ CQ DE K1ABC K from the microphone, with the rhythm of each mark and a timing report"></picture>
+
+Live decoder: simulated hand keying with fan noise and speech mixed in, fed to the app as its microphone.
+
+<table>
+<tr>
+<td width="33%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/phone-pocket-dark.png"><img src="docs/images/phone-pocket-light.png" alt="Pocket round on a phone: the answer was I, M was typed, with both rhythms shown"></picture></td>
+<td width="33%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/phone-practice-dark.png"><img src="docs/images/phone-practice-light.png" alt="Practice screen on a phone: Koch level 14, session plan and drills"></picture></td>
+<td width="33%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/phone-setup-dark.png"><img src="docs/images/phone-setup-light.png" alt="Input setup on a phone: tone heard at 600 Hz, spectrum, level 28 dB over noise"></picture></td>
+</tr>
+<tr>
+<td>Pocket: quiz by ear on a phone.</td>
+<td>Practice: lesson, session plan and drills.</td>
+<td>Setup: the tone found in the room's spectrum.</td>
+</tr>
+</table>
+
+<table>
+<tr>
+<td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/send-drill-dark.png"><img src="docs/images/send-drill-light.png" alt="Send drill review: SING received as sent, rhythm against standard, note that letter gaps are short at 2.2 units"></picture></td>
+<td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/qso-dark.png"><img src="docs/images/qso-light.png" alt="Contest QSO with a simulated station, the transcript, what was copied and a timing report"></picture></td>
+</tr>
+<tr>
+<td>Send drill: what was received, your rhythm against standard, one note on timing.</td>
+<td>QSO simulator: a contest exchange with a simulated station.</td>
+</tr>
+</table>
+
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/progress-dark.png"><img src="docs/images/progress-light.png" alt="Progress: sessions, speeds over time, TTR delay, recovery after misses and accuracy by character"></picture>
+
+Progress: speeds over time and accuracy by character.
+
 ## Features
 
 | Area | Modes |
@@ -61,6 +93,8 @@ docker compose run --rm --service-ports dev npm run dev       # http://localhost
 docker compose run --rm e2e                                   # Playwright: screens, axe, fake-mic decode, flows, visual
 docker compose run --rm voice                                 # regenerate public/voice/ (Kokoro TTS)
 ```
+
+The README images in `docs/images/` come from `e2e/readme.spec.ts`: `docker compose run --rm -T -e README_SHOTS=1 -e GITHUB_SHA=$(git rev-parse HEAD) e2e npx playwright test --project=readme`.
 
 Screenshots from the e2e run land in `test-results/screens/`, for desktop, iPhone 13, Pixel 7 and a 360 px phone. The specimen page has visual baselines in `e2e/__screenshots__/`; refresh them with `docker compose run --rm e2e npx playwright test e2e/visual.spec.ts --update-snapshots` after a deliberate change.
 

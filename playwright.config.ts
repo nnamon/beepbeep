@@ -1,13 +1,18 @@
 import { defineConfig, devices } from '@playwright/test';
 import { fileURLToPath } from 'node:url';
 
-const wav = fileURLToPath(new URL('./e2e/.fixtures/paris.wav', import.meta.url));
-const fakeMic = {
+const micPlaying = (file: string) => ({
   permissions: ['microphone'],
   launchOptions: {
-    args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', `--use-file-for-fake-audio-capture=${wav}`, '--autoplay-policy=no-user-gesture-required'],
+    args: [
+      '--use-fake-ui-for-media-stream',
+      '--use-fake-device-for-media-stream',
+      `--use-file-for-fake-audio-capture=${fileURLToPath(new URL(`./e2e/.fixtures/${file}`, import.meta.url))}`,
+      '--autoplay-policy=no-user-gesture-required',
+    ],
   },
-};
+});
+const fakeMic = micPlaying('paris.wav');
 
 export default defineConfig({
   testDir: 'e2e',
@@ -36,5 +41,7 @@ export default defineConfig({
     { name: 'small', use: { ...devices['Pixel 7'], viewport: { width: 360, height: 740 } }, testMatch: /screens\.spec/ },
     { name: 'mic', testMatch: /(decode|flows|voice|touch|calibrate|station)\.spec/, use: { ...devices['Desktop Chrome'], ...fakeMic } },
     { name: 'mic-pixel', testMatch: /(decode|touch)\.spec/, use: { ...devices['Pixel 7'], ...fakeMic } },
+    // README images, on demand (README_SHOTS=1; see e2e/readme.spec.ts).
+    { name: 'readme', testMatch: /readme\.spec/, use: { ...devices['Desktop Chrome'], ...micPlaying('room-cq.wav') } },
   ],
 });
