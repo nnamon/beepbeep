@@ -72,7 +72,8 @@
       charWpm: settings.sendWpm,
       pitch: settings.pitch,
       onOutput: (o) => {
-        liveTokens.push(o.kind === 'space' ? { t: ' ' } : { t: o.char.token ?? '⁇', state: o.char.token ? 'ok' : 'unknown' });
+        // Re-decoded with what has been learned so far, so early letters settle.
+        if (live) liveTokens = live.settled().map((x) => (x.kind === 'space' ? { t: ' ' } : { t: x.char.token ?? '⁇', state: x.char.token ? 'ok' : 'unknown' }));
       },
       onKey: (down) => {
         lastKey = performance.now();
@@ -97,6 +98,7 @@
   function finish() {
     if (!live || stage !== 'sending') return;
     live.flush();
+    live.settle();
     live.stop();
     chars = live.chars;
     received = live.text;

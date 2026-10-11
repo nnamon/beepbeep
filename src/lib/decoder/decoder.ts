@@ -2,11 +2,14 @@
 //
 // Dit and dah lengths come from 2-means clustering of recent marks in log
 // space, so speed changes and heavy or light weighting are tracked rather than
-// assumed. Gaps are split the same way: element gaps inside a character, then
-// character gaps versus word gaps. Farnsworth spacing therefore decodes too.
+// assumed. Gaps are learned on their own, from every recent gap: natural
+// breaks split them into element, character and word gaps. Hand keying needs
+// this, since its gaps do not follow its marks (short taps, long pauses), and
+// Farnsworth spacing decodes the same way.
 
 import { tokenOf } from '../morse/code';
 import { kmeans2 } from './kmeans';
+import { gapClasses } from './breaks';
 
 export interface DecodedMark {
   start: number;
@@ -37,10 +40,29 @@ export interface DecoderOptions {
   initialWpm?: number;
   /** Expected effective (Farnsworth) speed, if slower than character speed. */
   initialEffectiveWpm?: number;
+  /** Start from what another decoder learned (for a second pass over the same keying). */
+  model?: DecoderModel;
+}
+
+/** What a decoder has learned about a fist. */
+export interface DecoderModel {
+  dit: number;
+  dah: number;
+  elemGap: number;
+  charGap: number;
+  wordBoundaryEst: number;
+  gapModel: boolean;
+  charSplit: number;
+  farnsworth: boolean;
+  marks: number[];
+  gaps: number[];
 }
 
 const MARK_WINDOW = 20;
-const GAP_WINDOW = 30;
+const GAP_WINDOW = 40;
+/** Minimum ratio between class means for gaps to count as separate classes. */
+const ELEM_CHAR = Math.log(1.8);
+const CHAR_WORD = Math.log(1.6);
 
 export class Decoder {
   private dit: number;
@@ -50,7 +72,15 @@ export class Decoder {
   private wordBoundaryEst: number;
 
   private marks: number[] = [];
-  private interGaps: number[] = [];
+  /** Every recent gap between marks (log seconds), whatever it was classed as. */
+  private gaps: number[] = [];
+  /** True once the gaps themselves have shown element and character classes. */
+  private gapModel = false;
+  /** Learned boundary between element and character gaps (the density valley). */
+  private charSplit = 0;
+  /** False in a second pass: the gap model is final and gaps are not relearned. */
+  private learnGaps = true;
+  private farnsworth: boolean;
 
   private down = false;
   private downAt = 0;
@@ -68,6 +98,7 @@ export class Decoder {
     this.dah = 3 * this.dit;
     this.elemGap = this.dit;
     const eff = opts.initialEffectiveWpm ?? wpm;
+    this.farnsworth = eff < wpm;
     if (eff < wpm) {
       const ta = (60 * wpm - 37.2 * eff) / (wpm * eff);
       this.charGap = (3 * ta) / 19;
@@ -76,6 +107,57 @@ export class Decoder {
       this.charGap = 3 * this.dit;
       this.wordBoundaryEst = 5 * this.dit;
     }
+    const m = opts.model;
+    if (m) {
+      Object.assign(this, {
+        dit: m.dit,
+        dah: m.dah,
+        elemGap: m.elemGap,
+        charGap: m.charGap,
+        wordBoundaryEst: m.wordBoundaryEst,
+        gapModel: m.gapModel,
+        charSplit: m.charSplit,
+        farnsworth: m.farnsworth,
+      });
+      this.marks = [...m.marks];
+      this.gaps = [...m.gaps];
+    }
+  }
+
+  /** A copy of what has been learned, to seed a second pass. */
+  model(): DecoderModel {
+    return {
+      dit: this.dit,
+      dah: this.dah,
+      elemGap: this.elemGap,
+      charGap: this.charGap,
+      wordBoundaryEst: this.wordBoundaryEst,
+      gapModel: this.gapModel,
+      charSplit: this.charSplit,
+      farnsworth: this.farnsworth,
+      marks: [...this.marks],
+      gaps: [...this.gaps],
+    };
+  }
+
+  /**
+   * Decodes marks again from a learned model: the second pass at the end of an
+   * over, so characters keyed before the fist was learned come out right too.
+   */
+  static redecode(model: DecoderModel, marks: { start: number; end: number }[], until?: number): DecoderOutput[] {
+    if (!marks.length) return [];
+    const d = new Decoder({ model });
+    // Gaps were all learned in the first pass; adding them again would count every gap twice.
+    d.learnGaps = !model.gapModel;
+    const out: DecoderOutput[] = [];
+    for (const m of marks) {
+      out.push(...d.keyDown(m.start));
+      out.push(...d.keyUp(m.end));
+    }
+    // With `until`, a character still open at that moment stays pending, as in live output.
+    if (until === undefined) out.push(...d.flush(marks[marks.length - 1].end + 30));
+    else out.push(...d.tick(until));
+    return out;
   }
 
   get ditEstimate(): number {
@@ -93,6 +175,8 @@ export class Decoder {
   /** Boundary between a gap inside a character and a gap between characters. */
   get charBoundary(): number {
     const g = Math.sqrt(this.elemGap * this.charGap);
+    // Learned from the gaps themselves: the valley between the classes.
+    if (this.gapModel) return this.charSplit;
     return Math.min(2.6 * this.elemGap, Math.max(1.6 * this.elemGap, g));
   }
 
@@ -106,16 +190,11 @@ export class Decoder {
     if (this.down) return out;
     if (this.lastUp >= 0) {
       const gap = t - this.lastUp;
-      if (this.pending.length) {
-        if (gap < this.charBoundary) this.learnElemGap(gap);
-        else {
-          out.push(...this.finishChar());
-          this.learnInterGap(gap);
-          if (gap >= this.wordBoundary) out.push(...this.emitSpace(t, gap));
-        }
-      } else {
-        this.learnInterGap(gap);
+      if (this.pending.length && gap >= this.charBoundary) {
+        out.push(...this.finishChar());
+        if (gap >= this.wordBoundary) out.push(...this.emitSpace(t, gap));
       }
+      this.learnGap(gap);
     }
     this.down = true;
     this.downAt = t;
@@ -166,21 +245,59 @@ export class Decoder {
     if (!marks.length) return [];
     const boundary = Math.sqrt(this.dit * this.dah);
     for (const m of marks) m.kind = m.end - m.start < boundary ? 'dit' : 'dah';
+    // Not a character as keyed: two letters ran together. Split at the longest
+    // gaps inside until every piece is a character, as a listener would.
+    const pieces = this.repair(marks) ?? [marks];
+    const out: DecoderOutput[] = [];
+    for (const piece of pieces) {
+      const pattern = piece.map((m) => (m.kind === 'dit' ? '.' : '-')).join('');
+      const token = tokenOf(pattern) ?? null;
+      const char: DecodedChar = {
+        token,
+        pattern,
+        marks: piece,
+        start: piece[0].start,
+        end: piece[piece.length - 1].end,
+        confidence: token ? this.confidenceOf(piece) : 0,
+        wpm: this.wpm,
+      };
+      this.history.push(char);
+      this.charsSinceSpace++;
+      this.spaceEmitted = false;
+      out.push({ kind: 'char', char });
+    }
+    return out;
+  }
+
+  /**
+   * Splits an unknown pattern into known characters at its longest internal
+   * gaps (longest first), or null when no split works. A cut needs a gap that
+   * stands out: longer than the character's other gaps (1.3 times their
+   * median) and at least half the character boundary. Evenly keyed elements
+   * are never cut.
+   */
+  private repair(marks: DecodedMark[], depth = 0): DecodedMark[][] | null {
     const pattern = marks.map((m) => (m.kind === 'dit' ? '.' : '-')).join('');
-    const token = tokenOf(pattern) ?? null;
-    const char: DecodedChar = {
-      token,
-      pattern,
-      marks,
-      start: marks[0].start,
-      end: marks[marks.length - 1].end,
-      confidence: token ? this.confidenceOf(marks) : 0,
-      wpm: this.wpm,
+    if (tokenOf(pattern)) return [marks];
+    if (marks.length < 2 || depth > 3) return null;
+    const gaps = marks.slice(1).map((m, i) => ({ at: i + 1, gap: m.start - marks[i].end }));
+    const median = (xs: number[]) => {
+      const v = [...xs].sort((x, y) => x - y);
+      return v.length ? v[Math.floor(v.length / 2)] : 0;
     };
-    this.history.push(char);
-    this.charsSinceSpace++;
-    this.spaceEmitted = false;
-    return [{ kind: 'char', char }];
+    const cuts = gaps
+      .filter((c) => {
+        const others = gaps.filter((o) => o !== c).map((o) => o.gap);
+        return c.gap >= 0.5 * this.charBoundary && (!others.length || c.gap >= 1.3 * median(others));
+      })
+      .sort((x, y) => y.gap - x.gap)
+      .slice(0, 3);
+    for (const c of cuts) {
+      const left = this.repair(marks.slice(0, c.at), depth + 1);
+      const right = left && this.repair(marks.slice(c.at), depth + 1);
+      if (left && right) return [...left, ...right];
+    }
+    return null;
   }
 
   private emitSpace(t: number, gap: number): DecoderOutput[] {
@@ -246,46 +363,64 @@ export class Decoder {
     this.dit = Math.min(0.5, Math.max(0.015, this.dit));
     this.dah = Math.min(5 * this.dit, Math.max(2 * this.dit, this.dah));
 
-    // Gaps follow the speed: rescale their estimates by the same factor.
+    // Until the gaps have shown their own classes, assume they follow the speed.
     const scale = this.dit / before;
-    if (Math.abs(Math.log(scale)) > 0.02) {
+    if (!this.gapModel && Math.abs(Math.log(scale)) > 0.02) {
       this.elemGap *= scale;
       this.charGap *= scale;
       this.wordBoundaryEst *= scale;
-      const ls = Math.log(scale);
-      for (let i = 0; i < this.interGaps.length; i++) this.interGaps[i] += ls;
     }
   }
 
-  private learnElemGap(g: number) {
-    if (g < 0.2 * this.dit) return;
-    this.elemGap += (g - this.elemGap) * 0.2;
-    this.elemGap = Math.min(2 * this.dit, Math.max(0.4 * this.dit, this.elemGap));
+  private learnGap(g: number) {
+    if (!this.learnGaps) return;
+    if (g > 30 * this.dit + 3) return; // a pause, not spacing
+    if (g < 0.3 * this.dit) return; // a dropout inside a mark
+    this.gaps.push(Math.log(g));
+    if (this.gaps.length > GAP_WINDOW) this.gaps.shift();
+    this.fitGaps();
   }
 
-  private learnInterGap(g: number) {
-    if (g > 30 * this.dit + 3) return; // a pause, not spacing
-    this.interGaps.push(Math.log(g));
-    if (this.interGaps.length > GAP_WINDOW) this.interGaps.shift();
-    if (this.interGaps.length < 2) {
-      if (g < this.wordBoundary) this.charGap += (g - this.charGap) * 0.3;
+  /** Splits recent gaps into element, character and word classes (see breaks.ts). */
+  private fitGaps() {
+    if (this.gaps.length < 3) return;
+    const c = gapClasses(this.gaps);
+    const modes = [...c.modes];
+    const valleys = [...c.valleys];
+    const counts = [...c.counts];
+    const n = this.gaps.length;
+    // Element gaps are a large share of all gaps (even all-E/T text has more
+    // than a fifth); a small group below them is a few hurried gaps, not a class.
+    while (modes.length > 1 && counts[0] < Math.max(2, 0.2 * n)) {
+      counts[1] += counts[0];
+      modes.shift();
+      valleys.shift();
+      counts.shift();
+    }
+    // A single stray gap between two classes joins the nearer one.
+    for (let i = 1; i < modes.length - 1; i++) {
+      if (counts[i] >= 2) continue;
+      const intoLower = modes[i] - modes[i - 1] <= modes[i + 1] - modes[i];
+      if (intoLower) {
+        counts[i - 1] += counts[i];
+        valleys.splice(i - 1, 1);
+      } else {
+        counts[i + 1] += counts[i];
+        valleys.splice(i, 1);
+      }
+      modes.splice(i, 1);
+      counts.splice(i, 1);
+      i--;
+    }
+    if (modes.length >= 2 && modes[1] - modes[0] >= ELEM_CHAR) {
+      this.elemGap = Math.exp(modes[0]);
+      this.charGap = Math.exp(modes[1]);
+      this.charSplit = Math.exp(valleys[0]);
+      this.wordBoundaryEst = valleys.length >= 2 && modes[2] - modes[1] >= CHAR_WORD ? Math.exp(valleys[1]) : 1.7 * this.charGap;
+      this.gapModel = true;
       return;
     }
-    const sorted = [...this.interGaps].sort((a, b) => a - b);
-    const lo = sorted[0];
-    const hi = sorted[sorted.length - 1];
-    if (hi - lo >= Math.log(1.5)) {
-      const { low, high, nLow, nHigh } = kmeans2(this.interGaps, lo, hi);
-      if (nLow >= 1 && nHigh >= 1 && high - low >= Math.log(1.5)) {
-        this.charGap = Math.exp(low);
-        this.wordBoundaryEst = Math.exp((low + high) / 2);
-        return;
-      }
-    }
-    // One cluster. Most words have several letters, so it is character gaps
-    // (Farnsworth makes them long); word gaps are well beyond it.
-    const centre = Math.exp(sorted[Math.floor(sorted.length / 2)]);
-    this.charGap = centre;
-    this.wordBoundaryEst = Math.max(1.7 * centre, 4 * this.elemGap);
+    // One class only (a single long character, or single-element letters):
+    // keep the current estimates.
   }
 }

@@ -25,9 +25,11 @@ Input is the microphone, an on-screen touch key for phones and tablets, or the k
 1. A peak-hold FFT finds the strongest keyed tone between 300 and 1200 Hz and locks to it.
 2. An I/Q detector at that pitch, with a low-pass sized to the sending speed, produces the tone envelope.
 3. An adaptive threshold between the noise floor and the signal peak, with hysteresis and a debounce, gives key-down and key-up times.
-4. Dit/dah and gap classes come from k-means on recent durations, so speed changes, weighting and Farnsworth spacing are tracked rather than assumed.
+4. Dit and dah come from k-means on recent mark lengths. Gaps are learned on their own: the deepest valleys in the density of recent gaps (log time) separate gaps inside a letter, between letters and between words. Hand keying needs this, since its gaps do not follow its marks: on a touch key, short taps with long pauses between them.
+5. A pattern that is not a character is split at the gap inside it that stands out, as a listener would split two run-together letters.
+6. At the end of an over the whole over is decoded again with what was learned from all of it, so the first letters, keyed before the fist was learned, come out right. Scoring, calibration and the QSO use this second pass; live text shows it as you key.
 
-Steps 1 to 3 run in an AudioWorklet. The same code runs in the tests, which decode synthetic audio with noise, fading, interference, static, chirp, drift, room echo and hand-sent timing. See `src/lib/decoder/accuracy.test.ts` for the conditions and limits.
+Steps 1 to 3 run in an AudioWorklet. The same code runs in the tests, which decode synthetic audio with noise, fading, interference, static, chirp, drift, room echo and hand-sent timing (`src/lib/decoder/accuracy.test.ts`), and hand keying from touch and straight keys (`src/lib/decoder/human.test.ts`).
 
 A character shows once the silence after it is longer than a gap inside a character, about 1.7 dits. Measured from key-up (90th percentile, `src/lib/decoder/latency.test.ts`): 184 ms at 12 wpm, 153 ms at 15, 115 ms at 20, 81 ms at 30.
 

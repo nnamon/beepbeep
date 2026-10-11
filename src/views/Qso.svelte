@@ -91,8 +91,9 @@
       charWpm: settings.sendWpm,
       pitch: settings.pitch,
       onOutput: (o) => {
-        if (turn !== 'you') return;
-        overTokens.push(o.kind === 'space' ? { t: ' ' } : { t: o.char.token ?? '⁇', state: o.char.token ? 'ok' : 'unknown' });
+        if (turn !== 'you' || !live) return;
+        // Re-decoded with what has been learned so far, so early letters settle.
+        overTokens = live.settled().map((x) => (x.kind === 'space' ? { t: ' ' } : { t: x.char.token ?? '⁇', state: x.char.token ? 'ok' : 'unknown' }));
         // Only a finished word can end the over: "K" may be the start of K1ABC.
         if (o.kind === 'space') {
           const p = parse(overText());
@@ -131,6 +132,7 @@
     if (ending || turn !== 'you' || !bot || !live) return;
     ending = true;
     live.flush();
+    overTokens = live.settle().map((x) => (x.kind === 'space' ? { t: ' ' } : { t: x.char.token ?? '⁇', state: x.char.token ? 'ok' : 'unknown' }));
     const text = overText();
     if (text) {
       lines.push({ from: 'you', who: settings.you.call || 'You', text });
@@ -204,6 +206,7 @@
     stage = 'ended';
     if (live) {
       live.flush();
+      live.settle();
       const rep = analyseFist(live.outputs);
       sendReport = rep;
       sendNote = rep ? oneNote(rep, [], settings.sendTolerance) : '';

@@ -152,6 +152,22 @@ export class LiveDecoder {
     return { yours, standard: std.marks.map((m) => ({ start: m.start, end: m.end })) };
   }
 
+  /**
+   * The over so far, decoded again with everything learned about this fist:
+   * characters keyed before it was learned come out right too. Characters
+   * still being keyed are left out, as in the live output.
+   */
+  settled(): DecoderOutput[] {
+    const now = this.opts.source === 'mic' ? this.lastEventTime : engine.now;
+    return Decoder.redecode(this.decoder.model(), this.marks, now);
+  }
+
+  /** At the end of an over: replaces the outputs with the final second pass. */
+  settle(): DecoderOutput[] {
+    if (this.marks.length) this.outputs = Decoder.redecode(this.decoder.model(), this.marks);
+    return this.outputs;
+  }
+
   get chars(): DecodedChar[] {
     return this.outputs.filter((o) => o.kind === 'char').map((o) => (o as { char: DecodedChar }).char);
   }

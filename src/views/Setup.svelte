@@ -8,7 +8,8 @@
   import { settings } from '../lib/state/settings.svelte';
   import { signal, startMic, stopMic } from '../lib/state/signal.svelte';
   import { textTokens } from '../lib/util/text';
-  import { straightOnly } from '../lib/train/session';
+  import { sendInput, straightOnly } from '../lib/train/session';
+  import { outputsToText } from '../lib/decoder/pipeline';
 
   let devices = $state<MediaDeviceInfo[]>([]);
   let spec = $state<{ hz: number[]; db: number[] }>({ hz: [], db: [] });
@@ -56,10 +57,10 @@
     cal = 'listening';
     calLive?.stop();
     calLive = new LiveDecoder({
-      source: settings.input,
+      source: sendInput(),
       charWpm: settings.sendWpm,
       pitch: settings.pitch,
-      onOutput: () => (calText = calLive?.text ?? ''),
+      onOutput: () => (calText = calLive ? outputsToText(calLive.settled()) : ''),
     });
     await calLive.start();
     setTimeout(finishCal, 9000);
@@ -68,18 +69,29 @@
   function finishCal() {
     if (!calLive || cal !== 'listening') return;
     calLive.flush();
+    // The second pass: decoded again with the whole calibration's timing.
+    calLive.settle();
     calLive.stop();
     calText = calLive.text;
+    const mic = settings.input === 'mic';
     const vs = (calText.match(/V/g) ?? []).length;
     const marks = calLive.marks.length;
+    const model = calLive.decoder.model();
     const wpm = calLive.decoder.wpm;
-    if (!marks) calNote = 'Nothing heard. Check the level meter and move the mic closer.';
-    else if (vs >= 2 && marks <= vs * 4 + 2) {
+    // Inside a letter the gap is one dit by the book; hand keying often runs longer.
+    const inner = model.gapModel ? model.elemGap / model.dit : null;
+    if (!marks) {
+      calNote = mic ? 'Nothing heard. Check the level meter and move the mic closer.' : 'Nothing keyed. Hold the key for each element.';
+    } else if (vs >= 2 && (!mic || marks <= vs * 4 + 2)) {
       settings.sendWpm = Math.round(wpm);
-      calNote = `Clean. ${Math.round(wpm)} wpm${signal.pitch ? ` at ${Math.round(signal.pitch)} Hz` : ''}, saved as your sending speed.`;
-    } else if (marks > (vs || 3) * 4 + 2) {
+      const where = mic && signal.pitch ? ` at ${Math.round(signal.pitch)} Hz` : '';
+      const gaps = inner !== null && inner >= 1.8 ? ` Gaps inside a letter run ${inner.toFixed(1)} dits; the standard is 1.` : '';
+      calNote = `${vs} V. ${Math.round(wpm)} wpm${where}, saved as your sending speed.${gaps}`;
+    } else if (mic && marks > (vs || 3) * 4 + 2) {
       calNote = 'The tone is breaking up. Lower the sidetone volume, move the mic, or use a wired mic.';
-    } else calNote = `Heard ${calText || 'nothing clear'}. Send V V V with clear gaps and try again.`;
+    } else {
+      calNote = `Heard ${calText || 'nothing clear'}. A V is di-di-di-dah: three short, one long. Keep the gaps inside a V shorter than the gaps between V's.`;
+    }
     cal = 'done';
   }
 

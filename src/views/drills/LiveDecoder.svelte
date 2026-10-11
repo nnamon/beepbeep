@@ -11,6 +11,7 @@
   import InputHelp from '../../ui/InputHelp.svelte';
   import Inspect from '../../ui/Inspect.svelte';
   import { LiveDecoder } from '../../lib/audio/live';
+  import type { DecoderOutput } from '../../lib/decoder/decoder';
   import { settings, strict } from '../../lib/state/settings.svelte';
   import { signal, startMic } from '../../lib/state/signal.svelte';
   import { analyseFist, type FistReport } from '../../lib/train/fist';
@@ -40,18 +41,9 @@
       source: sendInput(),
       charWpm: settings.sendWpm,
       pitch: settings.pitch,
-      onOutput: (o) => {
-        if (o.kind === 'space') tokens.push({ t: ' ' });
-        else if (o.char.token) tokens.push({ t: o.char.token, state: 'ok' });
-        else {
-          const m = o.char.marks.map((x) => ({ start: x.start, end: x.end }));
-          tokens.push({ t: '⁇', state: 'unknown', onclick: () => (inspecting = m) });
-        }
-        if (tokens.length > 400) {
-          const cut = tokens.length - 400;
-          tokens.splice(0, cut);
-          revealed = Math.max(0, revealed - cut);
-        }
+      // Shown re-decoded with what has been learned so far, so early letters settle as you key.
+      onOutput: () => {
+        if (live) tokens = render(live.settled());
         signal.wpm = live?.decoder.wpm ?? 0;
       },
       onKey: (down) => {
@@ -98,11 +90,24 @@
       : [{ label: 'yours', marks: r.yours }];
   }
 
+  function render(outs: DecoderOutput[]): Tok[] {
+    const toks: Tok[] = outs.map((o) => {
+      if (o.kind === 'space') return { t: ' ' };
+      if (o.char.token) return { t: o.char.token, state: 'ok' };
+      const m = o.char.marks.map((x) => ({ start: x.start, end: x.end }));
+      return { t: '⁇', state: 'unknown', onclick: () => (inspecting = m) };
+    });
+    const out = toks.slice(-400);
+    revealed = Math.min(revealed, out.length);
+    return out;
+  }
+
   function endOver() {
     if (overTimer) clearTimeout(overTimer);
     overTimer = null;
     if (!live) return;
     live.flush();
+    tokens = render(live.settle());
     report = analyseFist(live.outputs);
     note = oneNote(report, [], settings.sendTolerance);
     revealed = tokens.length;

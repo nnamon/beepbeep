@@ -92,6 +92,7 @@
       () => stopFlag || (last > 0 && performance.now() - last > gapMs(wpm)) || performance.now() - began > 8000,
     );
     live.flush();
+    live.settle();
     live.stop();
     return { text: live.text, marks: live.marks, chars: live.chars };
   }
