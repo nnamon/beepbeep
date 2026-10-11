@@ -341,13 +341,13 @@ export class Decoder {
 
     let done = false;
     if (this.marks.length >= 3) {
-      // Seed from the extremes so a big speed change separates at once.
-      let lo = Infinity;
-      let hi = -Infinity;
-      for (const v of this.marks) {
-        if (v < lo) lo = v;
-        if (v > hi) hi = v;
-      }
+      // Seed from near the extremes, so a big speed change separates within a
+      // few marks, but one or two clicks cannot pose as the dit (learned, a
+      // click shrinks the dit and lets the next clicks through).
+      const sorted = [...this.marks].sort((a, b) => a - b);
+      const cut = Math.floor(sorted.length / 8);
+      const lo = sorted[cut];
+      const hi = sorted[sorted.length - 1 - cut];
       if (hi - lo >= Math.log(1.8)) {
         const { low, high, nLow, nHigh } = kmeans2(this.marks, lo, hi);
         if (nLow >= 1 && nHigh >= 1 && high - low >= Math.log(1.8)) {

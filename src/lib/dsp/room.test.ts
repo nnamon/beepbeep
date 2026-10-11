@@ -50,8 +50,8 @@ describe('room sounds alone', () => {
   // Before: none. Now none.
   it('typing keys nothing', () => expect(keyed('typing')).toBe(0));
   // Voiced speech puts harmonics on the tone itself, the hardest room sound:
-  // the pitch-steadiness test catches most of it. Before: 58. Now 17.
-  it('speech keys under a third of what it did', () => expect(keyed('speech')).toBeLessThanOrEqual(20));
+  // pitch steadiness and each mark's pitch catch most of it. Before: 58. Now 5.
+  it('speech keys a few stray letters at most', () => expect(keyed('speech')).toBeLessThanOrEqual(8));
 });
 
 describe('a tone over room sounds', () => {

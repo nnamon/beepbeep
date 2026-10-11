@@ -60,6 +60,9 @@ export interface TraceStep {
   onThr: number;
   offThr: number;
   toneLike: boolean;
+  clear: boolean;
+  coherence: number;
+  offset: number;
   markLevel: number;
   keyDown: boolean;
   pending: boolean | null;
@@ -148,6 +151,26 @@ export const gateTuning = { weight: 0.25, quiet: 6, contrast: 8 };
  * marks, and `wide` the allowance before any are learned.
  */
 export const steadyTuning = { lag: 4, smooth: 4, coherence: 0.4, tol: 10, wide: 20, downHold: 0.1 };
+/**
+ * Each mark is checked as a whole when it ends: its pitch, measured over the
+ * mark's steady middle (phase against itself `lag` ms earlier), must sit
+ * within `tol` Hz (plus `short` / its length in ms) of the pitch learned from earlier marks, and be steady
+ * (`coherence`). Until `learn` marks are in, the allowance is `pinned` Hz
+ * around a pinned pitch, `wide` around a found one. A mark that fails is
+ * withdrawn. While a mark lasts, it ends if the pitch has left the sender's
+ * for `leave` dits (40 ms at least: a click passes in less).
+ */
+/**
+ * Timbre: a buzzer or square-wave oscillator has a strong third harmonic at
+ * exactly three times its pitch; voices and radios near the tone rarely do.
+ * Learned from accepted marks: once `learn` marks show the harmonic within
+ * `strong` dB of the tone and rising `minRise` dB over its own floor with it
+ * (noise alone does not rise), a key-down needs it risen `rise` dB over its floor
+ * and within `slack` dB of the learned level, and a mark is withdrawn if it
+ * lacks it. A pure sine never qualifies, and the test stays off.
+ */
+export const timbreTuning = { learn: 3, strong: -15, minRise: 12, rise: 6, slack: 10, markSlack: 8 };
+export const markTuning = { lag: 10, tol: 3, wide: 8, pinned: 4, learn: 3, coherence: 0.5, leave: 0.6, short: 120 };
 
 export class Detector {
   readonly fs: number;
@@ -182,6 +205,17 @@ export class Detector {
   private lockedHz: number | null = null;
   private readonly tone: Channel;
   private readonly refs: [Channel, Channel];
+  /** At three times the pitch: the tone's own third harmonic, if it has one. */
+  private readonly overtone: Channel;
+  private overtoneNoise = 0;
+  /** Third harmonic against the tone, and its rise over its own floor, dB, learned from accepted marks. */
+  private harmonicGap = 0;
+  private harmonicRise = 0;
+  private harmonicMarks = 0;
+  /** The current mark's third harmonic, summed over its steady middle. */
+  private mGap = 0;
+  private mRise = 0;
+  private mGapN = 0;
   private readonly decim: number;
   private decimCount = 0;
   private envPrev = -180;
@@ -196,7 +230,7 @@ export class Detector {
   private peak = 0;
   private envInit = false;
   private warmup = 0;
-  private warmAcc = [0, 0, 0];
+  private warmAcc = [0, 0, 0, 0];
   private keyDown = false;
   private pendingState: boolean | null = null;
   private pendingT = 0;
@@ -216,7 +250,21 @@ export class Detector {
   /** Where the sender's tone sits from the lock, Hz, learned from their marks. */
   private toneOffset = 0;
   private offsetMarks = 0;
-  private markOffsets: number[] = [];
+  /** The current mark's phase against itself `markTuning.lag` ms earlier, summed. */
+  private mRe = 0;
+  private mIm = 0;
+  private mMag = 0;
+  private mN = 0;
+  /** This step's phase product at `markTuning.lag`. */
+  private lagRe = 0;
+  private lagIm = 0;
+  private lagMag = 0;
+  private markStartT = 0;
+  private peakBefore = 0;
+  /** When the pitch last sat at the sender's during this mark. */
+  private onPitchT = 0;
+  /** Steady marks withdrawn for their pitch: if they agree, the pin is off and that is the tone. */
+  private strays: number[] = [];
   private downT = 0;
   /**
    * The last 200 ms of envelope, to time a mark's start once its level is
@@ -257,6 +305,7 @@ export class Detector {
     this.decim = Math.max(1, Math.round(sampleRate / 1000));
     this.tone = new Channel(sampleRate, this.cutoff());
     this.refs = [new Channel(sampleRate, this.cutoff()), new Channel(sampleRate, this.cutoff())];
+    this.overtone = new Channel(sampleRate, this.cutoff());
     if (this.pinned) this.lock(this.pinned, false, []);
   }
 
@@ -277,6 +326,7 @@ export class Detector {
     if (Math.abs(next - prev) / prev > 0.15) {
       this.tone.setCutoff(next);
       for (const r of this.refs) r.setCutoff(next);
+      this.overtone.setCutoff(next);
       if (this.lockedHz !== null) this.tuneRefs(this.lockedHz);
     }
   }
@@ -442,19 +492,25 @@ export class Detector {
     const below = hz - off >= 120 ? hz - off : hz + 2 * off;
     this.refs[0].tune(below);
     this.refs[1].tune(Math.min(hz + off, this.fs / 2 - 200));
+    this.overtone.tune(Math.min(3 * hz, this.fs / 2 - 200));
   }
 
   private lock(hz: number, replayHistory: boolean, out: DetectorEvent[]) {
     this.setOscillator(hz);
     this.tone.reset();
     for (const r of this.refs) r.reset();
+    this.overtone.reset();
+    this.harmonicGap = 0;
+    this.harmonicRise = 0;
+    this.harmonicMarks = 0;
     this.envInit = false;
     this.warmup = 0;
-    this.warmAcc = [0, 0, 0];
+    this.warmAcc = [0, 0, 0, 0];
     this.zCount = 0;
     this.wRe = this.wIm = this.wMag = 0;
     this.toneOffset = 0;
     this.offsetMarks = 0;
+    this.strays = [];
     this.keyDown = false;
     this.pendingState = null;
     this.decimCount = 0;
@@ -477,10 +533,11 @@ export class Detector {
     this.tone.step(x);
     this.refs[0].step(x);
     this.refs[1].step(x);
+    this.overtone.step(x);
     if (++this.decimCount < this.decim) return;
     this.decimCount = 0;
     this.steadinessStep();
-    this.envelopeStep(this.tone.db, this.refs[0].db, this.refs[1].db, sampleIndex / this.fs, out);
+    this.envelopeStep(this.tone.db, this.refs[0].db, this.refs[1].db, this.overtone.db, sampleIndex / this.fs, out);
   }
 
   /** Updates the smoothed product of the tone phasor with itself `lag` ms ago. */
@@ -498,10 +555,60 @@ export class Detector {
       this.wIm += (im * pr - re * pi - this.wIm) * a;
       this.wMag += (Math.hypot(re, im) * Math.hypot(pr, pi) - this.wMag) * a;
     }
+    if (this.zCount >= markTuning.lag) {
+      const j = (this.zPos - markTuning.lag + n) % n;
+      const pr = this.zRe[j];
+      const pi = this.zIm[j];
+      this.lagRe = re * pr + im * pi;
+      this.lagIm = im * pr - re * pi;
+      this.lagMag = Math.hypot(re, im) * Math.hypot(pr, pi);
+    }
     this.zRe[this.zPos] = re;
     this.zIm[this.zPos] = im;
     this.zPos = (this.zPos + 1) % n;
     this.zCount++;
+  }
+
+  /** The sender's tone has a third harmonic that rises with it, close to its level. */
+  private hasHarmonic(): boolean {
+    return this.harmonicMarks >= timbreTuning.learn && this.harmonicGap > timbreTuning.strong && this.harmonicRise >= timbreTuning.minRise;
+  }
+
+  /**
+   * Is the mark that just ended the sender's tone? Its pitch over the whole
+   * mark against the pitch of their earlier marks, and its steadiness.
+   */
+  private verifyMark(): boolean {
+    // Too short to measure: left to the glitch rule.
+    if (this.mN < 12 || this.mMag <= 0) return true;
+    const coherence = Math.hypot(this.mRe, this.mIm) / this.mMag;
+    const offset = Math.atan2(this.mIm, this.mRe) / ((2 * Math.PI * markTuning.lag * this.decim) / this.fs);
+    // A short mark's pitch is known less exactly: more allowance (8.7 Hz with 21 ms of steady tone, 3.5 Hz for a dah).
+    const base = this.offsetMarks >= markTuning.learn ? markTuning.tol : this.pinned ? markTuning.pinned : markTuning.wide;
+    const tol = base + markTuning.short / this.mN;
+    const gap = this.mGapN ? this.mGap / this.mGapN : -60;
+    const rise = this.mGapN ? this.mRise / this.mGapN : 0;
+    const timbre = this.hasHarmonic();
+    if (coherence >= markTuning.coherence && Math.abs(offset - this.toneOffset) <= tol && (!timbre || gap >= this.harmonicGap - timbreTuning.markSlack)) {
+      this.toneOffset = this.offsetMarks ? this.toneOffset + 0.3 * (offset - this.toneOffset) : offset;
+      this.offsetMarks++;
+      this.harmonicGap = this.harmonicMarks ? this.harmonicGap + 0.3 * (gap - this.harmonicGap) : gap;
+      this.harmonicRise = this.harmonicMarks ? this.harmonicRise + 0.3 * (rise - this.harmonicRise) : rise;
+      this.harmonicMarks++;
+      this.strays = [];
+      return true;
+    }
+    // Steady marks at one other pitch, again and again: the pin is off, and that is the tone.
+    if (coherence >= 0.85) {
+      this.strays = [...this.strays.slice(-3), offset];
+      const sorted = [...this.strays].sort((a, b) => a - b);
+      if (this.strays.length === 4 && sorted[3] - sorted[0] <= 2 * markTuning.tol) {
+        this.toneOffset = sorted[1];
+        this.offsetMarks = 1;
+        this.strays = [];
+      }
+    }
+    return false;
   }
 
   /** Steadiness of the tone channel (0..1) and its pitch offset from the lock, Hz. */
@@ -511,7 +618,7 @@ export class Detector {
     return { coherence, offset };
   }
 
-  private envelopeStep(env: number, ref0: number, ref1: number, t: number, out: DetectorEvent[]) {
+  private envelopeStep(env: number, ref0: number, ref1: number, ovt: number, t: number, out: DetectorEvent[]) {
     const dt = this.decim / this.fs;
     // Warm-up: let the filters settle and measure the floors before deciding anything.
     if (!this.envInit) {
@@ -520,10 +627,12 @@ export class Detector {
         this.warmAcc[0] += env;
         this.warmAcc[1] += ref0;
         this.warmAcc[2] += ref1;
+        this.warmAcc[3] += ovt;
       }
       if (this.warmup >= 45) {
         this.noise = this.warmAcc[0] / 30;
         this.refNoise = [this.warmAcc[1] / 30, this.warmAcc[2] / 30];
+        this.overtoneNoise = this.warmAcc[3] / 30;
         this.peak = this.noise;
         this.envInit = true;
       }
@@ -539,6 +648,7 @@ export class Detector {
       this.noise += env > this.noise ? step : -step;
       this.refNoise[0] += ref0 > this.refNoise[0] ? step : -step;
       this.refNoise[1] += ref1 > this.refNoise[1] ? step : -step;
+      this.overtoneNoise += ovt > this.overtoneNoise ? step : -step;
     }
 
     // Contrast: how far the tone stands above its floor beyond what the room
@@ -554,8 +664,12 @@ export class Detector {
     const { coherence, offset } = this.steadiness();
     const tol = this.offsetMarks >= 3 ? steadyTuning.tol : steadyTuning.wide;
     const steady = coherence >= steadyTuning.coherence && Math.abs(offset - this.toneOffset) <= tol;
-    const toneLike = clear && steady;
-    if (this.keyDown && coherence >= 0.9 && clear) this.markOffsets.push(offset);
+    // And, if the sender's tone has one, its third harmonic must be there too.
+    const timbre = this.hasHarmonic();
+    const voiced = !timbre || (ovt - this.overtoneNoise >= timbreTuning.rise && ovt - env >= this.harmonicGap - timbreTuning.slack);
+    const toneLike = clear && steady && voiced;
+    // While a mark lasts: when did its pitch last sit at the sender's?
+    if (this.keyDown && coherence >= steadyTuning.coherence && Math.abs(offset - this.toneOffset) <= tol) this.onPitchT = t;
 
     // Peak: the level of marks. Rises fast with a tone (not with room sounds),
     // follows a mark down slowly, and relaxes toward the floor between marks.
@@ -583,6 +697,17 @@ export class Detector {
       // The tone's own level: it rises slowly, so a key's thump or a clack
       // during the mark barely moves it.
       if (toneLike && env > this.markLevel) this.markLevel += (env - this.markLevel) * k(0.015);
+      // The mark's pitch, from its steady middle only: at its edges the filter
+      // is still settling and a key's thump sits.
+      if (this.keyDown && env >= this.markLevel - 6) {
+        this.mRe += this.lagRe;
+        this.mIm += this.lagIm;
+        this.mMag += this.lagMag;
+        this.mN++;
+        this.mGap += ovt - env;
+        this.mRise += ovt - this.overtoneNoise;
+        this.mGapN++;
+      }
       const half = this.markLevel - 6;
       if (this.envPrev >= half && env < half) this.downT = this.interpolate(this.envPrev, env, this.tPrev, t, half);
     }
@@ -597,6 +722,10 @@ export class Detector {
       // Off below the threshold, or well below this mark's own level (an echo's tail).
       raw = false;
       crossT = t - this.downT < 0.06 ? this.downT : t;
+    } else if (this.keyDown && t - this.onPitchT >= Math.max(0.04, markTuning.leave * this.dit)) {
+      // The pitch has left the sender's: another sound has taken over the channel.
+      raw = false;
+      crossT = this.onPitchT;
     }
 
     // Debounce: a change must hold before it counts; its time is the crossing.
@@ -613,22 +742,27 @@ export class Detector {
         if (raw) {
           this.markLevel = this.recentMedian(t - this.pendingSince);
           this.downT = t;
-          this.markOffsets = [];
-        } else if (this.markOffsets.length >= 10) {
-          // Learn where this sender's tone sits.
-          const m = [...this.markOffsets].sort((x, y) => x - y)[this.markOffsets.length >> 1];
-          this.toneOffset = this.offsetMarks ? this.toneOffset + 0.3 * (m - this.toneOffset) : m;
-          this.offsetMarks++;
+          this.onPitchT = t;
+          this.mRe = this.mIm = this.mMag = this.mN = 0;
+          this.mGap = this.mRise = this.mGapN = 0;
+          this.peakBefore = this.peak;
+          // A key-down is timed where the envelope rose through half the mark's amplitude.
+          this.markStartT = this.riseTime(this.markLevel - 6, this.pendingT);
+          out.push({ type: 'key', down: true, t: this.markStartT });
+        } else if (this.verifyMark()) {
+          this.lastOff = this.pendingT;
+          out.push({ type: 'key', down: false, t: this.pendingT });
+        } else {
+          // Not the sender's tone: withdrawn. A mark of no length is dropped downstream.
+          this.peak = Math.min(this.peak, this.peakBefore);
+          out.push({ type: 'key', down: false, t: this.markStartT });
         }
-        // A key-down is timed where the envelope rose through half the mark's amplitude.
-        if (!raw) this.lastOff = this.pendingT;
-        out.push({ type: 'key', down: raw, t: raw ? this.riseTime(this.markLevel - 6, this.pendingT) : this.pendingT });
       }
     } else {
       this.pendingState = null;
     }
 
-    this.trace?.({ t, env, refs: [ref0, ref1], floor: this.noise, refFloors: [this.refNoise[0], this.refNoise[1]], peak: this.peak, onThr, offThr, toneLike, markLevel: this.markLevel, keyDown: this.keyDown, pending: this.pendingState });
+    this.trace?.({ t, env, refs: [ref0, ref1], floor: this.noise, refFloors: [this.refNoise[0], this.refNoise[1]], peak: this.peak, onThr, offThr, toneLike, clear, coherence, offset, markLevel: this.markLevel, keyDown: this.keyDown, pending: this.pendingState });
     this.envPrev = env;
     this.tPrev = t;
   }

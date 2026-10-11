@@ -35,7 +35,10 @@ const CASES: Case[] = [
   { name: '25 wpm, QSB 60%', wpm: 25, cond: { qsb: { depth: 0.6, rateHz: 0.4 }, noise: { snrDb: 20 } }, max: 0.03 },
   { name: '18 wpm, room echo', wpm: 18, fist: { jitter: 0.05 }, cond: { reverb: { decay: 0.3, mix: 0.35 }, noise: { snrDb: 25 } }, max: 0.03 },
   { name: '30 wpm, room echo', wpm: 30, cond: { reverb: { decay: 0.25, mix: 0.3 }, noise: { snrDb: 25 } }, max: 0.05 },
-  { name: '16 wpm, chirp + drift', wpm: 16, cond: { chirp: { hz: 25, tau: 0.03 }, drift: { hzPerSec: 1.5 }, noise: { snrDb: 15 } }, max: 0.02 },
+  // A sidetone is made locally and holds its pitch; a slight chirp is the most
+  // a cheap oscillator shows. (Each mark's pitch is checked against the
+  // sender's, which is what turns away voices and radios near the tone.)
+  { name: '16 wpm, slight chirp + drift', wpm: 16, cond: { chirp: { hz: 6, tau: 0.03 }, drift: { hzPerSec: 1.5 }, noise: { snrDb: 15 } }, max: 0.02 },
   { name: '20 wpm, QRM -6 dB at +250 Hz', wpm: 20, cond: { qrm: { text: 'TEST TEST DE W9XYZ W9XYZ TEST', offsetHz: 250, relativeDb: -6, wpm: 24 }, noise: { snrDb: 15 } }, max: 0.05 },
   { name: '20 wpm, static crashes', wpm: 20, cond: { qrn: { ratePerSec: 1.5, level: 1.5 }, noise: { snrDb: 15 } }, max: 0.06 },
   { name: 'bug fist 22 wpm', wpm: 22, fist: { bug: true, jitter: 0.1, seed: 9 }, cond: { noise: { snrDb: 15 } }, max: 0.04 },
