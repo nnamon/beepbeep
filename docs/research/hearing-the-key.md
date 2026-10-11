@@ -115,21 +115,58 @@ Tooling: `bench/` (run with `docker compose run --rm dev npm run bench -- <name>
 - H1 in its strong form is not supported at these SNRs: masking itself costs little above +3 dB with harmonics, +6 dB without. Inference across masked stretches matters below that.
 - Harmonics are worth about 3–6 dB at the same error (square vs sine rows), in line with E2.
 
-**E3, soft decisions** (11 Oct, 11 test beds, two keyings, logistic evidence per timbre trained on the other 11 beds, on/off HMM with minimum durations at 5 ms frames, offline Viterbi):
+**E3, soft decisions** (11 Oct, `bench/results/e3-2026-10-111046.json`; 11 test beds, two keyings, logistic evidence per timbre trained on the other 11 beds, on/off HMM with minimum durations at 5 ms frames, offline Viterbi):
 
 | | detector, added error | HMM, added error | recall, detector → HMM | precision, detector → HMM |
 |---|---|---|---|---|
-| sine 0 dB | 92 | 87 | 13 → 43 | 86 → 96 |
-| sine +6 dB | 81 | 65 | 35 → 78 | 97 → 98 |
-| sine +15 dB | 17 | 34 | 96 → 91 | 99 → 98 |
-| square 0 dB | 92 | 66 | 14 → 72 | 86 → 98 |
-| square +3 dB | 90 | 50 | 18 → 85 | 90 → 99 |
-| square +6 dB | 77 | 33 | 37 → 93 | 98 → 99 |
-| square +15 dB | 14 | 20 | 97 → 95 | 99 → 99 |
+| sine 0 dB | 92 | 88 | 13 → 42 | 86 → 97 |
+| sine +6 dB | 81 | 70 | 35 → 77 | 97 → 98 |
+| sine +15 dB | 17 | 36 | 96 → 90 | 99 → 98 |
+| square 0 dB | 92 | 68 | 14 → 71 | 86 → 98 |
+| square +3 dB | 90 | 48 | 18 → 85 | 90 → 99 |
+| square +6 dB | 77 | 29 | 37 → 92 | 98 → 99 |
+| square +15 dB | 14 | 20 | 97 → 93 | 99 → 99 |
 
 - H3 is supported where it matters: judging the stretch as a whole from soft evidence recovers most of the marks the rule-based detector throws away at 0 to +10 dB, without losing precision.
 - Above about +12 dB the prototype is worse than the detector. Not from timing (in the scenes examined, HMM edges are within 5–10 ms, and moving them to envelope crossings does not change the result), but from errors concentrated at the start of the over and from synthetic speech, a kind of masker absent from training. The prototype's features also lack the detector's floor freezing and warm-up.
 - Next: build the soft-evidence segmenter into the detector itself (causal, fixed lag), with the detector's floor handling, timbre-specific evidence (harmonics only when the tone has them), and edges from envelope crossings; then compare on E0 and on the real takes.
+
+**E4, a real-time soft-evidence detector** (`src/lib/dsp/listener.ts`, research code, not used by the app yet). Lock-in channels at harmonics 1–5 (`evidence.ts`); per harmonic and millisecond: rise over a 20th-percentile floor, phase steadiness at the sender's pitch, and fall below the channel's maximum over the last 40 ms; a small network (12 tanh units; one model on the fundamental alone, one on harmonics 1–5) gives the log-odds of tone (`evidence-weights.json`, trained by `bench/train.bench.ts`); an on/off HMM with fixed 200 ms lag (`segmenter.ts`); edges at the fundamental's half-level crossings.
+
+What the clean-scene checks (`bench/listener.bench.ts`) caught on the way, each now handled:
+- A mark's fading tail (the lock-in filter's response, 30–40 ms on clean audio) is perfectly steady: a model that equates steadiness with tone merges marks. Training labels must not skip the tail, and a straight-line model cannot express "steady but falling away"; a small network can, given the fall below the recent maximum.
+- A long-memory reference level (the tone's recent peak) is set off by any loud steady sound and blinds the detector for seconds; the 40 ms local maximum is not.
+- A pure tone leaks into the 3rd-harmonic channel about 55 dB down, which on a quiet floor looks like a harmonic: timbre must be judged against the fundamental's level, not the channel's own floor.
+- Requiring the harmonics a model was trained on vetoes a real tone with a different harmonic make-up: harmonics may add evidence, never subtract.
+
+Synthetic benchmark (E0, 22 beds, letter error added by noise, averaged; network trained before key thumps were added):
+
+| band SNR (dB) | +3 | +6 | +10 | +15 | +20 |
+|---|---|---|---|---|---|
+| detector before 11 Oct | 127 | 113 | 80 | 44 | 26 |
+| detector, 11 Oct | 90 | 84 | 60 | 26 | 13 |
+| soft-evidence detector | **77** | **66** | **39** | **23** | 14 |
+| mark recall, 11 Oct → soft | 17 → 46 | 29 → 67 | 65 → 87 | 91 → 95 | 97 → 98 |
+
+Stray letters per minute on the beds alone: 68.7, 2.4 and 4.8.
+
+Real laptop takes (16, `bench/real.bench.ts`), summed letter error over the labelled keying takes, and stray letters on the room and talking takes:
+
+| | summed letter error | stray letters |
+|---|---|---|
+| detector before 11 Oct | 700% | 50 |
+| detector, 11 Oct | **242%** | **7** |
+| soft-evidence, fundamental only, gaps expected 2.5 dits | 284% | 10 |
+| soft-evidence, fundamental only, gaps expected 1.2 dits | 243% | 19 |
+
+- The soft-evidence detector wins the hard real takes (keying while typing 0% vs 14% and 17%; under talking 50% vs 83%; a quiet take 0% vs 17%) and loses on fast V's: short dits (45–85 ms) whose start carries the key's thump give too little clean evidence to switch the HMM on. Shorter expected gaps recover them but let room sounds through (19 stray letters vs 7).
+- Simulation-to-reality gap: the synthetic scenes lacked the key's mechanical thump at each edge and room reverberation; both are now in the training scenes (`Tone.thump`, `Tone.reverb`). The real takes remain the arbiter, and 16 takes from one room are too few to train on.
+- Not shipped: on real recordings it is not yet better than the 11 Oct detector.
+
+Next:
+- More real, labelled recordings: playback takes (the app keys a known text through the speaker) in noisy places, and iPhone takes.
+- Thump-aware onsets: the evidence at a mark's start should not depend on the first 10–20 ms.
+- A decision layer that can use both detectors' strengths, measured on real takes only after it wins on the synthetic benchmark.
 
 ## 7. Open risks
 

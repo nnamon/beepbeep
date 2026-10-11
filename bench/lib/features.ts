@@ -134,11 +134,13 @@ export function scores(perH: Features, weights: number[] | null) {
   return { s1, s2, s3, s4, s5 };
 }
 
-/** Frame labels: 1 inside a mark, 0 in a gap, -1 near an edge (10 ms) or at the scene's ends. */
-export function labels(marks: Mark[], n: number): Int8Array {
+/** Frame labels: 1 inside a mark, 0 in a gap, -1 near an edge or in the first 300 ms. */
+export function labels(marks: Mark[], n: number, margin = 0.004): Int8Array {
+  // Only `margin` either side of an edge is left out: the fading tail after a
+  // mark lasts 30-40 ms on clean audio and must be learned as off.
   const y = new Int8Array(n).fill(0);
-  for (const m of marks) for (let i = Math.max(0, Math.floor((m.start - 0.01) * 1000)); i < Math.min(n, Math.ceil((m.end + 0.01) * 1000)); i++) y[i] = -1;
-  for (const m of marks) for (let i = Math.ceil((m.start + 0.01) * 1000); i < Math.floor((m.end - 0.01) * 1000); i++) y[i] = 1;
+  for (const m of marks) for (let i = Math.max(0, Math.floor((m.start - margin) * 1000)); i < Math.min(n, Math.ceil((m.end + margin) * 1000)); i++) y[i] = -1;
+  for (const m of marks) for (let i = Math.ceil((m.start + margin) * 1000); i < Math.floor((m.end - margin) * 1000); i++) y[i] = 1;
   for (let i = 0; i < Math.min(n, 300); i++) y[i] = -1;
   return y;
 }

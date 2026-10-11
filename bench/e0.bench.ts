@@ -16,12 +16,14 @@ import { Detector } from '../src/lib/dsp/detector';
 import { roomNoise } from '../src/lib/dsp/roomnoise';
 import { FISTS } from '../src/lib/decoder/fists';
 import { Detector as Before } from './baselines/detector-3e97a7c';
+import { Listener } from '../src/lib/dsp/listener';
 import { FS, loadBed, mix, renderTone, segment, type Timbre } from './lib/scene';
 import { decodeMarks, letterError, letters, read, scoreMarks, type MakeDetector } from './lib/run';
 
 const DETECTORS: Record<string, MakeDetector> = {
   before: (fs, o) => new Before(fs, o),
   now: (fs, o) => new Detector(fs, o),
+  listener: (fs, o) => new Listener(fs, o),
 };
 
 const SNRS = [-6, -3, 0, 3, 6, 10, 15, 20];

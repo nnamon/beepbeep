@@ -32,6 +32,14 @@ export interface Tone {
   amplitude: number;
   /** Edge time, s (10–90%). */
   rise?: number;
+  /**
+   * A mechanical key's thump at each press (and, softer, each release): a
+   * short broadband click, heavier at low frequencies, `level` dB against
+   * the tone's fundamental (in amplitude), lasting 3–15 ms.
+   */
+  thump?: { level: number };
+  /** Room reverberation: decay time (RT60, s) and the reverb's level against the dry tone (dB). */
+  reverb?: { rt60: number; level: number };
 }
 
 export interface Keying {
@@ -72,6 +80,40 @@ export function renderTone(keying: Keying, tone: Tone, lead = 1): { samples: Flo
       for (let k = 0; k < h.length; k++) if (h[k]) x += h[k] * Math.sin(2 * Math.PI * tone.pitch * (k + 1) * t + phase0[k]);
       out[i] += tone.amplitude * env * x;
     }
+  }
+  if (tone.thump) {
+    // Brown-ish noise bursts with a fast decay, at each edge.
+    for (const m of marks) {
+      for (const [at, scale] of [[m.start, 1], [m.end, 0.5]] as const) {
+        const len = Math.floor((0.003 + rng() * 0.012) * FS);
+        const a = tone.amplitude * Math.pow(10, (tone.thump.level + (rng() - 0.5) * 8) / 20) * scale;
+        const i0 = Math.max(0, Math.floor((at - 0.002 + rng() * 0.004) * FS));
+        let b = 0;
+        for (let i = 0; i < len && i0 + i < n; i++) {
+          b = 0.9 * b + (rng() * 2 - 1);
+          out[i0 + i] += a * 0.4 * b * Math.exp((-4 * i) / len);
+        }
+      }
+    }
+  }
+  if (tone.reverb) {
+    // Exponentially decaying noise as the room's response, added at `level` dB.
+    const len = Math.floor(tone.reverb.rt60 * FS);
+    const ir = new Float32Array(len);
+    let e = 0;
+    for (let i = 0; i < len; i++) {
+      ir[i] = (rng() * 2 - 1) * Math.exp((-6.9 * i) / len);
+      e += ir[i] * ir[i];
+    }
+    const g = Math.pow(10, tone.reverb.level / 20) / Math.sqrt(e);
+    const wet = new Float32Array(n);
+    // Sparse convolution: only where the dry signal is non-zero, every 4th tap (fast; the tail is noise-like anyway).
+    for (let i = 0; i < n; i++) {
+      const x = out[i];
+      if (x === 0) continue;
+      for (let k = 0; k < len && i + k < n; k += 4) wet[i + k] += x * ir[k] * g * 2;
+    }
+    for (let i = 0; i < n; i++) out[i] += wet[i];
   }
   return { samples: out, marks };
 }

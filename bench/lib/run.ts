@@ -12,6 +12,8 @@ export interface DetectorLike {
   process(input: Float32Array): ({ type: 'key'; down: boolean; t: number } | { type: 'status' | 'lock'; t: number })[];
   setDit(dit: number): void;
   readonly time: number;
+  /** Decisions are final up to here (detectors that decide behind the audio). */
+  readonly horizon?: number;
 }
 
 export type MakeDetector = (fs: number, opts: DetectorOptions) => DetectorLike;
@@ -37,7 +39,7 @@ export function read(make: MakeDetector, samples: Float32Array, fs: number, pinn
       }
     }
     applyEvents(dec, events as DetectorEvent[]);
-    dec.tick(det.time);
+    dec.tick(det.horizon ?? det.time);
     det.setDit(dec.ditEstimate);
   }
   return { marks, text: decodeMarks(marks, dec) };
