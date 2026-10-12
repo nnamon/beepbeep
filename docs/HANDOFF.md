@@ -1,28 +1,12 @@
-# Handoff: audit fixes, October 2026
+# Handoff
 
-Where the work stopped and what is left. Read [AGENTS.md](../AGENTS.md) first: it has the tooling, the test rules and the rules for the app's wording.
+Where the work stands and what is left. Read [AGENTS.md](../AGENTS.md) first: it has the tooling, the test rules, the release rule and the rules for the app's wording.
 
 ## What happened
 
-A skeptical audit of the whole app found 3 critical, 16 high and about 60 medium and low problems, plus a list of wording problems. Almost all of them are fixed on `main`. Every fix has a test that failed on the old code.
+In October 2026 a skeptical audit of the whole app found 3 critical, 16 high and about 60 medium and low problems, plus a list of wording problems. Two later independent checks (layout and accessibility; drills and storage) and a check of the QSO screens found more. All of those are fixed, each with a test that failed on the old code. What changed in each version is in [CHANGELOG.md](../CHANGELOG.md) (0.2.0 to 0.2.5) and in the app under Settings, What's new.
 
-| Commit | What |
-| --- | --- |
-| `5d689de` | The 3 critical bugs: sessions not saved, a damaged import wiping progress, Learn QSOs freezing |
-| `04e9941` | AGENTS.md: wording rules, the words we use, tooling, design rules |
-| `abfdc16`, `32dd369`, `ce4bf02`, `b7544f0` | Drills, Pocket, Today, LICW exercises, Settings, Setup, Progress, Guide, keyboard handling, wording |
-| `7febe48` | Merge: layout and accessibility (phones on their side, tap targets, titles and focus, word wrapping) |
-| `2d04706` | Merge: QSO simulator and Learn QSOs (when your turn ends, scoring, the checker, region instead of state) |
-| the merge after `2d04706` | Merge: decoder (one-letter words keep their spaces, unpinned pitch search, speech near the mic, end-of-over re-read) |
-
-Decoder results recorded in the decoder commits (fists.ts beginner fists and your recordings in `samples/`):
-
-- V V V read exactly: 0 of 192 sends before, 108 after. Other one-letter words: 103 to 242 of 384.
-- Nothing pinned: every labelled keying take in `samples/` used to lock onto room rumble near 300 Hz and read nothing; now they read as well as with the 600 Hz pin, except one take (33% against 17% pinned).
-- Speech 13 dB below the tone, nothing pinned: 64.5% to 34.1% letter error. Speech alone for 6 minutes, pinned: 38 to 19 stray letters.
-- End-of-over re-read making a right reading wrong: 4 to 1 in 1,320 sends.
-
-## What is left, in order
+## What is left
 
 ### Decoder (`src/lib/dsp`, `src/lib/decoder`)
 
@@ -34,23 +18,10 @@ Known and left as they are:
 - **The second ear is placed once, from the pitch of the first marks.** With nothing pinned, the first marks under a radio put the tone 7 Hz off (163935), and the second ear sat 21 Hz from the harmonic and kept none of its marks for the rest of the over; under talking (154331) it sat 6 Hz off and kept none either. Starting it again where later marks put the tone made the radio take read worse (78% to 89%), and moving the learned offset with the lock as it follows drift added stray letters on a talking take (6 to 11), so neither was kept. Pinned, it sits within 3 Hz on every take.
 - **The quieter-sidetone take (154117, no label)** has marks at the harmonic about 11 dB over its floor where the fundamental hears almost nothing. The second ear ignores them, since the fundamental hears silence. Whether they are the keying is not known.
 
-### Timing notes beside the Send drill and Live decoder
-
-`src/lib/train/fist.ts`, the note functions in `src/lib/train/scoring.ts` (from about line 60), `src/ui/FistPanel.svelte`:
-
-8. A dah ratio of 3.0 is shown for sends with no dits; it is made up. Show none when it can't be measured.
-9. "Letter gap, aim 3: 6.7 units" can show together with "Timing within range." Pick one.
-10. "Weighting, aim 1.0" and "Clean characters" are unexplained. Progress now calls the first "Dit length against the gaps inside letters"; use the same words in the panel and in the note ("Light weighting: 0.50, aim 1.0."). Keep the measured-note format ("Word gaps short: 4.8 units, aim 7.").
-11. `FistPanel.svelte` uses a dash as an empty value; write "none" or "no data yet".
-12. If `dahRatio` becomes nullable, `Progress.svelte` already guards it with `?.`; check the type.
-
-### Small
-
-
 ## Not checked
 
 - A real iPhone, the installed app, real notch insets (only emulated with the safe-area tokens) and VoiceOver.
-- The reload into a new build after an update (`src/main.ts`): it reloads at the next main screen after the service worker changes. No test covers it.
+- The reload into a new build after an update (`src/main.ts`, `src/lib/state/update.ts`): checked once by hand with two builds swapped under a running page (a microphone start that hits a file of the old build reloads into the new one; a QSO in progress holds the reload off), but no repo test covers it.
 - Starting sound on the first tap after a reload in Learn QSOs is tried only in emulated WebKit. With paddles, that first press starts the sound but is not decoded.
 
 ## Tests that fail at random on a busy machine
@@ -59,12 +30,11 @@ The tests that key in the browser with timers (Learn QSOs on the touch key and s
 
 ## Housekeeping
 
-- The unfinished `settle.ts` change was measured and dropped (commit "Handoff: the last decoder items"); its patch file is deleted.
-- The audit's own files (specs, logs, screenshots) were in a temporary scratch folder and may be gone. The findings that matter are written out above.
+- The audit and check files (specs, logs, screenshots) were in a temporary scratch folder and may be gone. The findings that matter are written out above or fixed.
 
 ## How to resume
 
 1. Read AGENTS.md and this file.
 2. `docker compose run --rm -T dev npm install`, then the checks in AGENTS.md, to see that `main` is green.
-3. Work down "What is left" from item 1. Decoder changes: run `npm test` (it includes the accuracy suites and the `samples/` takes) and `npm run bench`, and give before and after numbers in the commit message, as the decoder commits do.
-4. Delete each item from this file when it is done; delete the file when the list is empty.
+3. Work down "What is left". Decoder changes: run `npm test` (it includes the accuracy suites and the `samples/` takes) and `npm run bench`, and give before and after numbers in the commit message, as the decoder commits do.
+4. Release as AGENTS.md says (version, CHANGELOG.md, tag, GitHub release). Delete each item from this file when it is done; delete the file when the list is empty.
