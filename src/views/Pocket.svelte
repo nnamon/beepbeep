@@ -95,9 +95,9 @@
       </div>
     </div>
     <p class="muted lead">
-      Quiz yourself by ear; no key needed. Each round asks 20 questions, and everything in it uses only the characters
-      of your lesson. Score {settings.track === 'licw' ? '80' : '90'}% or more in a Characters round to move on to the
-      next lesson.
+      Quiz yourself by ear; no key needed. Each round asks 20 questions. Every round except Custom uses only the
+      characters of your lesson; Custom uses what you put in your set. Score {settings.track === 'licw' ? '80' : '90'}%
+      or more in a Characters round to move on to the next lesson.
     </p>
     <ul class="stages">
       {#each ROUNDS as s (s.id)}

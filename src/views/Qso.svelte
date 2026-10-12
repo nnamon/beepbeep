@@ -41,6 +41,7 @@
 
 <script lang="ts">
   import { onDestroy } from 'svelte';
+  import { holdReload } from '../lib/state/update';
   import Button from '../ui/Button.svelte';
   import Segmented from '../ui/Segmented.svelte';
   import Slider from '../ui/Slider.svelte';
@@ -96,6 +97,9 @@
   let stage = $state<Stage>('setup');
   let turn = $state<'bot' | 'you'>('you');
   let bot = $state<QsoBot | null>(null);
+  // A QSO in progress lives only in this page's memory, on screen or kept while
+  // you are elsewhere: an app update must not reload it away until it ends.
+  $effect(() => holdReload('qso', !!bot && (stage === 'running' || stage === 'copying' || stage === 'paused')));
   let lines = $state<Line[]>([]);
   let overTokens = $state<Tok[]>([]);
   let copied = $state<Record<FieldKey, string>>({ call: '', rst: '', name: '', qth: '', state: '', skcc: '', serial: '' });
@@ -596,6 +600,8 @@
         sendReport,
         sendNote,
       };
+      // Kept only in this page's memory: an app update must not reload it away.
+      holdReload('qso', true);
     }
   });
 

@@ -113,12 +113,17 @@ export class Player {
     }
   }
 
-  /** Starts the run, or with `at`, carries on from that card (cards before it count as done). */
-  start(at?: number) {
+  /**
+   * Starts the run, or with `at`, carries on from that card (cards before it
+   * count as done). A timed run (VET, VST) also takes the playing time it had
+   * reached, so its speed steps and its end come where they would have.
+   */
+  start(at?: number, elapsedMs?: number) {
     if (this.state.phase === 'done' || this.state.phase === 'recap') {
       this.activeMs = 0;
       this.set({ index: 0, done: 0 });
     }
+    if (elapsedMs !== undefined) this.activeMs = Math.max(0, elapsedMs);
     if (at !== undefined) this.set({ index: Math.max(0, Math.min(at, this.cards.length - 1)), done: Math.max(0, Math.min(at, this.cards.length)) });
     this.interrupt();
     void this.run(this.gen);

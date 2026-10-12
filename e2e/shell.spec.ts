@@ -165,3 +165,46 @@ test('Pocket shows "not yet" for rounds the lesson has too little for', async ({
   await page.goto('./#/pocket');
   await expect(page.getByRole('link', { name: /Chunks/ })).toContainText('not yet');
 });
+
+test('a later LICW stage stands in for the lesson, and your carousel lesson is kept', async ({ page }) => {
+  await settings(page, { ...BASE, track: 'licw', level: { koch: 'koch-1', licw: 'licw-bc1-HOF' } });
+  await page.goto('./#/practice');
+  const stage = page.getByLabel('Stage');
+  await stage.selectOption('int2');
+  await expect(page.getByText('Stage INT 2')).toBeVisible();
+  await page.goto('./#/practice/copy/groups');
+  await expect(page.locator('.eyebrow')).toContainText('Stage INT 2');
+  await page.goto('./#/practice');
+  await page.getByLabel('Stage').selectOption('bc1');
+  await expect(page.getByText('BC1 · HOF')).toBeVisible();
+});
+
+test('strict mode keeps the straight key to BC lessons only', async ({ page }) => {
+  await settings(page, { ...BASE, track: 'licw', licwStrict: true, licwClass: 'int1', input: 'iambicA', level: { koch: 'koch-1', licw: 'licw-bc1-REA' } });
+  await page.goto('./#/setup');
+  await expect(page.getByRole('radio', { name: 'Paddles A' })).toBeVisible();
+});
+
+test('TTR in strict mode shows no answer after each character, and the misses at the end', async ({ page }) => {
+  await instrument(page);
+  await settings(page, { ...BASE, track: 'licw', licwStrict: true, level: { koch: 'koch-1', licw: 'licw-bc1-TIN' } });
+  await page.goto('./#/practice/ttr');
+  await page.getByRole('button', { name: /Start/ }).click();
+  for (let k = 0; k < 2; k++) {
+    await expect.poll(async () => (await played(page)).filter((p) => p.kind === 'cw').length, { timeout: 10_000 }).toBeGreaterThan(k);
+    await page.keyboard.press('Q');
+    await page.waitForTimeout(300);
+    await expect(page.getByText(/You typed Q|Before the voice|After the voice/)).toHaveCount(0);
+  }
+  await page.getByRole('button', { name: /Stop/ }).click();
+  await expect(page.getByText(/You beat the voice on \d+ of \d+\./)).toBeVisible();
+  await expect(page.getByText(/Missed:[\s\S]*you typed Q/)).toBeVisible();
+});
+
+test('the Send drill says when your lesson cannot make the chosen material yet', async ({ page }) => {
+  await settings(page, { ...BASE, track: 'koch', input: 'straight', level: { koch: 'koch-1', licw: 'licw-bc1-REA' } });
+  await page.goto('./#/practice/send');
+  await page.getByRole('radio', { name: 'Callsigns' }).click();
+  await page.getByRole('button', { name: /Start/ }).click();
+  await expect(page.getByText("Your lesson can't make callsigns yet, so you get groups of its characters instead.")).toBeVisible();
+});

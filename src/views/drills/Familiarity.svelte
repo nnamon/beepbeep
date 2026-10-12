@@ -122,6 +122,7 @@
       tap();
     } else if (e.key === 'Enter') {
       e.preventDefault();
+      if (!targets.length) return;
       if (stage === 'ready' || stage === 'scored') void play();
       else if (stage === 'revealed') nextTarget();
     }
@@ -130,8 +131,10 @@
 
 <svelte:window onkeydown={onKey} />
 
-<DrillFrame title="Spot the new character" eyebrow="{level.name} · new character {idx + 1} of {targets.length}">
-  {#if stage === 'ready'}
+<DrillFrame title="Spot the new character" eyebrow={targets.length ? `${level.name} · new character ${idx + 1} of ${targets.length}` : level.name}>
+  {#if !targets.length}
+    <p class="lead">{level.name} adds no new characters, so there is nothing to spot here. This drill is for lessons that add characters.</p>
+  {:else if stage === 'ready'}
     <p class="lead">One of this lesson's new characters plays three times on its own, without its name. That is the one to catch.</p>
     <p class="muted lead">Then it plays mixed in with other characters. Tap each time you hear it. Its name comes once you catch most of them.</p>
   {:else if stage === 'intro'}
@@ -153,7 +156,9 @@
   {/if}
 
   {#snippet footer()}
-    {#if stage === 'ready'}
+    {#if !targets.length}
+      <Button kind="primary" href="#/practice">Back to Practice</Button>
+    {:else if stage === 'ready'}
       <Button kind="primary" onclick={play} hint="Enter">Play</Button>
     {:else if stage === 'scored'}
       <Button kind="primary" onclick={play} hint="Enter">Again</Button>

@@ -75,7 +75,7 @@
     if (!ex) return false;
     if (useText) return !!chosen && cardsFromText(chosen.text, ex.perLine ?? false).length > 0;
     if (ex.source === 'text') return false;
-    return material(ex.source, { rng: mulberry32(1), known: level.known, added: level.added, words: level.words, addedWords: level.addedWords, count: 3, min: ex.min, max: ex.max }).length > 0;
+    return material(ex.source, { rng: mulberry32(1), known: level.known, added: level.added, words: level.words, addedWords: level.addedWords, count: ex.count ?? 20, min: ex.min, max: ex.max }).length > 0;
   });
 
   let player = $state.raw<Player | null>(null);
@@ -86,7 +86,7 @@
   // A run left part-way (another tab, another screen) can be picked up again
   // for half an hour in this browser tab. Timed runs (VET, VST) start afresh.
   const LEFT = 'beepbeep.exercise.left';
-  type Left = { key: string; cards: Card[]; index: number; at: number };
+  type Left = { key: string; cards: Card[]; index: number; at: number; elapsedMs?: number; length?: number | null };
   let left = $state<Left | null>(null);
   try {
     const l = JSON.parse(sessionStorage.getItem(LEFT) ?? 'null') as Left | null;
@@ -96,8 +96,9 @@
   }
   function keepPlace() {
     try {
-      if (player && st && player.length === null && !['ready', 'done', 'recap'].includes(st.phase) && st.index > 0) {
-        sessionStorage.setItem(LEFT, JSON.stringify({ key, cards: player.cards, index: st.index, at: Date.now() } satisfies Left));
+      if (player && st && !['ready', 'done', 'recap'].includes(st.phase) && (st.index > 0 || st.elapsed > 5)) {
+        const left: Left = { key, cards: player.cards, index: st.index, at: Date.now(), elapsedMs: st.elapsed * 1000, length: player.length };
+        sessionStorage.setItem(LEFT, JSON.stringify(left));
       } else if (left === null) sessionStorage.removeItem(LEFT);
     } catch {
       /* storage unavailable */
@@ -112,7 +113,7 @@
     } catch {
       /* storage unavailable */
     }
-    begin(l.cards, l.index);
+    begin(l.cards, l.index, l.length ? l.elapsedMs : undefined);
   }
 
   const deps = {
@@ -126,7 +127,7 @@
     now: () => performance.now(),
   };
 
-  function begin(given?: Card[], at?: number) {
+  function begin(given?: Card[], at?: number, elapsedMs?: number) {
     if (!recipe) return;
     const cards = given ?? build();
     if (!cards.length) return;
@@ -141,7 +142,7 @@
     });
     st = { ...player.state };
     void keepAwake(true);
-    player.start(at);
+    player.start(at, elapsedMs);
   }
 
   let loopTimer: ReturnType<typeof setTimeout> | null = null;
@@ -286,7 +287,13 @@
       <p class="summary">{ex.summary}</p>
       {#if left}
         <div class="left">
-          <p>You left this exercise at {left.index + 1} of {left.cards.length}.</p>
+          <p>
+            {#if left.length && left.elapsedMs !== undefined}
+              You left this exercise with {fmt(Math.max(0, left.length - left.elapsedMs / 1000))} to go.
+            {:else}
+              You left this exercise at {left.index + 1} of {left.cards.length}.
+            {/if}
+          </p>
           <Button kind="primary" onclick={carryOn}>Carry on from there</Button>
         </div>
       {/if}

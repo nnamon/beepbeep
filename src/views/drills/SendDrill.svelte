@@ -18,6 +18,7 @@
   import { currentLevel, followInput, keepSend, playMarks, recordSend, saveSession, sendInput } from '../../lib/train/session';
   import { href } from '../../lib/state/router.svelte';
   import { items, stationLine, type Material } from '../../lib/train/generate';
+  import { usesOnly } from '../../lib/train/words';
   import { analyseFist, type FistReport } from '../../lib/train/fist';
   import { compareCopy, describeIssue, oneNote, spacingIssues, type SendIssue } from '../../lib/train/scoring';
   import { buildSchedule } from '../../lib/morse/schedule';
@@ -69,9 +70,14 @@
     const known = new Set(currentLevel().known);
     const useKnown = material === 'characters' || material === 'groups' ? known : known.size >= 26 ? null : known;
     const kind = material === 'characters' ? 'groups' : material === 'station' ? 'phrases' : material;
-    const list = items(rng, kind, useKnown, kind === 'groups' ? 3 : 1);
+    // Only what uses your lesson's characters; callsigns otherwise fall back to any.
+    const list = items(rng, kind, useKnown, kind === 'groups' ? 3 : 1).filter((x) => !useKnown || usesOnly(x, useKnown));
+    fellBack = !list.length;
     prompt = list.length ? list.join(' ') : items(rng, 'groups', known, 3).join(' ');
   }
+
+  /** The chosen material can't be made from the lesson's characters yet, so groups play instead. */
+  let fellBack = $state(false);
 
   let starting = false;
   /** Set on leaving: a start still waiting for the microphone gives up. */
@@ -296,6 +302,7 @@
     <div class="block">
       <span class="label">Send</span>
       <TokenText tokens={textTokens(prompt).map((t) => ({ t }))} size="xl" />
+      {#if fellBack}<p class="muted issue">Your lesson can't make {material === 'station' ? 'phrases' : material} yet, so you get groups of its characters instead.</p>{/if}
     </div>
     {#if !strict()}
       <div class="block live" aria-live="polite">

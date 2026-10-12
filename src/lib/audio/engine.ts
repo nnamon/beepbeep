@@ -7,6 +7,7 @@ import type { WorkletCommand, WorkletMessage } from './detector.worklet';
 import type { DetectorEvent } from '../dsp/detector';
 import { renderSchedule, type Conditions } from '../morse/render';
 import { buildSchedule, type FistOptions, type Schedule } from '../morse/schedule';
+import { reloadIfUpdated } from '../state/update';
 import { writeWav } from '../util/wav';
 
 export interface MicInfo {
@@ -281,7 +282,15 @@ class AudioEngine {
     });
     this.mic = stream;
     if (!this.workletReady) this.workletReady = ctx.audioWorklet.addModule(workletUrl);
-    await this.workletReady;
+    try {
+      await this.workletReady;
+    } catch (e) {
+      // Try again next time rather than keep a failure. After an update the
+      // old build's worklet is gone: reload into the new build.
+      this.workletReady = null;
+      if (reloadIfUpdated(true)) return new Promise<never>(() => {});
+      throw e;
+    }
     this.worklet = new AudioWorkletNode(ctx, 'beepbeep-detector', {
       numberOfInputs: 1,
       numberOfOutputs: 0,

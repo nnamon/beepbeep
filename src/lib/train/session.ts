@@ -27,8 +27,18 @@ export function trackLevels(track: TrackId = settings.track): Level[] {
   return licwCache.levels;
 }
 
+/**
+ * The lesson drills use. On the LICW track past the carousel (BC3 and later),
+ * the stage itself: every character known, nothing new, named "Stage INT 2".
+ * Your carousel lesson stays saved for when you go back to BC1 or BC2.
+ */
 export function currentLevel(): Level {
   const levels = trackLevels();
+  const later = laterStage();
+  if (later) {
+    const last = levels[levels.length - 1];
+    return { ...last, id: `licw-${later.id}`, name: `Stage ${later.name}`, added: [], addedWords: [] };
+  }
   return levels.find((l) => l.id === settings.level[settings.track]) ?? levels[0];
 }
 
@@ -37,6 +47,11 @@ export function laterStage() {
   if (settings.track !== 'licw') return null;
   const c = classById(settings.licwClass);
   return c && !c.carousel ? c : null;
+}
+
+/** An LICW beginners' carousel lesson (BC1 or BC2), where strict mode keeps to the straight key and machine-perfect code. */
+function beginnerLesson(): boolean {
+  return settings.track === 'licw' && !laterStage() && currentLevel().id.includes('-bc');
 }
 
 /** True when receive drills use the course's speeds instead of the speeds in Settings. */
@@ -78,7 +93,7 @@ export function conditions(): Conditions {
 /** Human-sounding fist for generated code, unless strict beginners' practice. */
 export function fist(): FistOptions | undefined {
   if (!settings.humanFist) return undefined;
-  if (strict() && currentLevel().id.includes('-bc')) return undefined;
+  if (strict() && beginnerLesson()) return undefined;
   return { jitter: 0.07, weight: 0.03, seed: randomSeed() };
 }
 
@@ -124,7 +139,7 @@ export function advanceThreshold(): number {
 
 /** The lesson a receive score opens, or null (below the threshold, or the last lesson). */
 export function lessonOpenedBy(accuracy: number): Level | null {
-  if (accuracy < advanceThreshold()) return null;
+  if (accuracy < advanceThreshold() || laterStage()) return null;
   const levels = trackLevels();
   return levels[levels.findIndex((l) => l.id === currentLevel().id) + 1] ?? null;
 }
@@ -143,7 +158,7 @@ export async function followInput(live: LiveDecoder | null) {
 
 /** True when beginner sending should use the straight key only (LICW strict, BC lessons). */
 export function straightOnly(): boolean {
-  return strict() && currentLevel().id.includes('-bc');
+  return strict() && beginnerLesson();
 }
 
 /** The keying input to use, honouring straight-key-first in strict beginner lessons. */

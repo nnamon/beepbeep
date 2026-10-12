@@ -9,7 +9,7 @@
   import TokenText from '../../ui/TokenText.svelte';
   import { engine } from '../../lib/audio/engine';
   import { say } from '../../lib/audio/speech';
-  import { settings } from '../../lib/state/settings.svelte';
+  import { settings, strict } from '../../lib/state/settings.svelte';
   import { signal } from '../../lib/state/signal.svelte';
   import { answer, currentLevel, playCw, receiveSpeeds, saveSession, stats, wait } from '../../lib/train/session';
   import { pickNext, type ItemStat } from '../../lib/train/srs';
@@ -29,6 +29,8 @@
   let shown = $state('');
   let outcome = $state<'' | 'before' | 'late' | 'wrong'>('');
   let pressed = $state('');
+  /** Every answer this run, for the summary at the end (the only answers shown in LICW strict mode). */
+  let results = $state<{ ch: string; outcome: 'before' | 'late' | 'wrong'; pressed: string }[]>([]);
   let recent: number[] = [];
   let got = 0;
   let stopFlag = false;
@@ -40,6 +42,8 @@
     if (running) return;
     running = true;
     stopFlag = false;
+    results = [];
+    got = 0;
     map = await stats('rx:');
     if (stopFlag) return finish();
     void keepAwake(true);
@@ -67,7 +71,9 @@
       const right = key === ch;
       outcome = !key ? 'late' : right ? 'before' : 'wrong';
       pressed = key;
-      shown = ch;
+      results.push({ ch, outcome, pressed: key });
+      // Strict mode: the voice names it, but nothing is shown until the end.
+      if (!strict()) shown = ch;
       if (right) got++;
       await answer(map, `rx:${ch}`, right, ms, delay * 1000, key && !right ? { want: ch, got: key } : undefined);
       recent = [...recent, right ? 1 : 0].slice(-12);
@@ -87,6 +93,7 @@
 
   function finish() {
     running = false;
+    shown = '';
     void keepAwake(false);
     settings.ttrDelay = delay;
     if (!n) return;
@@ -136,6 +143,17 @@
         <span class="muted">{outcome === 'before' ? 'Before the voice' : outcome === 'late' ? 'After the voice' : `You typed ${pressed}`}</span>
       {:else if running}
         <span class="muted big">Listen</span>
+      {:else if results.length}
+        <p>You beat the voice on {results.filter((r) => r.outcome === 'before').length} of {results.length}.</p>
+        {#if results.some((r) => r.outcome !== 'before')}
+          <p class="muted">
+            Missed:
+            {results
+              .filter((r) => r.outcome !== 'before')
+              .map((r) => (r.outcome === 'late' ? `${r.ch} (too late)` : `${r.ch} (you typed ${r.pressed})`))
+              .join(', ')}
+          </p>
+        {/if}
       {:else}
         <p class="muted">A character plays, then a voice names it. Type it before the voice does. Aim to beat the voice about two times in three; as you get faster, the voice comes sooner.</p>
       {/if}

@@ -151,6 +151,14 @@ describe('cards', () => {
     expect(later.some((c) => c.cw === 'BK')).toBe(false);
   });
 
+  it('words: several different ones, or none when the lesson is too early', () => {
+    const rng = mulberry32(6);
+    // Joined at HOF: only OH fits.
+    expect(material('words', { rng, known: 'HOF'.split(''), added: ['H', 'O', 'F'], count: 30 })).toEqual([]);
+    const ok = material('words', { rng, known: 'REATINPSGLCDHOF'.split(''), added: [], count: 30 });
+    expect(new Set(ok.map((c) => c.cw)).size).toBeGreaterThanOrEqual(4);
+  });
+
   it('phrases: several different ones, or none when the lesson is too early', () => {
     const rng = mulberry32(5);
     // BC1 at PSG: only a phrase or two fit, which would repeat all run long.
@@ -233,5 +241,21 @@ describe('exercise player: pausing and skipping', () => {
     await h.flush();
     expect(seen.length).toBe(n);
     expect(h.log).toEqual(['cw A', 'cw B']);
+  });
+});
+
+describe('exercise player: carrying on a timed run', () => {
+  it('picks up at the card and the speed step it had reached', async () => {
+    const f = fake();
+    const r: Recipe = {
+      wpm: 12,
+      fwpm: 8,
+      steps: [8, 10, 11, 12].map((fwpm) => ({ seconds: 30, wpm: 12, fwpm })),
+    };
+    const p = new Player(cards('REA', 'TIN', 'PSG', 'LCD', 'HOF'), r, f.deps);
+    p.start(3, 61_000);
+    for (let i = 0; i < 50 && p.state.phase !== 'done'; i++) await new Promise((res) => setTimeout(res, 0));
+    // 61 s in is the third step (11 wpm overall), and LCD is the card it had reached.
+    expect(f.log[0]).toBe('cw LCD 12/11');
   });
 });

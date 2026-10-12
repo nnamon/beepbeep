@@ -105,9 +105,9 @@
 
   function pickClass(id: ClassId) {
     settings.licwClass = id;
-    // Past the carousel every character is known: stand on its last lesson.
-    if (id !== 'bc1' && id !== 'bc2') settings.level.licw = levels[levels.length - 1].id;
-    else if (!level.id.startsWith(`licw-${id}`)) settings.level.licw = levels.find((l) => l.id.startsWith(`licw-${id}`))!.id;
+    // Past the carousel the stage stands in for the lesson; the carousel lesson stays saved.
+    if (id !== 'bc1' && id !== 'bc2') return;
+    if (!level.id.startsWith(`licw-${id}`)) settings.level.licw = levels.find((l) => l.id.startsWith(`licw-${id}`))!.id;
   }
 
   const steps = $derived(
@@ -221,7 +221,7 @@
 
       <div class="level">
         <div class="level-name">
-          <span class="label">{TRACK_NAMES[settings.track]}</span>
+          <span class="label">{later ? 'LICW syllabus' : TRACK_NAMES[settings.track]}</span>
           {#if later}
             <strong class="stage">Stage {later.name}</strong>
           {:else}

@@ -104,8 +104,14 @@ function cycle(rng: Rng, list: string[], count: number): string[] {
   return out.slice(0, count);
 }
 
-/** Fewer different phrases than this, and an exercise would play the same few over and over. */
-const MIN_PHRASES = 4;
+/** Fewer different words or phrases than this, and an exercise would play the same few over and over. */
+const MIN_DISTINCT = 4;
+
+/** A list cycled to `count`, or nothing when it has too few different items to practise with. */
+function enough(rng: Rng, list: string[], count: number): string[] {
+  const distinctItems = [...new Set(list)];
+  return distinctItems.length < Math.min(MIN_DISTINCT, count) ? [] : cycle(rng, distinctItems, count);
+}
 
 /** Distinct generated lines that fit, cycled to `count`; none when too few fit. */
 function distinct(rng: Rng, make: () => string, fits: (s: string) => boolean, count: number): string[] {
@@ -114,7 +120,7 @@ function distinct(rng: Rng, make: () => string, fits: (s: string) => boolean, co
     const p = make();
     if (fits(p)) seen.add(p);
   }
-  return seen.size < Math.min(MIN_PHRASES, count) ? [] : cycle(rng, [...seen], count);
+  return seen.size < Math.min(MIN_DISTINCT, count) ? [] : cycle(rng, [...seen], count);
 }
 
 /** Generated cards from your lesson's characters. Text cards come from cardsFromText. */
@@ -136,10 +142,10 @@ export function material(source: Exclude<Source, 'text'>, o: MaterialOptions): C
       return groups(rng, o.known, count, () => lo + Math.floor(rng() * (hi - lo + 1))).map(card);
     }
     case 'words':
-      return cycle(rng, [...QSO_WORDS, ...COMMON_WORDS, ...(o.words ?? [])].filter(fits), count).map(card);
+      return enough(rng, [...QSO_WORDS, ...COMMON_WORDS, ...(o.words ?? [])].filter(fits), count).map(card);
     case 'multi': {
-      const words = [...QSO_WORDS, ...COMMON_WORDS].filter(fits);
-      return words.length ? Array.from({ length: count }, () => `${pick(rng, words)} ${pick(rng, words)}`).map(card) : [];
+      const words = [...new Set([...QSO_WORDS, ...COMMON_WORDS].filter(fits))];
+      return words.length >= MIN_DISTINCT ? Array.from({ length: count }, () => `${pick(rng, words)} ${pick(rng, words)}`).map(card) : [];
     }
     case 'phrases':
       return distinct(rng, () => fillPhrase(rng, pick(rng, PHRASES)), fits, count).map(card);
@@ -158,11 +164,11 @@ export function material(source: Exclude<Source, 'text'>, o: MaterialOptions): C
         return pick(rng, [`${call} 5NN ${region}`, `5NN ${serial}`, `TU ${call}`, `${call} TU 5NN ${serial}`, `5NN ${region} TU`]);
       }).map(card);
     case 'binomials':
-      return cycle(rng, BINOMIALS.filter(fits), count).map(card);
+      return enough(rng, BINOMIALS.filter(fits), count).map(card);
     case 'affixes':
-      return cycle(rng, AFFIXES.filter(fits), count).map(card);
+      return enough(rng, AFFIXES.filter(fits), count).map(card);
     case 'sentences':
-      return cycle(rng, SENTENCES.filter(fits), count).map(card);
+      return enough(rng, SENTENCES.filter(fits), count).map(card);
     case 'alphabet':
       return 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(card);
     case 'numbers':
