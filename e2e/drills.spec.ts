@@ -261,3 +261,37 @@ test('LICW exercise: Your text with nothing saved shows how to add one', async (
   await page.getByRole('button', { name: 'Save text' }).click();
   await expect(page.getByRole('button', { name: /Start/ })).toBeEnabled();
 });
+
+test('Enter on a link or radio reached with Tab is for that control, not the drill', async ({ page }) => {
+  await instrument(page);
+  await settings(page, { ...BASE, track: 'koch', level: { koch: 'koch-5', licw: 'licw-bc1-REA' } });
+  await page.goto('./#/practice/copy/groups');
+  await expect(page.getByRole('button', { name: /Start/ })).toBeVisible();
+  // Tab to the Material radio group and press Enter: no round starts.
+  for (let i = 0; i < 40; i++) {
+    await page.keyboard.press('Tab');
+    if (await page.evaluate(() => document.activeElement?.getAttribute('role') === 'radio')) break;
+  }
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(800);
+  expect((await played(page)).filter((p) => p.kind === 'cw')).toEqual([]);
+  // Enter on the Back link follows it.
+  await page.getByRole('link', { name: 'Back' }).focus();
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(/#\/practice$/);
+  expect((await played(page)).filter((p) => p.kind === 'cw')).toEqual([]);
+});
+
+test('Enter after clicking a drill button with the mouse still submits the answer', async ({ page }) => {
+  await instrument(page);
+  await settings(page, { ...BASE, track: 'koch', level: { koch: 'koch-10', licw: 'licw-bc1-REA' } });
+  await page.goto('./#/practice/copy/groups');
+  await page.getByRole('button', { name: /Start/ }).click();
+  const item = await nextAudio(page, 0);
+  await page.getByRole('button', { name: 'Replay' }).click();
+  await nextAudio(page, 1);
+  await page.waitForTimeout(item.length * 300);
+  await typeText(page, item);
+  if (item.replace(/ /g, '').length > 1) await page.keyboard.press('Enter');
+  await expect(page.getByText('Sent', { exact: true })).toBeVisible();
+});

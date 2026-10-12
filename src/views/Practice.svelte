@@ -129,7 +129,7 @@
   function toggle(s: Step) {
     if (auto(s)) return;
     ticked = ticked.includes(s.id) ? ticked.filter((x) => x !== s.id) : [...ticked, s.id];
-    void setKv('today', { day, ids: [...ticked] });
+    setKv('today', { day, ids: [...ticked] }).catch(() => undefined);
   }
   function setTrack(t: TrackId) {
     settings.track = t;

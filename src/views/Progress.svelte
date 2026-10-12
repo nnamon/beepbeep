@@ -97,7 +97,7 @@
     <div><dt class="label">QSOs</dt><dd class="value">{log.length}</dd></div>
     <div><dt class="label">Lesson</dt><dd class="value small-value">{level.name}</dd></div>
     <div>
-      <dt class="label">Comfort / stretch</dt>
+      <dt class="label">Comfort and stretch speeds</dt>
       <dd class="value small-value">{settings.comfortWpm} / {settings.stretchWpm} <span class="muted unit">wpm</span></dd>
     </div>
   </dl>

@@ -20,6 +20,7 @@
   import { textTokens, align } from '../../lib/util/text';
   import { mulberry32, pick, randomSeed } from '../../lib/util/random';
   import { keepAwake } from '../../lib/util/wakelock';
+  import { forControl } from '../../lib/util/keys';
 
   const ROUND = 20;
   type Material = 'chars' | 'groups' | 'words' | 'context';
@@ -47,6 +48,9 @@
   // Follows "Next lesson": the next round uses the new lesson's characters.
   const level = $derived(currentLevel());
   const known = $derived(level.known);
+
+  // Words and short phrases need at least 5 words made of your lesson's characters.
+  const fewWords = $derived(wordsFromKnown([...QSO_WORDS, ...COMMON_WORDS], new Set(known)).length < 5);
 
   function makeItem(): string {
     const pool = wordsFromKnown([...QSO_WORDS, ...COMMON_WORDS], new Set(known));
@@ -227,6 +231,9 @@
         {ROUND} to copy, using the {known.length} characters you know. Type what you hear. Replay as often as you like; it
         doesn't affect your score. {strict() ? 'You see the answers at the end.' : 'You see the answer after each one.'}
       </p>
+      {#if fewWords && (material === 'words' || material === 'context')}
+        <p class="muted">Your lesson can't make 5 words yet, so this round plays groups of characters instead.</p>
+      {/if}
     </div>
   {:else if stage === 'done' && result}
     <div class="done">
@@ -280,7 +287,7 @@
   {/snippet}
 </DrillFrame>
 
-<svelte:window onkeydown={(e) => { if (e.key === 'Enter' && stage === 'ready') { e.preventDefault(); void start(); } }} />
+<svelte:window onkeydown={(e) => { if (e.key === 'Enter' && stage === 'ready' && !forControl(e)) { e.preventDefault(); void start(); } }} />
 
 <style>
   .intro {

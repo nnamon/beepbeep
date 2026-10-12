@@ -3,6 +3,7 @@
   // tall as the phone's own. Physical keyboards work too.
   import { onMount } from 'svelte';
   import { displayToken } from '../lib/morse/code';
+  import { forControl, inField } from '../lib/util/keys';
 
   let {
     onkey,
@@ -39,8 +40,10 @@
   onMount(() => {
     const onKey = (e: KeyboardEvent) => {
       if (disabled || e.metaKey || e.ctrlKey || e.altKey) return;
-      const t = e.target as HTMLElement;
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      if (inField(e)) return;
+      // Enter or Space on another focused control (a link, the Next button) is for that control.
+      const t = e.target as HTMLElement | null;
+      if (forControl(e) && !t?.closest?.('.kb')) return;
       const k = e.key.toUpperCase();
       if (k === 'BACKSPACE') {
         e.preventDefault();

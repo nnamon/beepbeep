@@ -31,14 +31,20 @@
       await saveVoiceClip(t, new Blob(chunks, { type: rec.mimeType }));
       have = new Set([...have, t]);
     } catch (e) {
-      error = (e as Error).message || 'Recording failed.';
+      const name = (e as { name?: string })?.name;
+      error =
+        name === 'NotAllowedError'
+          ? "The microphone is blocked, so nothing was recorded. Allow it in the browser's site settings, then try again."
+          : name === 'NotFoundError'
+            ? 'No microphone was found, so nothing was recorded.'
+            : "The clip wasn't recorded. Try again.";
     } finally {
       busy = '';
     }
   }
 
   async function play(t: string) {
-    const b = await voiceClip(t);
+    const b = await voiceClip(t).catch(() => null);
     if (!b) return;
     const url = URL.createObjectURL(b);
     const a = new Audio(url);

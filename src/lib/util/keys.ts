@@ -15,7 +15,9 @@ export function inField(e: Event): boolean {
 /**
  * True when this key press belongs to the focused control rather than to the
  * screen: any key in a text box, and Enter or Space on a link, button, radio,
- * checkbox or similar control.
+ * checkbox or similar control that was reached from the keyboard (Tab).
+ * A button just clicked with the mouse keeps focus without showing it; Enter
+ * then still does what the screen says (Start, Next, Done).
  */
 export function forControl(e: KeyboardEvent): boolean {
   if (inField(e)) return true;
@@ -23,5 +25,13 @@ export function forControl(e: KeyboardEvent): boolean {
   const t = e.target as HTMLElement | null;
   if (!t || t === document.body || t === document.documentElement) return false;
   const role = t.getAttribute('role');
-  return PRESSABLE.has(t.tagName) || (!!role && ROLES.has(role));
+  if (!PRESSABLE.has(t.tagName) && !(role && ROLES.has(role))) return false;
+  return t !== clicked;
+}
+
+/** The control last pressed with the mouse or a finger; Tab clears it. */
+let clicked: Element | null = null;
+if (typeof window !== 'undefined') {
+  window.addEventListener('pointerdown', (e) => (clicked = (e.target as Element | null)?.closest?.('a, button, summary, [role]') ?? null), true);
+  window.addEventListener('keydown', (e) => e.key === 'Tab' && (clicked = null), true);
 }

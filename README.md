@@ -13,7 +13,7 @@ Live decoder: simulated hand keying with fan noise and speech mixed in, fed to t
 <table>
 <tr>
 <td width="33%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/phone-pocket-dark.png"><img src="docs/images/phone-pocket-light.png" alt="Pocket round on a phone: the answer was I, M was typed, with both rhythms shown"></picture></td>
-<td width="33%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/phone-practice-dark.png"><img src="docs/images/phone-practice-light.png" alt="Practice screen on a phone: Koch level 14 and today's checklist, with minutes for each step"></picture></td>
+<td width="33%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/phone-practice-dark.png"><img src="docs/images/phone-practice-light.png" alt="Practice screen on a phone: Koch lesson 14 and today's checklist, with minutes for each step"></picture></td>
 <td width="33%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/phone-setup-dark.png"><img src="docs/images/phone-setup-light.png" alt="Input setup on a phone: tone heard at 600 Hz, spectrum, level 28 dB over noise"></picture></td>
 </tr>
 <tr>
@@ -44,16 +44,16 @@ Progress: speeds over time and accuracy by character.
 | --- | --- |
 | Send | Live decoder, send drill (received text first, then one note on your timing) |
 | Both | Hear it, send it; QSO simulator |
-| Receive | Copy drill, familiarity (LICW BC1), TTR drill, sound surfing (IFR), head copy, callsign and word sprint |
+| Receive | Copy drill, Spot the new character, Time to recognise (TTR), Sound surfing, Head copy, Callsign and word sprint |
 | Pocket | Phone quiz rounds by ear: characters, chunks, words, callsigns, phrases, custom sets |
-| QSO | Learn QSOs: guided lessons on each part of a contact, typed or keyed, checked as you go. Then the simulator: ragchew, LICW QSO protocol, SKCC, K1USN SST, POTA, SOTA, contest, DX pileup |
-| LICW exercises | The syllabus exercises for BC1 to BC3, INT 1 to 3, ADV 1 to 3, TTR+ and OverLearn: familiarity, recognition, TTR, VET and VST, groups, Speed Racer, CW-voice-CW and more, at each stage's speeds, with notes on how to do each one |
+| QSO | Learn QSOs: guided lessons on each part of a contact, typed or keyed, with each step checked. The QSO simulator: a ragchew (a chat), the LICW QSO protocol, SKCC, K1USN SST, POTA and SOTA (stations in parks and on summits), a contest and a DX pileup |
+| LICW exercises | The syllabus exercises for BC1 to BC3, INT 1 to 3, ADV 1 to 3, TTR+ and OverLearn: familiarity, recognition, TTR, VET and VST, groups, Speed Racing, CW-voice-CW and more, at each stage's speeds, with notes on how to do each one |
 
-Practice opens with today's session: a checklist for your lesson in a set order (new sounds, then naming them fast, then copying, then sending), sized to your session length. Steps tick themselves as you do them.
+Practice opens with today's session: a checklist for your lesson, worked from the top and sized to your session length. Steps tick themselves as you do them.
 
-Two course tracks: the classic Koch order (K M R S U…) and the LICW Beginners Carousel (BC1, BC2). Students in an LICW class can start the carousel at the group they joined. LICW strict mode applies the LICW Method Guide's guardrails: no rhythm visuals, decoded sending after each over, receive answers at the end of a drill.
+Two course tracks: the classic Koch order (K M R S U…) and the LICW Beginners Carousel (BC1, BC2). Students in an LICW class can start the carousel at the lesson they joined at. LICW strict mode follows the LICW Method Guide: no rhythm bars or character reference, your sending shown only when you finish, receive answers at the end of a drill, and the straight key in BC lessons.
 
-The LICW exercises are for students and for anyone following the syllabus alone. They play material generated from your lesson, or your own text pasted or opened as .txt, one card per line or per word. Morse Browser's `{cw|speech}` markup works, so a line can send one thing and say another. BeepBeep ships no LICW class texts.
+The LICW exercises are for students and for anyone following the syllabus alone. They play material generated from your lesson, or your own text pasted or opened as .txt, with each line or each word played on its own. Morse Browser's `{cw|speech}` markup works, so a line can send one thing and say another. BeepBeep ships no LICW class texts.
 
 Input is the microphone, an on-screen touch key for phones and tablets, or the keyboard as a straight key (Space) or iambic paddles (`[`/`]` or `Z`/`X`). The in-app Guide (`#/guide`) shows where to start with or without a key.
 
@@ -87,7 +87,7 @@ A character is shown once the silence after it is longer than a gap inside a cha
 
 ## Development
 
-All tooling runs in containers. Nothing is installed on the host.
+All tooling runs in containers. Nothing is installed on the host. The rules for changes, and for the app's wording, are in [AGENTS.md](AGENTS.md).
 
 ```sh
 docker compose run --rm dev npm install
