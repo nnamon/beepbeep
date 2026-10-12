@@ -14,26 +14,32 @@ const shot = (page: Page, name: string, project: string) => page.screenshot({ pa
 
 test('in a class, Practice lists the class exercises for your carousel group', async ({ page }, info) => {
   await open(page, 'practice', { licwEnrolled: true, level: { koch: 'koch-1', licw: 'licw-bc1-PSG' }, carousel: { bc1: 'TIN', bc2: 'KMY' } });
-  const section = page.locator('section', { has: page.getByRole('heading', { name: 'Class exercises' }) });
-  await expect(section.getByLabel('Class')).toHaveValue('bc1');
-  await expect(section.getByLabel('Joined at')).toHaveValue('TIN');
+  const section = page.locator('section', { has: page.getByRole('heading', { name: 'LICW exercises' }) });
+  await expect(section.getByLabel('Stage')).toHaveValue('bc1');
+  await expect(section.getByLabel('Lesson you joined at')).toHaveValue('TIN');
   await expect(section.getByRole('link', { name: /Familiarity/ })).toBeVisible();
   await expect(section.getByRole('link', { name: /^VET/ })).toBeVisible();
   // Joined at TIN, on PSG: TIN and PSG known.
   await expect(page.getByText('BC1 · PSG')).toBeVisible();
   await shot(page, 'list', info.project.name);
   // Picking BC2 moves you onto its carousel.
-  await section.getByLabel('Class').selectOption('bc2');
+  await section.getByLabel('Stage').selectOption('bc2');
   await expect(page.getByText('BC2 · KMY')).toBeVisible();
-  await expect(section.getByLabel('Joined at')).toHaveValue('KMY');
-  await section.getByLabel('Class').selectOption('int2');
+  await expect(section.getByLabel('Lesson you joined at')).toHaveValue('KMY');
+  await section.getByLabel('Stage').selectOption('int2');
   await expect(section.getByRole('link', { name: /Speed Racing, words/ })).toBeVisible();
+  // Past the carousel the header shows the stage and its speed, not a BC lesson.
+  await expect(page.getByText('Stage INT 2')).toBeVisible();
+  await expect(page.getByText('New in this lesson')).toHaveCount(0);
+  await expect(page.locator('.level')).not.toContainText('BC2 ·');
+  await expect(page.getByText('Receive speed', { exact: true }).locator('..')).toContainText('16');
+  await expect(page.getByText('Characters known').locator('..')).toContainText('43');
 });
 
 test('Familiarity: the voice first, then the card, with pause and resume', async ({ page }, info) => {
   await open(page, 'practice/class/bc1/familiarity', { level: { koch: 'koch-1', licw: 'licw-bc1-TIN' } });
   await expect(page.getByRole('heading', { name: 'Familiarity' })).toBeVisible();
-  await expect(page.getByText('Say the name with it, out loud.')).toBeVisible();
+  await expect(page.getByText('Each time it plays, say it out loud along with the code.', { exact: false })).toBeVisible();
   await page.getByRole('button', { name: /Start/ }).click();
   // The new group's characters, shown as the voice says them.
   await expect(page.locator('.stage .text')).toHaveText(/^[TIN]$/, { timeout: 10_000 });
@@ -95,7 +101,7 @@ test('not in a class: stages, no carousel start, no class wording', async ({ pag
   await open(page, 'practice', { level: { koch: 'koch-1', licw: 'licw-bc1-REA' }, carousel: { bc1: 'TIN', bc2: 'KMY' } });
   const section = page.locator('section', { has: page.getByRole('heading', { name: 'LICW exercises' }) });
   await expect(section.getByLabel('Stage')).toHaveValue('bc1');
-  await expect(section.getByLabel('Joined at')).toHaveCount(0);
+  await expect(section.getByLabel('Lesson you joined at')).toHaveCount(0);
   await expect(section.getByText(/your class/)).toHaveCount(0);
   await expect(page.getByText('BC1 · REA')).toBeVisible();
   await page.getByRole('button', { name: 'Next lesson' }).click();
@@ -105,8 +111,8 @@ test('not in a class: stages, no carousel start, no class wording', async ({ pag
   await page.goto('./#/settings');
   await page.getByText('In an LICW class').click();
   await page.goto('./#/practice');
-  await expect(page.getByRole('heading', { name: 'Class exercises' })).toBeVisible();
-  await expect(page.getByLabel('Joined at')).toHaveValue('TIN');
+  await expect(page.getByRole('heading', { name: 'LICW exercises' })).toBeVisible();
+  await expect(page.getByLabel('Lesson you joined at')).toHaveValue('TIN');
 });
 
 test("Today: the session's steps in order, ticked by hand or by doing them", async ({ page }, info) => {

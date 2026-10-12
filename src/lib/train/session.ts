@@ -8,6 +8,7 @@ import { settings, strict } from '../state/settings.svelte';
 import { notify, signal, startMic } from '../state/signal.svelte';
 import type { LiveDecoder } from '../audio/live';
 import { DEFAULT_CAROUSEL, KOCH_LEVELS, licwLevels, type Level, type TrackId } from './courses';
+import { classById } from './classes';
 import { addConfusion, addSession, getItems, getKv, putItem, setKv, type SessionRecord } from '../state/db';
 import { newStat, recordAnswer, type ItemStat } from './srs';
 import { randomSeed } from '../util/random';
@@ -31,9 +32,29 @@ export function currentLevel(): Level {
   return levels.find((l) => l.id === settings.level[settings.track]) ?? levels[0];
 }
 
-/** Speeds for receive drills: the level's speeds on the LICW track, settings otherwise. */
+/** The LICW stage chosen on Practice, when it is past the carousel (BC3 and later). */
+export function laterStage() {
+  if (settings.track !== 'licw') return null;
+  const c = classById(settings.licwClass);
+  return c && !c.carousel ? c : null;
+}
+
+/** True when receive drills use the course's speeds instead of the speeds in Settings. */
+export function courseSpeedsInUse(): boolean {
+  if (settings.track !== 'licw' || !settings.useCourseSpeeds) return false;
+  const later = laterStage();
+  return !later || !!later.speeds;
+}
+
+/**
+ * Speeds for receive drills. On the LICW track with lesson speeds on: the
+ * carousel lesson's speeds in BC1 and BC2, the stage's speeds in BC3, INT and
+ * ADV. Otherwise, and in TTR+ and OverLearn, the speeds in Settings.
+ */
 export function receiveSpeeds(): { charWpm: number; effectiveWpm: number } {
-  if (settings.track === 'licw' && settings.useCourseSpeeds) {
+  if (courseSpeedsInUse()) {
+    const later = laterStage();
+    if (later?.speeds) return { ...later.speeds };
     const l = currentLevel();
     return { charWpm: l.charWpm, effectiveWpm: l.effectiveWpm };
   }
@@ -132,14 +153,14 @@ export function sendInput() {
 }
 
 /**
- * Farnsworth taper: after a good receive session, raise effective speed one
- * step toward character speed. Always on in LICW strict mode; opt-in otherwise.
- * Not applied while the LICW lesson speeds are in use.
+ * After a good receive session, raise the overall speed by 1 wpm toward the
+ * character speed (less extra space between characters). On in LICW strict
+ * mode and when the setting is on. Not applied while course speeds are in use.
  */
 export function maybeTaper(accuracy: number | null) {
   if (accuracy === null || accuracy < 0.85) return null;
   if (!(strict() || settings.autoTaper)) return null;
-  if (settings.track === 'licw' && settings.useCourseSpeeds) return null;
+  if (courseSpeedsInUse()) return null;
   if (settings.effectiveWpm >= settings.charWpm) return null;
   settings.effectiveWpm = Math.min(settings.charWpm, settings.effectiveWpm + 1);
   return settings.effectiveWpm;
@@ -148,7 +169,7 @@ export function maybeTaper(accuracy: number | null) {
 /** Days since extra (Farnsworth) spacing was turned on, or null when spacing is natural. */
 export async function farnsworthDays(): Promise<number | null> {
   try {
-    const wide = settings.effectiveWpm < settings.charWpm && !(settings.track === 'licw' && settings.useCourseSpeeds);
+    const wide = settings.effectiveWpm < settings.charWpm && !courseSpeedsInUse();
     const since = await getKv<number | null>('farnsworthSince', null);
     if (!wide) {
       if (since !== null) await setKv('farnsworthSince', null);

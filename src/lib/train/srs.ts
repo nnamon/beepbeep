@@ -74,10 +74,15 @@ export function windowStats(s: ItemStat | undefined, since: number): { n: number
   };
 }
 
-/** Picks the next item: weighted by heat, avoiding the last few asked. */
+/**
+ * Picks the next item: weighted by heat, avoiding the last few asked. With
+ * only a few items, fewer are held back, so at least half stay in the draw:
+ * holding back all but one would make the order a fixed cycle you could
+ * predict (K M K M), and a weak item could never come up more often.
+ */
 export function pickNext(rng: Rng, keys: readonly string[], stats: Map<string, ItemStat>, avoid: readonly string[] = []): string {
   if (keys.length === 1) return keys[0];
-  const blocked = new Set(avoid.slice(-Math.min(3, keys.length - 1)));
+  const blocked = new Set(avoid.slice(avoid.length - Math.min(3, Math.floor((keys.length - 1) / 2))));
   const pool = keys.filter((k) => !blocked.has(k));
   const list = pool.length ? pool : keys;
   let total = 0;

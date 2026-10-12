@@ -10,6 +10,9 @@ export interface CopyResult {
   /** Tokens of the wanted text, excluding spaces. */
   total: number;
   correct: number;
+  /** Characters typed that were not sent (spaces excluded). */
+  extra: number;
+  /** Right characters over sent characters plus extra ones, so typing more can't raise it. */
   accuracy: number;
   /** Wanted -> got pairs for substitutions (characters only). */
   confusions: { want: string; got: string }[];
@@ -23,12 +26,16 @@ export function compareCopy(want: string, got: string): CopyResult {
   const ops = align(a, b);
   let total = 0;
   let correct = 0;
+  let extra = 0;
   const confusions: { want: string; got: string }[] = [];
   const missRuns: number[] = [];
   let run = 0;
   for (const o of ops) {
-    const wantTok = o.op === 'ins' ? null : o.want;
-    if (wantTok === ' ') continue;
+    if (o.op === 'ins') {
+      if (o.got !== ' ') extra++;
+      continue;
+    }
+    if (o.want === ' ') continue;
     if (o.op === 'match') {
       total++;
       correct++;
@@ -41,7 +48,24 @@ export function compareCopy(want: string, got: string): CopyResult {
     }
   }
   if (run) missRuns.push(run);
-  return { ops, total, correct, accuracy: total ? correct / total : 1, confusions, missRuns };
+  return { ops, total, correct, extra, accuracy: total + extra ? correct / (total + extra) : 1, confusions, missRuns };
+}
+
+/** A round of separate answers, each compared on its own, added up. */
+export function compareRound(answers: readonly { want: string; got: string }[]): CopyResult {
+  const parts = answers.map((a) => compareCopy(a.want, a.got));
+  const total = parts.reduce((n, r) => n + r.total, 0);
+  const correct = parts.reduce((n, r) => n + r.correct, 0);
+  const extra = parts.reduce((n, r) => n + r.extra, 0);
+  return {
+    ops: parts.flatMap((r) => r.ops),
+    total,
+    correct,
+    extra,
+    accuracy: total + extra ? correct / (total + extra) : 1,
+    confusions: parts.flatMap((r) => r.confusions),
+    missRuns: parts.flatMap((r) => r.missRuns),
+  };
 }
 
 /** Average characters needed to get back in step after a miss (lower is better). */

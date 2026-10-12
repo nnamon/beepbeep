@@ -1,7 +1,7 @@
 <script lang="ts">
   // Copy drill: hear a group or word made from your lesson's characters and
-  // type it. Hot characters come up more often. Answers show after each item,
-  // or only at the end in LICW strict mode.
+  // type it. Characters you miss come up more often. The answer shows after
+  // each one, or only at the end in LICW strict mode.
   import { onDestroy } from 'svelte';
   import DrillFrame from '../../ui/DrillFrame.svelte';
   import Button from '../../ui/Button.svelte';
@@ -14,7 +14,8 @@
   import { advanceThreshold, answer, currentLevel, lessonOpenedBy, maybeTaper, playCw, receiveSpeeds, saveSession, stats } from '../../lib/train/session';
   import { route } from '../../lib/state/router.svelte';
   import { pickNext, type ItemStat } from '../../lib/train/srs';
-  import { compareCopy } from '../../lib/train/scoring';
+  import { compareRound } from '../../lib/train/scoring';
+  import { speedText } from '../../lib/train/classes';
   import { wordsFromKnown, QSO_WORDS, COMMON_WORDS } from '../../lib/train/words';
   import { textTokens, align } from '../../lib/util/text';
   import { mulberry32, pick, randomSeed } from '../../lib/util/random';
@@ -35,14 +36,17 @@
   let log: { want: string; got: string }[] = $state([]);
   let replays = 0;
   let endPerf = 0;
+  /** Bumped on each new round and on leaving, so a round still playing stops. */
+  let run = 0;
   let firstKeyMs = 0;
   let map = new Map<string, ItemStat>();
   const rng = mulberry32(randomSeed());
   const startedAt = Date.now();
   signal.receiving = true;
 
-  const level = currentLevel();
-  const known = level.known;
+  // Follows "Next lesson": the next round uses the new lesson's characters.
+  const level = $derived(currentLevel());
+  const known = $derived(level.known);
 
   function makeItem(): string {
     const pool = wordsFromKnown([...QSO_WORDS, ...COMMON_WORDS], new Set(known));
@@ -64,7 +68,11 @@
   }
 
   async function start() {
+    if (stage === 'playing' || stage === 'typing' || stage === 'shown') return;
+    const me = ++run;
+    stage = 'playing';
     map = await stats('rx:');
+    if (me !== run) return;
     log = [];
     i = 0;
     void keepAwake(true);
@@ -81,25 +89,39 @@
   }
 
   async function play() {
+    const me = run;
     stage = 'playing';
+    engine.stopAll();
+    endPerf = Infinity;
     const pb = await playCw(item, speedOverride ?? {});
+    if (me !== run) return;
     endPerf = performance.now() + (pb.startTime - engine.now + pb.duration - 0.2) * 1000;
     stage = 'typing';
     await pb.done;
   }
 
   async function replay() {
+    // After the answer is shown, Replay only plays it again: the answer is already in.
+    if (stage === 'shown') {
+      engine.stopAll();
+      await playCw(item, speedOverride ?? {});
+      return;
+    }
     replays++;
     await play();
   }
 
   function onkey(k: string) {
+    if (submitting) return;
     if (stage !== 'typing' && stage !== 'playing') {
       if (k === 'DONE' && stage === 'shown') void advance();
       return;
     }
     if (k === 'DEL') typed.pop();
-    else if (k === 'DONE') submit();
+    // Enter with nothing typed before it has finished playing is a stray press (often the one that pressed Next).
+    else if (k === 'DONE') {
+      if (typed.length || performance.now() >= endPerf) submit();
+    }
     else if (k !== ' ') {
       if (!firstKeyMs) firstKeyMs = Math.max(0, performance.now() - endPerf);
       typed.push(k);
@@ -107,7 +129,10 @@
     }
   }
 
+  let submitting = false;
   async function submit() {
+    if (submitting || (stage !== 'typing' && stage !== 'playing')) return;
+    submitting = true;
     const got = typed.join('');
     log.push({ want: item, got });
     // Per-character stats from the alignment.
@@ -118,6 +143,7 @@
       else if (o.op === 'del') await answer(map, `rx:${o.want}`, false, 3000, 1500);
     }
     i++;
+    submitting = false;
     if (strict()) await advance();
     else stage = 'shown';
   }
@@ -151,8 +177,7 @@
   }
 
   function summary() {
-    const all = compareCopy(log.map((l) => l.want).join(' '), log.map((l) => l.got).join(' '));
-    return all;
+    return compareRound(log);
   }
 
   const threshold = advanceThreshold();
@@ -163,6 +188,7 @@
   }
 
   onDestroy(() => {
+    run++;
     signal.receiving = false;
     engine.stopAll();
     void keepAwake(false);
@@ -177,12 +203,12 @@
   const result = $derived(stage === 'done' ? summary() : null);
   const nextLevel = $derived(result ? lessonOpenedBy(result.accuracy) : null);
   const speedOverride = session ? { charWpm: settings[`${session}Wpm`], effectiveWpm: settings[`${session}Wpm`] } : null;
-  const speeds = speedOverride ?? receiveSpeeds();
+  const speeds = $derived(speedOverride ?? receiveSpeeds());
 </script>
 
 <DrillFrame
   title={session === 'stretch' ? 'Stretch session' : session === 'comfort' ? 'Comfort session' : 'Copy drill'}
-  eyebrow="{level.name} · {speeds.charWpm}/{speeds.effectiveWpm} wpm"
+  eyebrow="{level.name} · {speedText(speeds.charWpm, speeds.effectiveWpm)}"
   count={stage !== 'ready' && stage !== 'done' ? `${Math.min(i + 1, ROUND)} / ${ROUND}` : ''}
 >
   {#if stage === 'ready'}
@@ -194,7 +220,7 @@
           { value: 'chars', label: 'Characters' },
           { value: 'groups', label: 'Groups' },
           { value: 'words', label: 'Words' },
-          { value: 'context', label: 'Context' },
+          { value: 'context', label: 'Short phrases' },
         ]}
       />
       <p class="muted">
@@ -210,13 +236,13 @@
       {/if}
       <ul class="list">
         {#each log as l, k (k)}
-          <li><TokenText tokens={marked(l.want, l.got)} size="m" /><span class="muted mono">{l.got || '–'}</span></li>
+          <li><TokenText tokens={marked(l.want, l.got)} size="m" /><span class="muted mono">{l.got || 'nothing'}</span></li>
         {/each}
       </ul>
       {#if nextLevel && !session}
-        <p>You scored over {Math.round(threshold * 100)}%, so {nextLevel.name} is open.</p>
+        <p>You scored {Math.round(threshold * 100)}% or more. Press Next lesson to move on to {nextLevel.name}.</p>
       {/if}
-      {#if tapered}<p>Effective speed raised to {tapered} wpm.</p>{/if}
+      {#if tapered}<p>Overall speed raised to {tapered} wpm: a little less space between characters.</p>{/if}
       {#if session === 'stretch' && result.accuracy >= 0.9 && !promoted}
         <p>You copied {Math.round(result.accuracy * 100)}% at {settings.stretchWpm} wpm, your stretch speed.</p>
         <div><Button onclick={promote}>Make {settings.stretchWpm} wpm the comfort speed</Button></div>
@@ -230,7 +256,7 @@
         <span class="label">Sent</span>
         <TokenText tokens={marked(item, typed.join(''))} size="xl" />
         <span class="label">Typed</span>
-        <TokenText tokens={toks(typed.join('') || '–')} size="l" />
+        {#if typed.length}<TokenText tokens={toks(typed.join(''))} size="l" />{:else}<p class="muted">Nothing</p>{/if}
       {:else}
         <span class="label">{stage === 'playing' ? 'Listen' : 'Type'}</span>
         <p class="typed mono">{typed.join('') || ' '}</p>

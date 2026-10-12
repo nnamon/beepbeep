@@ -5,7 +5,7 @@
   import { CLASSES, EXERCISE_GROUPS, classById, groupOf, type ClassId } from '../lib/train/classes';
   import Select from '../ui/Select.svelte';
   import Exercise from './drills/Exercise.svelte';
-  import { currentLevel, farnsworthDays, receiveSpeeds, trackLevels } from '../lib/train/session';
+  import { currentLevel, farnsworthDays, laterStage, receiveSpeeds, trackLevels } from '../lib/train/session';
   import { getItems, getKv, qsos, sessions, setKv } from '../lib/state/db';
   import { localDay, todaySteps, type Step } from '../lib/train/today';
   import { accuracy, windowStats } from '../lib/train/srs';
@@ -30,19 +30,35 @@
   const levels = $derived(trackLevels());
   const idx = $derived(levels.findIndex((l) => l.id === level.id));
   const speeds = $derived(receiveSpeeds());
+  // BC3 and later: every character is known, and the stage replaces the lesson.
+  const later = $derived(laterStage());
 
   // Today's checklist. A step ticks itself when a session of its kind is
-  // recorded today; you can also tick it yourself.
-  const day = localDay();
+  // recorded today; you can also tick it yourself. It is read again each time
+  // you come back to this screen, and when the app comes back into view (a new
+  // day may have started).
+  let day = $state(localDay());
+  let shown = $state(0);
   let fresh = $state<string[]>([]);
   let weak = $state<string[]>([]);
   let doneModes = $state<Set<string>>(new Set());
   let ticked = $state<string[]>([]);
   $effect(() => {
+    const onShow = () => {
+      if (document.visibilityState === 'visible') shown++;
+    };
+    document.addEventListener('visibilitychange', onShow);
+    return () => document.removeEventListener('visibilitychange', onShow);
+  });
+  $effect(() => {
     const lvl = level;
+    void shown;
+    if (mode !== '') return;
+    const today = localDay();
+    day = today;
     void (async () => {
       try {
-        const [rx, list, logged, mine] = await Promise.all([getItems('rx:'), sessions(), qsos(), getKv<{ day: number; ids: string[] }>('today', { day, ids: [] })]);
+        const [rx, list, logged, mine] = await Promise.all([getItems('rx:'), sessions(), qsos(), getKv<{ day: number; ids: string[] }>('today', { day: today, ids: [] })]);
         fresh = lvl.added.filter((c) => {
           const st = rx.get(`rx:${c}`);
           return !st || st.seen < 10 || (accuracy(st) ?? 0) < 0.9;
@@ -55,10 +71,10 @@
           .sort((a, b) => a.w!.accuracy - b.w!.accuracy)
           .slice(0, 3)
           .map((x) => x.c);
-        const modes = new Set(list.filter((x) => localDay(x.at) === day).map((x) => x.mode));
-        if (logged.some((q) => localDay(q.at) === day)) modes.add('qso');
+        const modes = new Set(list.filter((x) => localDay(x.at) === today).map((x) => x.mode));
+        if (logged.some((q) => localDay(q.at) === today)) modes.add('qso');
         doneModes = modes;
-        ticked = mine.day === day ? mine.ids : [];
+        ticked = mine.day === today ? mine.ids : [];
       } catch {
         doneModes = new Set();
       }
@@ -76,7 +92,7 @@
     void farnsworthDays().then((d) => (wideDays = d));
   });
 
-  // LICW class exercises. BC1 and BC2 follow the carousel group you are on.
+  // LICW exercises. BC1 and BC2 follow the carousel lesson you are on.
   const cls = $derived.by(() => {
     const id = settings.licwClass;
     if (id === 'bc1' || id === 'bc2') return classById(level.id.startsWith('licw-bc2') ? 'bc2' : 'bc1')!;
@@ -89,8 +105,9 @@
 
   function pickClass(id: ClassId) {
     settings.licwClass = id;
-    if (id !== 'bc1' && id !== 'bc2') return;
-    if (!level.id.startsWith(`licw-${id}`)) settings.level.licw = levels.find((l) => l.id.startsWith(`licw-${id}`))!.id;
+    // Past the carousel every character is known: stand on its last lesson.
+    if (id !== 'bc1' && id !== 'bc2') settings.level.licw = levels[levels.length - 1].id;
+    else if (!level.id.startsWith(`licw-${id}`)) settings.level.licw = levels.find((l) => l.id.startsWith(`licw-${id}`))!.id;
   }
 
   const steps = $derived(
@@ -130,16 +147,16 @@
     ] },
     { group: 'Both', items: [
       { id: 'hear-send', name: 'Hear it, send it', text: 'Copy a character or word, then send it.' },
-      { id: 'qso-learn', name: 'Learn QSOs', text: 'A guided lesson for each part of a contact, checked as you go.', href: href('qso', 'learn') },
-      { id: 'qso', name: 'QSO simulator', text: 'Ragchew, SKCC, SST, POTA, contest or pileup with a simulated station.', href: href('qso') },
+      { id: 'qso-learn', name: 'Learn QSOs', text: 'Guided lessons on each part of a QSO, a contact with another station. Repeat each step until you get it right.', href: href('qso', 'learn') },
+      { id: 'qso', name: 'QSO simulator', text: 'Make whole contacts with a simulated station: a chat, a contest, a park activation and more.', href: href('qso') },
     ] },
     { group: 'Receive', items: [
-      { id: 'copy', name: 'Copy drill', text: 'Type groups or words from your lesson.' },
+      { id: 'copy', name: 'Copy drill', text: "Type groups or words made from your lesson's characters." },
       { id: 'familiarity', name: 'Spot the new character', text: 'Tap each time the new character plays.' },
-      { id: 'ttr', name: 'TTR drill', text: 'Type each character before a voice names it.' },
-      { id: 'ifr', name: 'Sound surfing (IFR)', text: 'Copy a continuous stream without stopping.' },
+      { id: 'ttr', name: 'Time to recognise (TTR)', text: 'Type each character before a voice names it.' },
+      { id: 'ifr', name: 'Sound surfing', text: 'Copy a continuous stream without stopping.' },
       { id: 'head-copy', name: 'Head copy', text: 'Listen without writing, then answer questions.' },
-      { id: 'sprint', name: 'Callsign and word sprint', text: 'Callsigns or words at rising speed.' },
+      { id: 'sprint', name: 'Callsign and word sprint', text: 'Copy callsigns or words as the speed rises.' },
     ] },
   ];
 </script>
@@ -204,19 +221,30 @@
       <div class="level">
         <div class="level-name">
           <span class="label">{TRACK_NAMES[settings.track]}</span>
-          <div class="stepper">
-            <Button kind="secondary" label="Previous lesson" disabled={idx <= 0} onclick={() => step(-1)}><Icon name="back" size={18} /></Button>
-            <strong>{level.name}</strong>
-            <Button kind="secondary" label="Next lesson" disabled={idx >= levels.length - 1} onclick={() => step(1)}><Icon name="forward" size={18} /></Button>
+          {#if later}
+            <strong class="stage">Stage {later.name}</strong>
+          {:else}
+            <div class="stepper">
+              <Button kind="secondary" label="Previous lesson" disabled={idx <= 0} onclick={() => step(-1)}><Icon name="back" size={18} /></Button>
+              <strong>{level.name}</strong>
+              <Button kind="secondary" label="Next lesson" disabled={idx >= levels.length - 1} onclick={() => step(1)}><Icon name="forward" size={18} /></Button>
+            </div>
+          {/if}
+        </div>
+        {#if !later}
+          <div class="level-chars">
+            <span class="label">New in this lesson</span>
+            <TokenText tokens={level.added.flatMap((t, i) => (i ? [{ t: ' ' }, { t }] : [{ t }]))} size="l" />
           </div>
-        </div>
-        <div class="level-chars">
-          <span class="label">New in this lesson</span>
-          <TokenText tokens={level.added.flatMap((t, i) => (i ? [{ t: ' ' }, { t }] : [{ t }]))} size="l" />
-        </div>
+        {/if}
         <div class="level-meta">
-          <span class="label">Receive speed</span>
-          <Value value="{speeds.charWpm}/{speeds.effectiveWpm}" unit="wpm" size="l" />
+          {#if speeds.charWpm === speeds.effectiveWpm}
+            <span class="label">Receive speed</span>
+            <Value value={speeds.charWpm} unit="wpm" size="l" />
+          {:else}
+            <span class="label">Receive speed: characters / overall</span>
+            <Value value="{speeds.charWpm} / {speeds.effectiveWpm}" unit="wpm" size="l" />
+          {/if}
         </div>
         <div class="level-meta">
           <span class="label">Characters known</span>
@@ -231,7 +259,7 @@
         <h2 id="today-h">Today</h2>
         <span class="muted">{required.filter(isDone).length} of {required.length} done · about {required.reduce((a, x) => a + x.minutes, 0)} min</span>
       </div>
-      <p class="muted lead">In this order: new sounds first, then naming them fast, then copying, then sending.</p>
+      <p class="muted lead">Work down the list from the top.</p>
       {#snippet stepList(list: Step[])}
         <ol class="steps">
           {#each list as s (s.id)}
@@ -263,8 +291,8 @@
       </div>
       {#if wideDays !== null && wideDays > 14}
         <p class="flag">
-          You have practised with extra space between characters ({settings.charWpm}/{settings.effectiveWpm} wpm) for {wideDays}
-          days. Raise the effective speed in
+          You have practised with extra space between characters ({settings.charWpm} wpm characters, {settings.effectiveWpm} wpm
+          overall) for {wideDays} days. Raise the overall speed in
           <a href={href('settings')}>Settings</a>.
         </p>
       {/if}
@@ -273,16 +301,16 @@
     {#if settings.track === 'licw'}
       <section class="bc" aria-labelledby="bc-h">
         <div class="bc-head">
-          <h2 id="bc-h">{settings.licwEnrolled ? 'Class exercises' : 'LICW exercises'}</h2>
-          <Select label={settings.licwEnrolled ? 'Class' : 'Stage'} options={CLASSES.map((c) => ({ value: c.id, label: c.name }))} value={cls.id} onchange={pickClass} />
+          <h2 id="bc-h">LICW exercises</h2>
+          <Select label="Stage" options={CLASSES.map((c) => ({ value: c.id, label: c.name }))} value={cls.id} onchange={pickClass} />
           {#if cls.carousel && settings.licwEnrolled}
             {@const which = cls.carousel}
-            <Select label="Joined at" options={CAROUSEL_GROUPS[which]} value={settings.carousel[which]} onchange={(v) => (settings.carousel[which] = v)} />
+            <Select label="Lesson you joined at" options={CAROUSEL_GROUPS[which]} value={settings.carousel[which]} onchange={(v) => (settings.carousel[which] = v)} />
           {/if}
           <span class="band muted">{cls.band}</span>
         </div>
         <ul class="routine">
-          {#if cls.carousel && settings.licwEnrolled}<li>Use the arrows above to set the group your class is on, and Joined at for the group you started with.</li>{/if}
+          {#if cls.carousel && settings.licwEnrolled}<li>Set the lesson you joined at here. Then use the Previous lesson and Next lesson buttons at the top to match the lesson your class is on.</li>{/if}
           {#each cls.routine as r (r)}<li>{r}</li>{/each}
         </ul>
         {#each exerciseGroups as { g, items } (g)}
@@ -308,14 +336,12 @@
         <h3 id="g-{g.group}">{g.group}</h3>
         <ul>
           {#each g.items as m (m.id)}
-            {#if m.id !== 'familiarity' || settings.track === 'licw'}
-              <li>
-                <a href={m.href ?? href('practice', m.id)}>
-                  <span class="name">{m.name}</span>
-                  <span class="text muted">{m.text}</span>
-                </a>
-              </li>
-            {/if}
+            <li>
+              <a href={m.href ?? href('practice', m.id)}>
+                <span class="name">{m.name}</span>
+                <span class="text muted">{m.text}</span>
+              </a>
+            </li>
           {/each}
         </ul>
       </section>
