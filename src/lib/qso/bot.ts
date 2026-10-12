@@ -5,21 +5,37 @@
 import { type Rng, mulberry32, pick } from '../util/random';
 import { ANTENNAS, JOBS, RIGS, STATES, WEATHER } from '../train/words';
 import { station, type Mix } from '../train/world';
-import { REGION_SET, callDistance, missingPart, parse, type Parsed } from './parse';
+import { REGION_SET, callDistance, isCallsign, missingPart, parse, type Parsed } from './parse';
 
 export type Format = 'ragchew' | 'licw' | 'skcc' | 'sst' | 'pota' | 'sota' | 'contest' | 'pileup';
 export type Opener = 'bot' | 'you';
 
 export const FORMATS: { id: Format; name: string; exchange: string }[] = [
-  { id: 'ragchew', name: 'Ragchew', exchange: 'RST, name, QTH, then rig, antenna, weather' },
-  { id: 'licw', name: 'LICW QSO Protocol', exchange: 'Calls, RST, name and QTH, each repeated, then 73' },
-  { id: 'skcc', name: 'SKCC', exchange: 'RST, QTH, name, SKCC number' },
-  { id: 'sst', name: 'K1USN SST', exchange: 'Name and state, 20 WPM or slower' },
-  { id: 'pota', name: 'POTA', exchange: 'Call, 5NN, state' },
-  { id: 'sota', name: 'SOTA', exchange: 'Call, RST, state' },
-  { id: 'contest', name: 'Contest', exchange: 'Call, 5NN, serial number' },
-  { id: 'pileup', name: 'DX pileup', exchange: 'Several stations call; pick one, 5NN and state' },
+  { id: 'ragchew', name: 'Ragchew', exchange: 'A relaxed chat. You swap reports, names and QTHs, then talk about your rig, antenna and weather.' },
+  { id: 'licw', name: 'LICW QSO Protocol', exchange: 'The contact the Long Island CW Club teaches. You swap callsigns, reports, names and QTHs, then send 73.' },
+  { id: 'skcc', name: 'SKCC', exchange: 'A Straight Key Century Club contact. You swap reports, regions (state, province or country), names and member numbers.' },
+  { id: 'sst', name: 'K1USN SST', exchange: 'The Slow Speed Test, a short contest at 20 wpm or slower. You swap names and regions.' },
+  { id: 'pota', name: 'POTA', exchange: 'Parks on the Air. One station is in a park, making many short contacts. You swap callsigns, 5NN (a 599 report) and regions.' },
+  { id: 'sota', name: 'SOTA', exchange: 'Summits on the Air. One station is on a hilltop. You swap callsigns, reports and regions.' },
+  { id: 'contest', name: 'Contest', exchange: 'A contest. You swap callsigns, 5NN (a 599 report) and serial numbers.' },
+  { id: 'pileup', name: 'DX pileup', exchange: 'Several stations call you at once. You pick one by its callsign, and it sends 5NN and its region.' },
 ];
+
+/** Formats with short exchanges, where K at the end is optional. */
+const NO_K: ReadonlySet<Format> = new Set(['contest', 'sst', 'pota', 'sota', 'pileup']);
+
+/** Everyday words around a bare SST exchange (GE TOM TOM MA TU): none of them is a name or a region. */
+const SST_FILLER = new Set([
+  'GE', 'GM', 'GA', 'GN', 'TU', 'TNX', 'TKS', 'THANKS', 'R', 'RR', 'OM', 'BK', 'K', 'KN', '73', 'SST', 'FB', 'ES', 'HR', 'NAME',
+  'OP', 'IS', 'UR', '5NN', '599', 'CQ', 'TEST', 'PSE', 'AGN', 'AGN?', 'QRS', 'EE', 'AR', 'BT', 'HI', 'GL', 'CUL', 'HW?', '?',
+]);
+
+/** The report a station sends you in this format, as digits (5NN is 599), or '' when the exchange has none (SST). */
+export function reportSent(format: Format, s: BotIdentity): string {
+  if (format === 'sst') return '';
+  if (format === 'pota' || format === 'contest' || format === 'pileup') return '599';
+  return s.rst;
+}
 
 export interface Operator {
   call: string;
@@ -139,9 +155,10 @@ export class QsoBot {
     this.rng = mulberry32(opts.seed ?? Date.now() & 0xffff);
     this.wpm = opts.format === 'sst' ? Math.min(opts.wpm, 20) : opts.wpm;
     this.you = opts.you;
-    // Your own region counts even when it is not on the list (a small country, a grid square).
-    const own = (opts.you.state ?? '').trim().toUpperCase();
-    this.regions = own && !REGION_SET.has(own) ? new Set([...REGION_SET, own]) : REGION_SET;
+    // Your own region counts even when it is not on the list (a small country, a
+    // grid square), and so does your QTH when you left the region blank (a city-state).
+    const own = ((opts.you.state ?? '').trim() || (opts.you.qth ?? '').trim()).toUpperCase();
+    this.regions = own && !own.includes(' ') && !REGION_SET.has(own) ? new Set([...REGION_SET, own]) : REGION_SET;
     const n = opts.format === 'pileup' ? Math.max(2, opts.crowd ?? 3) : 1;
     this.stations = Array.from({ length: n }, (_, i) =>
       makeIdentity(this.rng, n === 1 ? 0 : Math.round((i - (n - 1) / 2) * 140 + (this.rng() - 0.5) * 60), opts.mix ?? 'world'),
@@ -169,6 +186,94 @@ export class QsoBot {
   start(): BotTurn[] {
     if (this.opener !== 'bot' || !this.active) return [];
     return this.say(this.active, this.cqText(this.active));
+  }
+
+  /**
+   * Formats with short exchanges (contest, SST, POTA, SOTA, pileup) need no K
+   * at the end: true once what you have sent so far holds what the station
+   * needs next. Your callsign when you answer a CQ; CQ and your callsign when
+   * you call; then the exchange: a serial number, your name and region, or a
+   * report and your region. In a pileup, a callsign to pick, then any reply.
+   * Always false in a ragchew, LICW or SKCC contact, which end with K.
+   */
+  turnComplete(text: string): boolean {
+    if (!NO_K.has(this.format)) return false;
+    const p = parse(text, this.regions);
+    switch (this.stage) {
+      case 'cq':
+        return p.calls.some((c) => !this.stations.some((s) => s.call === c));
+      case 'wait-cq':
+        return p.cq && p.calls.length > 0;
+      case 'answered':
+        if (this.format === 'pileup' && !this.active) return p.calls.length > 0 || p.words.some((w) => w.endsWith('?'));
+        return this.hasExchange(p);
+      case 'exchange':
+        return this.format === 'pileup' ? p.words.length > 0 : this.hasExchange(p);
+      default:
+        return false;
+    }
+  }
+
+  private hasExchange(p: Parsed): boolean {
+    switch (this.format) {
+      case 'contest':
+        return !!p.serial;
+      case 'sst': {
+        const x = this.sstExchange(p);
+        return !!(x.name && x.region);
+      }
+      case 'pota':
+      case 'sota':
+        return !!p.rst && !!p.state;
+      default:
+        return false;
+    }
+  }
+
+  /**
+   * The bare SST exchange in an over: your name, then your region. The region
+   * may be any word (a state, a country, DX), so it is read by position, after
+   * calls, DE, greetings and the station's own name are set aside.
+   */
+  private sstExchange(p: Parsed): { name: string | null; region: string | null } {
+    const w = p.words;
+    let theirName = this.active?.name;
+    const rest: string[] = [];
+    for (let i = 0; i < w.length; i++) {
+      const x = w[i];
+      if (p.calls.includes(x) || SST_FILLER.has(x) || !/^[A-Z0-9]{2,12}$/.test(x)) continue;
+      if (x === 'DE' && (isCallsign(w[i + 1] ?? '') || isCallsign(w[i - 1] ?? ''))) continue;
+      // Their own name, sent back in a greeting (GE UWE), once.
+      if (x === theirName) {
+        theirName = undefined;
+        continue;
+      }
+      rest.push(x);
+    }
+    if (rest.length >= 2) return { name: rest[0], region: rest[1] };
+    if (rest.length === 1) return this.regions.has(rest[0]) ? { name: null, region: rest[0] } : { name: rest[0], region: null };
+    return { name: null, region: null };
+  }
+
+  /**
+   * Your callsign in an over to station `b`: your own call if it is there, the
+   * call after DE, a lone call that isn't theirs, or a call not close to
+   * theirs. A call close to theirs may be theirs copied wrong.
+   */
+  private yourCall(p: Parsed, b: BotIdentity): string | null {
+    const own = (this.you.call ?? '').trim().toUpperCase();
+    if (own && p.calls.includes(own)) return own;
+    const w = p.words;
+    const afterDe = w.find((x, i) => i > 0 && w[i - 1] === 'DE' && isCallsign(x) && x !== b.call);
+    if (afterDe) return afterDe;
+    const notTheirs = p.calls.filter((c) => c !== b.call);
+    if (p.calls.length === 1 && notTheirs.length === 1) return notTheirs[0];
+    return notTheirs.find((c) => callDistance(c, b.call) === Infinity) ?? null;
+  }
+
+  /** A call in the over that looks like theirs copied wrong (not yours). */
+  private bustOf(p: Parsed, b: BotIdentity, yours: string | null): string | undefined {
+    return p.calls.find((c) => c !== b.call && c !== yours && callDistance(c, b.call) > 0 && callDistance(c, b.call) < Infinity);
   }
 
   /** Feed one decoded over from you; returns what the bot sends back. */
@@ -217,10 +322,10 @@ export class QsoBot {
   private onAnswerToCq(p: Parsed): BotTurn[] {
     const b = this.active!;
     if (p.agn || p.qrz) return this.repeatLast();
-    const theirs = this.otherCall(p, b);
+    const theirs = this.yourCall(p, b);
     if (!theirs) return this.say(b, `QRZ? DE ${b.call} K`);
     this.copied.call = theirs;
-    const busted = p.calls.find((c) => c !== b.call && callDistance(c, b.call) < Infinity && callDistance(c, b.call) > 0);
+    const busted = this.bustOf(p, b, theirs);
     const repair = busted ? `${b.call} ${this.rep(missingPart(busted, b.call), 3)} ${b.call} ` : '';
     switch (this.format) {
       case 'contest':
@@ -243,15 +348,18 @@ export class QsoBot {
   }
 
   private onYourCq(p: Parsed): BotTurn[] {
-    if (!p.cq && !this.isPileupPick(p)) {
-      if (this.format === 'pileup' && this.active === null) return this.pileupCall();
-      return [];
+    if (this.format === 'pileup') {
+      if (!p.cq && !this.isPileupPick(p) && this.active !== null) return [];
+      this.copied.call = p.calls[0] ?? this.you.call ?? null;
+      return this.pileupCall();
     }
-    const theirs = p.calls[0] ?? this.you.call ?? null;
-    if (!theirs && this.format !== 'pileup') return this.say(this.stations[0], 'QRZ?');
-    this.copied.call = theirs;
-    if (this.format === 'pileup') return this.pileupCall();
     const b = this.active!;
+    // Your call as they heard it. A CQ they could not read (KQ KQ DE ...) is
+    // still answered when your call came through; with no call at all they
+    // can only ask who is calling.
+    const theirs = p.calls.find((c) => c !== b.call) ?? null;
+    if (!theirs) return this.say(b, 'QRZ?');
+    this.copied.call = theirs;
     this.stage = 'answered';
     if (this.format === 'contest' || this.format === 'sst' || this.format === 'pota' || this.format === 'sota') {
       return this.say(b, b.call);
@@ -264,8 +372,9 @@ export class QsoBot {
     const b = this.active!;
     if (p.agn || (p.words.length <= 2 && p.calls.length === 0)) return this.repeatLast();
     // Did you copy my call? Repair it the LICW way if not.
-    const mine = p.calls.find((c) => callDistance(c, b.call) < Infinity);
-    if (mine && mine !== b.call) {
+    const yours = this.yourCall(p, b);
+    const mine = this.bustOf(p, b, yours);
+    if (mine && !p.calls.includes(b.call)) {
       return this.say(b, `${b.call} ${this.rep(missingPart(mine, b.call), 3)} ${b.call} K`);
     }
     this.take(p);
@@ -275,7 +384,7 @@ export class QsoBot {
         this.finish();
         return this.say(b, `TU 5NN ${pad(b.serial)}`);
       case 'sst':
-        if (!p.name && !p.state) return this.say(b, 'AGN?');
+        if (!this.copied.name && !this.copied.state) return this.say(b, 'AGN?');
         this.finish();
         return this.say(b, `${greeting(this.rng)} ${this.copied.name ?? ''} ${b.name} ${b.state} TU 73`.replace(/\s+/g, ' '));
       case 'pota':
@@ -469,21 +578,13 @@ export class QsoBot {
     c.state = p.state ?? c.state;
     c.serial = p.serial ?? c.serial;
     c.skcc = p.skcc ?? c.skcc;
-    if (this.format === 'sst' && !p.name) {
-      // SST exchange is bare: NAME STATE.
-      const w = p.words.filter((x) => !['GE', 'GM', 'GA', 'TU', '73', 'SST', 'R'].includes(x) && !p.calls.includes(x));
-      const st = w.find((x) => this.regions.has(x));
-      const nm = w.find((x) => /^[A-Z]{2,8}$/.test(x) && !this.regions.has(x) && x !== this.active?.name);
-      c.state = st ?? c.state;
-      c.name = nm ?? c.name;
+    if (this.format === 'sst') {
+      // The SST exchange is bare: your name, then your region.
+      const x = this.sstExchange(p);
+      if (!p.name && x.name) c.name = x.name;
+      if (x.region) c.state = x.region;
     }
-    if (!c.call) c.call = p.calls.find((x) => !this.stations.some((s) => s.call === x)) ?? c.call;
-  }
-
-  private otherCall(p: Parsed, b: BotIdentity): string | null {
-    const others = p.calls.filter((c) => callDistance(c, b.call) === Infinity);
-    if (this.you.call && others.includes(this.you.call)) return this.you.call;
-    return others[0] ?? null;
+    if (!c.call && this.active) c.call = this.yourCall(p, this.active) ?? c.call;
   }
 
   private finish() {
