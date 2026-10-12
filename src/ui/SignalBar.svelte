@@ -9,6 +9,7 @@
 
   const bars = [-50, -40, -32, -25, -18];
   const keyboard = $derived(settings.input !== 'mic');
+  const NAMES: Record<string, string> = { touch: 'Touch key', straight: 'Straight key', iambicA: 'Paddles A', iambicB: 'Paddles B' };
   const hide = $derived(strict() && signal.receiving);
   // Locked, but nothing keyed for 15 s and the signal is down near the noise.
   const toneLost = $derived(
@@ -16,9 +17,10 @@
   );
 </script>
 
-<a class="bar" class:compact href={href('setup')} aria-label="Signal: open input setup">
+<!-- Named by what it shows ("Mic off", "Touch key", a notice), then where it goes. -->
+<a class="bar" class:compact href={href('setup')}>
   {#if keyboard}
-    <span class="cell muted">{settings.input === 'touch' ? 'Touch key' : settings.input === 'straight' ? 'Straight key' : settings.input === 'iambicA' ? 'Paddles A' : 'Paddles B'}</span>
+    <span class="cell muted">{NAMES[settings.input] ?? settings.input}</span>
     {#if !hide}<span class="led" class:on={signal.keyDown} aria-hidden="true"></span>{/if}
   {:else if !signal.micOn}
     <span class="cell muted">Mic off</span>
@@ -33,8 +35,9 @@
     <span class="cell num">{toneLost ? 'No tone' : signal.pitch ? `${Math.round(signal.pitch)} Hz` : 'Listening'}</span>
     {#if !hide}<span class="led" class:on={signal.keyDown} aria-hidden="true"></span>{/if}
   {/if}
-  {#if signal.notice}<span class="cell">{signal.notice}</span>
+  {#if signal.notice}<span class="cell notice">{signal.notice}</span>
   {:else if signal.wpm > 0 && !hide}<span class="cell num">{signal.wpm.toFixed(0)} wpm</span>{/if}
+  <span class="visually-hidden">. Open input setup.</span>
 </a>
 
 <style>
@@ -42,7 +45,8 @@
     display: inline-flex;
     align-items: center;
     gap: var(--s-2);
-    min-height: 36px;
+    min-height: var(--target-min);
+    max-width: 100%;
     padding: 0 var(--s-2);
     border: var(--hairline) solid var(--line);
     border-radius: var(--radius);
@@ -62,6 +66,20 @@
 
   .cell {
     white-space: nowrap;
+  }
+
+  /* Last resort on the narrowest windows: the input name is cut short rather than the page scrolling sideways. */
+  .cell.muted {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* A long notice wraps inside the bar instead of pushing the header wider than the screen. */
+  .notice {
+    white-space: normal;
+    min-width: 0;
+    line-height: 1.25;
   }
 
   .meter {

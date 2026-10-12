@@ -80,6 +80,11 @@ a {
   outline-offset: 2px;
 }
 
+/* A screen's heading (or main) takes focus only when the app moves it there on a change of screen. Nothing to press, so no ring. */
+:is(h1, main)[tabindex='-1']:focus {
+  outline: none;
+}
+
 .mono {
   font-family: var(--font-mono);
   font-feature-settings: 'zero' 1, 'tnum' 1;

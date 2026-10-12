@@ -78,7 +78,7 @@ test('VET runs two minutes of groups with the spacing stepping up', async ({ pag
   await expect(page.getByText('Groups of three to copy. The gaps between characters start wide and shrink every 30 seconds.')).toBeVisible();
   await page.getByRole('button', { name: /Start/ }).click();
   await expect(page.getByText(/^[12]:\d\d left$/)).toBeVisible();
-  await expect(page.getByText('BC1 · REA · 12 wpm characters, 8 wpm overall')).toBeVisible();
+  await expect(page.getByText('BC1 · REA · 12 wpm, 8 overall')).toBeVisible();
   // Nothing shows while it plays: the groups are read back at the end.
   await page.waitForTimeout(3000);
   await expect(page.locator('.stage .text')).toHaveCount(0);
@@ -93,7 +93,7 @@ test('an exercise with too little material says so and waits', async ({ page }) 
 
 test('a BC2 exercise opened from the Koch track uses your BC2 group', async ({ page }) => {
   await open(page, 'practice/class/bc2/vst', { track: 'koch', level: { koch: 'koch-3', licw: 'licw-bc1-TIN' } });
-  await expect(page.getByText('BC2 · KMY · 24 wpm characters, 10 wpm overall')).toBeVisible();
+  await expect(page.getByText('BC2 · KMY · 24 wpm, 10 overall')).toBeVisible();
 });
 
 test('not in a class: stages, no carousel start, no class wording', async ({ page }) => {

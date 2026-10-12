@@ -25,15 +25,16 @@
   } = $props();
 </script>
 
+<!-- The hint is shown, but kept out of the name: the button is "Start", not "Start Enter". -->
 {#if href}
   <a class="btn {kind}" class:wide {href} aria-label={label || undefined}>
     {@render children()}
-    {#if hint}<span class="hint">{hint}</span>{/if}
+    {#if hint}<span class="hint" aria-hidden="true">{hint}</span>{/if}
   </a>
 {:else}
   <button class="btn {kind}" class:wide {type} {disabled} {onclick} aria-label={label || undefined}>
     {@render children()}
-    {#if hint}<span class="hint">{hint}</span>{/if}
+    {#if hint}<span class="hint" aria-hidden="true">{hint}</span>{/if}
   </button>
 {/if}
 
@@ -44,6 +45,7 @@
     justify-content: center;
     gap: var(--s-1);
     min-height: var(--target);
+    min-width: var(--target);
     padding: 0 var(--s-2);
     border-radius: var(--radius);
     border: var(--hairline) solid var(--muted);

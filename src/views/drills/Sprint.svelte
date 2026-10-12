@@ -140,7 +140,7 @@
       {/each}
     </ul>
   {:else}
-    <div class="row">
+    <div class="row" aria-live="polite">
       <span class="num speed">{stage === 'shown' && last ? last.wpm : wpm} wpm</span>
       {#if stage === 'shown' && last}
         <TokenText tokens={textTokens(last.item).map((t) => ({ t, state: last.ok ? 'ok' : 'miss' }))} size="xl" />

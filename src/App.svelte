@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { route, href } from './lib/state/router.svelte';
+  import { onMount, tick } from 'svelte';
+  import { route, href, screenTitle } from './lib/state/router.svelte';
   import SignalBar from './ui/SignalBar.svelte';
   import Icon from './ui/Icon.svelte';
   import VisualCue from './ui/VisualCue.svelte';
@@ -61,14 +62,56 @@
     { id: 'progress', label: 'Progress' },
   ];
   const top = $derived(route.path[0] ?? 'practice');
+
+  /** Focuses the screen's main heading (or main, if it has none) without showing a focus ring. */
+  function focusContent(scroll: boolean) {
+    const main = document.querySelector('main');
+    const target = main?.querySelector('h1') ?? main;
+    if (!target) return;
+    target.setAttribute('tabindex', '-1');
+    target.focus({ preventScroll: !scroll });
+  }
+
+  // Each screen gets its own window title, from its main heading. After a move to another
+  // screen, focus goes to that heading, so screen readers start there. Not on first load,
+  // and not when the new screen has already put focus in it (a field that focuses itself).
+  let focusBefore: Element | null = null;
+  let firstScreen = true;
+  onMount(() => {
+    const note = () => (focusBefore = document.activeElement);
+    window.addEventListener('hashchange', note);
+    return () => window.removeEventListener('hashchange', note);
+  });
+  $effect(() => {
+    void route.path.join('/');
+    const initial = firstScreen;
+    firstScreen = false;
+    void tick().then(() => {
+      const main = document.querySelector('main');
+      const h1 = main?.querySelector('h1');
+      document.title = `${h1?.textContent?.replace(/\s+/g, ' ').trim() || screenTitle(route.path)} · BeepBeep`;
+      if (initial || !main) return;
+      const now = document.activeElement;
+      if (now && now !== document.body && now !== focusBefore && main.contains(now)) return;
+      focusContent(false);
+    });
+  });
   // The pad stays put on every sending screen; it fades while nothing listens.
   const showPad = $derived(settings.input === 'touch' && (signal.touchArea > 0 || signal.touchKey));
 </script>
 
+<a
+  class="skip"
+  href={href(...route.path)}
+  onclick={(e) => {
+    e.preventDefault();
+    focusContent(true);
+  }}>Skip to content</a
+>
 <div class="shell" class:keying={showPad}>
   <header class="head">
-    <a class="mark" href={href('practice')}><Logo />BeepBeep</a>
-    <span class="ver num" title="Version and build">v{__APP_VERSION__} · {__APP_BUILD__}</span>
+    <a class="mark" href={href('practice')}><Logo /><span class="word">BeepBeep</span></a>
+    <span class="ver num" title="Version and build"><span>v{__APP_VERSION__}</span><span class="sep">{' · '}</span><span>{__APP_BUILD__}</span></span>
     <nav class="nav" aria-label="Main">
       {#each tabs as t (t.id)}
         <a href={href(t.id)} class:on={top === t.id} aria-current={top === t.id ? 'page' : undefined}>{t.label}</a>
@@ -76,6 +119,8 @@
       <a href={href('settings')} class:on={top === 'settings'} aria-current={top === 'settings' ? 'page' : undefined}>Settings</a>
       <a href={href('guide')} class:on={top === 'guide'} aria-current={top === 'guide' ? 'page' : undefined}>Guide</a>
     </nav>
+    <!-- The visual cue light sits in the header's free space, clear of every control. -->
+    <span class="cue-slot">{#if settings.visualCue}<VisualCue />{/if}</span>
     <div class="signal"><SignalBar /></div>
     <a class="guide-link" href={href('guide')} class:on={top === 'guide'}>Guide</a>
     <a class="gear" href={href('settings')} aria-label="Settings"><Icon name="settings" /></a>
@@ -112,14 +157,39 @@
       <a href={href(t.id)} class:on={top === t.id} aria-current={top === t.id ? 'page' : undefined}>{t.label}</a>
     {/each}
   </nav>
+
+  <!-- Short notices (a speed change, a session that could not be saved) are read out. -->
+  <div class="visually-hidden" role="status">{signal.notice}</div>
 </div>
 
 <svelte:window onkeydown={onKey} />
 
-{#if settings.visualCue}<VisualCue />{/if}
 {#if showPad}<TouchKey />{/if}
 
 <style>
+  /* The first stop for the keyboard on every screen. Off screen until it has focus. */
+  .skip {
+    position: fixed;
+    top: calc(var(--safe-top) + var(--s-1));
+    left: calc(var(--safe-left) + var(--s-1));
+    z-index: 30;
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--target);
+    padding: 0 var(--s-2);
+    border: var(--hairline) solid var(--signal);
+    border-radius: var(--radius);
+    background: var(--bg);
+    color: var(--ink);
+    font-weight: var(--weight-strong);
+    text-decoration: none;
+    transform: translateY(calc(-100% - var(--s-4) - var(--safe-top)));
+  }
+
+  .skip:focus {
+    transform: none;
+  }
+
   .shell {
     min-height: 100dvh;
     display: flex;
@@ -130,8 +200,8 @@
     display: flex;
     align-items: center;
     gap: var(--s-4);
-    padding: var(--s-2) var(--s-3);
-    padding-top: max(var(--s-2), var(--safe-top));
+    padding: var(--s-1) calc(var(--s-3) + var(--safe-right)) var(--s-1) calc(var(--s-3) + var(--safe-left));
+    padding-top: max(var(--s-1), var(--safe-top));
     border-bottom: var(--hairline) solid var(--line);
   }
 
@@ -139,6 +209,7 @@
     display: inline-flex;
     align-items: center;
     gap: var(--s-1);
+    min-height: var(--target-min);
     font-size: var(--size-m);
     font-weight: var(--weight-strong);
     text-decoration: none;
@@ -162,8 +233,14 @@
     color: var(--muted);
     text-decoration: none;
     font-size: var(--size-m);
-    padding: var(--s-1) 0;
     border-bottom: 2px solid transparent;
+  }
+
+  .nav a {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--target-min);
+    border-top: 2px solid transparent;
   }
 
   .nav a:hover {
@@ -176,8 +253,25 @@
     border-bottom-color: var(--signal);
   }
 
-  .signal {
+  /* Takes the free space in the header, so the light never sits on a control. */
+  .cue-slot {
     margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  /* Header items keep their size; only the signal bar gives way (a long notice wraps). */
+  .mark,
+  .ver,
+  .nav,
+  .cue-slot,
+  .guide-link,
+  .gear {
+    flex: none;
+  }
+
+  .signal {
+    min-width: 0;
   }
 
   .gear {
@@ -196,17 +290,28 @@
   .main {
     flex: 1;
     width: 100%;
-    max-width: 1120px;
+    max-width: calc(1120px + var(--safe-left) + var(--safe-right));
     margin: 0 auto;
-    padding: var(--s-4) var(--s-3) var(--s-8);
+    padding: var(--s-4) calc(var(--s-3) + var(--safe-right)) var(--s-8) calc(var(--s-3) + var(--safe-left));
   }
 
   .tabbar {
     display: none;
   }
 
+  /* The phone header's short links: shown where the full row of links does not fit. */
   .guide-link {
     display: none;
+    align-items: center;
+    min-height: var(--target);
+    padding: 0 var(--s-1);
+    color: var(--muted);
+    text-decoration: none;
+    font-size: var(--size-s);
+  }
+
+  .guide-link.on {
+    color: var(--ink);
   }
 
   /* While keying on the touch key, quick taps must not select text anywhere. Fields stay editable. */
@@ -226,27 +331,45 @@
     padding-bottom: calc(96px + var(--s-6) + var(--safe-bottom));
   }
 
-  @media (max-width: 760px) {
+  /* Narrower windows and phones on their side: tighter header, version over build. */
+  @media (max-width: 1000px) {
+    .head,
+    .nav {
+      gap: var(--s-2);
+    }
+
+    .ver {
+      margin-left: 0;
+      display: flex;
+      flex-direction: column;
+      line-height: 1.25;
+    }
+
+    .sep {
+      display: none;
+    }
+  }
+
+  /* Where the links and the signal bar need the room, the logo stands alone; the link keeps its name. */
+  @media (min-width: 761px) and (max-width: 860px), (orientation: landscape) and (max-height: 500px) {
+    .word {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+  }
+
+  /* Phones held upright. A phone on its side keeps the header with the links, below. */
+  @media (max-width: 760px) and (min-height: 501px) {
     .nav,
     .signal {
       display: none;
     }
 
-    .guide-link {
-      display: inline-flex;
-      align-items: center;
-      margin-left: auto;
-      min-height: var(--target);
-      padding: 0 var(--s-1);
-      color: var(--muted);
-      text-decoration: none;
-      font-size: var(--size-s);
-    }
-
-    .guide-link.on {
-      color: var(--ink);
-    }
-
+    .guide-link,
     .gear {
       display: inline-flex;
     }
@@ -258,25 +381,30 @@
 
     .head {
       gap: var(--s-1);
-      padding: var(--s-1) var(--s-2);
+      padding: var(--s-1) calc(var(--s-2) + var(--safe-right)) var(--s-1) calc(var(--s-2) + var(--safe-left));
       padding-top: max(var(--s-1), var(--safe-top));
     }
 
-    /* The narrowest phones (360 px) cut the build short rather than overflow. */
+    /* Version over build, so both fit beside the name on the narrowest phones. */
     .ver {
       margin-left: 0;
-      min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      display: flex;
+      flex-direction: column;
+      line-height: 1.25;
+    }
+
+    .sep {
+      display: none;
     }
 
     .signal-strip {
       display: block;
-      padding: var(--s-1) var(--s-2) 0;
+      padding: var(--s-1) calc(var(--s-2) + var(--safe-right)) 0 calc(var(--s-2) + var(--safe-left));
     }
 
     .main {
-      padding: var(--s-2) var(--s-2) calc(var(--s-8) + var(--s-6) + var(--safe-bottom));
+      padding: var(--s-2) calc(var(--s-2) + var(--safe-right)) calc(var(--s-8) + var(--s-6) + var(--safe-bottom))
+        calc(var(--s-2) + var(--safe-left));
     }
 
     .tabbar {
@@ -288,7 +416,7 @@
       justify-content: space-around;
       background: var(--bg);
       border-top: var(--hairline) solid var(--line);
-      padding-bottom: var(--safe-bottom);
+      padding: 0 var(--safe-right) var(--safe-bottom) var(--safe-left);
       z-index: 10;
     }
 
@@ -308,6 +436,40 @@
       color: var(--ink);
       font-weight: var(--weight-strong);
       border-top-color: var(--signal);
+    }
+  }
+
+  /*
+   * A phone on its side: little height, a notch at one side. The header stays one slim row
+   * with the links, and drills put their answer keys beside the content (see DrillFrame).
+   */
+  @media (orientation: landscape) and (max-height: 500px) {
+    .head {
+      padding-top: max(var(--s-half), var(--safe-top));
+      padding-bottom: var(--s-half);
+    }
+
+    .main {
+      padding-top: var(--s-2);
+      padding-bottom: calc(var(--s-5) + var(--safe-bottom));
+    }
+
+    /* Room for the lower pad (64 px plus its padding). */
+    .shell.keying .main {
+      padding-bottom: calc(64px + var(--s-3) + var(--safe-bottom));
+    }
+  }
+
+  /* Small phones on their side (an iPhone SE, 640 px Androids): the gear and Guide replace two links, and the version is left to Settings. */
+  @media (orientation: landscape) and (max-height: 500px) and (max-width: 720px) {
+    .ver,
+    .nav a:nth-child(n + 5) {
+      display: none;
+    }
+
+    .guide-link,
+    .gear {
+      display: inline-flex;
     }
   }
 </style>

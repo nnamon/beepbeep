@@ -15,7 +15,7 @@
   import { route } from '../../lib/state/router.svelte';
   import { pickNext, type ItemStat } from '../../lib/train/srs';
   import { compareRound } from '../../lib/train/scoring';
-  import { speedText } from '../../lib/train/classes';
+  import { speedShort } from '../../lib/train/classes';
   import { wordsFromKnown, QSO_WORDS, COMMON_WORDS } from '../../lib/train/words';
   import { textTokens, align } from '../../lib/util/text';
   import { mulberry32, pick, randomSeed } from '../../lib/util/random';
@@ -212,7 +212,7 @@
 
 <DrillFrame
   title={session === 'stretch' ? 'Stretch session' : session === 'comfort' ? 'Comfort session' : 'Copy drill'}
-  eyebrow="{level.name} · {speedText(speeds.charWpm, speeds.effectiveWpm)}"
+  eyebrow="{level.name} · {speedShort(speeds.charWpm, speeds.effectiveWpm)}"
   count={stage !== 'ready' && stage !== 'done' ? `${Math.min(i + 1, ROUND)} / ${ROUND}` : ''}
 >
   {#if stage === 'ready'}

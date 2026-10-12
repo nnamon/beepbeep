@@ -13,7 +13,7 @@
   import { settings, strict, type ExercisePrefs } from '../../lib/state/settings.svelte';
   import { signal } from '../../lib/state/signal.svelte';
   import { deleteText, listTexts, saveText, type SavedText } from '../../lib/state/texts';
-  import { atSpeed, classById, speedText } from '../../lib/train/classes';
+  import { atSpeed, classById, speedShort } from '../../lib/train/classes';
   import { cardsFromText, material, type Card } from '../../lib/train/cards';
   import { Player, type PlayerState } from '../../lib/train/player';
   import { playCw, saveSession, trackLevels, wait } from '../../lib/train/session';
@@ -281,7 +281,7 @@
     <p>No such exercise. <a href={href('practice')}>Back to Practice</a></p>
   </DrillFrame>
 {:else}
-  <DrillFrame title={ex.name} eyebrow="{cls.name}{cls.carousel ? ` · ${level.name.split(' · ')[1]}` : ''} · {st ? speedText(st.wpm, st.fwpm) : speedText(recipe.wpm, recipe.fwpm)}" {count}>
+  <DrillFrame title={ex.name} eyebrow="{cls.name}{cls.carousel ? ` · ${level.name.split(' · ')[1]}` : ''} · {st ? speedShort(st.wpm, st.fwpm) : speedShort(recipe.wpm, recipe.fwpm)}" {count}>
     {#if !st || st.phase === 'ready'}
       <p class="summary">{ex.summary}</p>
       {#if left}

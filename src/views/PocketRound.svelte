@@ -323,6 +323,8 @@
       <button type="button" class="play" onclick={begin} aria-label="Start the round"><Icon name="play" size={40} /></button>
       <span class="muted">Start</span>
     </div>
+  {:else if phase === 'loading'}
+    <div class="center" aria-busy="true"></div>
   {:else if phase === 'empty'}
     {#if stage === 'custom'}
       <p class="muted">Your custom set needs at least two characters or words. Add them on the Pocket screen.</p>
@@ -374,7 +376,7 @@
       <Button href={href('pocket')}>All rounds</Button>
     </div>
   {:else}
-    <div class="center">
+    <div class="center" aria-live="polite">
       <button type="button" class="play" onclick={replay} aria-label="Play again" disabled={phase !== 'quiz'}>
         <Icon name="play" size={40} />
       </button>
@@ -418,8 +420,8 @@
 
   .back {
     color: var(--muted);
-    min-width: 40px;
-    min-height: 40px;
+    min-width: var(--target-min);
+    min-height: var(--target-min);
     display: inline-flex;
     align-items: center;
   }
@@ -520,13 +522,73 @@
   }
 
   /* On phones the answer keys stay on screen just above the tab bar, whatever the screen height. */
-  @media (max-width: 760px) {
+  @media (max-width: 760px) and (min-height: 501px) {
     .kb {
       position: sticky;
       bottom: calc(var(--tabbar) + var(--s-1));
       background: var(--bg);
       padding-top: var(--s-1);
       z-index: 5;
+    }
+
+    /*
+     * After a miss the keys are off until Next, and on most phones they would cover the answer.
+     * Next takes their place at the bottom, and the keys come back with the next one.
+     */
+    .kb:has(> :global(.btn)) > :global(.kb) {
+      display: none;
+    }
+  }
+
+  /* Short phones (an iPhone SE in Safari): a smaller play button and tighter spacing, so the answer still fits. */
+  @media (max-width: 760px) and (min-height: 501px) and (max-height: 600px) {
+    .round {
+      gap: var(--s-1);
+    }
+
+    .center {
+      padding: var(--s-1) 0;
+    }
+
+    .play {
+      width: 72px;
+      height: 72px;
+    }
+  }
+
+  /* A phone on its side: the answer keys go beside the round instead of below the fold. */
+  @media (orientation: landscape) and (max-height: 500px) {
+    .round {
+      min-height: 0;
+      gap: var(--s-1);
+    }
+
+    .round:has(> .kb) {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      grid-template-rows: auto auto 1fr;
+      gap: var(--s-1) var(--s-4);
+      align-items: start;
+      max-width: 1000px;
+    }
+
+    .round:has(> .kb) > * {
+      grid-column: 1;
+    }
+
+    .round > .kb {
+      grid-column: 2;
+      grid-row: 1 / -1;
+      margin-top: 0;
+    }
+
+    .center {
+      padding: 0;
+    }
+
+    .play {
+      width: 72px;
+      height: 72px;
     }
   }
 </style>

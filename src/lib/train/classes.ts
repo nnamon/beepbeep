@@ -53,6 +53,11 @@ export function speedText(cw: number, eff: number): string {
   return cw === eff ? `${cw} wpm` : `${cw} wpm characters, ${eff} wpm overall`;
 }
 
+/** The same, short enough for a one-line subtitle on a phone: "12 wpm, 8 overall". */
+export function speedShort(cw: number, eff: number): string {
+  return cw === eff ? `${cw} wpm` : `${cw} wpm, ${eff} overall`;
+}
+
 const spell = (when: 'before' | 'after' | 'end', delay: number, after = 0) => ({ when, spell: true, delay, after });
 const word = (when: 'before' | 'after' | 'end', delay: number, after = 0) => ({ when, spell: false, delay, after });
 

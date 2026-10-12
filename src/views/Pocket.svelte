@@ -179,6 +179,10 @@
   }
 
   .edit {
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--target);
     color: var(--muted);
     font-size: var(--size-s);
   }

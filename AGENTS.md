@@ -79,7 +79,7 @@ Use these terms and only these. If you need a new term, add it here first.
 | QSO | A contact between two stations. Explain it the first time it appears on a screen. | |
 | your turn | The part of a QSO you send. "over" only with an explanation. | over (alone) |
 | region | State, province or country. Optional. Never "state" alone. | state |
-| character speed, overall speed | How fast each character is sent, and the speed including the extra space between characters. Write "12 wpm characters, 8 wpm overall" in sentences. | effective speed, Farnsworth (without explanation) |
+| character speed, overall speed | How fast each character is sent, and the speed including the extra space between characters. Write "12 wpm characters, 8 wpm overall" in sentences, and "12 wpm, 8 overall" in a one-line subtitle. | effective speed, Farnsworth (without explanation), "12/8" |
 | Microphone, Touch key, Straight key, Paddles A, Paddles B | The inputs. The last three are keyboard keys; say "on the keyboard" where it isn't obvious. | Keyboard iambic A |
 | Spot the new character | BeepBeep's drill for picking out a new sound. | Familiarity (that is the LICW exercise) |
 | Hear it, send it | BeepBeep's drill: copy something, then send it back. The LICW sending exercises open it under this name. | Sending practice |

@@ -33,7 +33,6 @@
   .slider {
     display: flex;
     flex-direction: column;
-    gap: var(--s-half);
   }
 
   .top {
@@ -52,9 +51,11 @@
     margin-left: 0.3em;
   }
 
+  /* The track stays thin; the whole row height can be dragged. */
   input {
     width: 100%;
     accent-color: var(--signal);
-    min-height: 32px;
+    min-height: var(--target-min);
+    margin: 0;
   }
 </style>

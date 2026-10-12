@@ -34,3 +34,10 @@ export function go(...parts: string[]) {
 export function href(...parts: string[]): string {
   return `#/${parts.join('/')}`;
 }
+
+/** A screen's name for the window title, used when the screen has no main heading. */
+export function screenTitle(path: string[]): string {
+  const name = (s: string) => (s === 'qso' ? 'QSO' : s.charAt(0).toUpperCase() + s.slice(1).replace(/-/g, ' '));
+  if (path[0] === 'pocket' && path[1] === 'round' && path[2]) return `${name(path[2])} · Pocket`;
+  return name(path[0] ?? 'practice');
+}

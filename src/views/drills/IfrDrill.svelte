@@ -130,7 +130,7 @@
   const rec = $derived(result ? recoveryLength(result) : null);
 </script>
 
-<DrillFrame title="Sound surfing" eyebrow="{level.name} · {receiveSpeeds().charWpm} wpm, no extra space between characters">
+<DrillFrame title="Sound surfing" eyebrow="{level.name} · {receiveSpeeds().charWpm} wpm">
   {#if stage === 'ready'}
     <div class="intro">
       <Segmented
@@ -138,7 +138,10 @@
         bind:value={length}
         options={[{ value: '45', label: '45 s' }, { value: '90', label: '90 s' }, { value: '180', label: '3 min' }]}
       />
-      <p class="muted">Type what you hear as it plays. If you miss one, skip it and keep going. You see how you did at the end.</p>
+      <p class="muted">
+        A continuous stream plays, with no extra space between characters. Type what you hear as it plays. If you miss
+        one, skip it and keep going. You see how you did at the end.
+      </p>
     </div>
   {:else if stage === 'playing'}
     <p class="typed mono" aria-live="off">{typed.slice(-40).join('') || ' '}</p>

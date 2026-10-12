@@ -77,9 +77,9 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 40px;
-    min-height: 40px;
-    margin-left: calc(-1 * var(--s-1));
+    min-width: var(--target);
+    min-height: var(--target);
+    margin-left: calc(-1 * var(--s-2));
   }
 
   .back:hover {
@@ -115,6 +115,8 @@
     color: var(--muted);
     text-decoration: underline;
     font-size: var(--size-s);
+    min-height: var(--target-min);
+    margin: calc(-1 * var(--s-1)) 0;
   }
 
   .body {
@@ -164,6 +166,42 @@
   @media (max-width: 600px) {
     .footer :global(.btn) {
       flex: 1 1 auto;
+    }
+  }
+
+  /*
+   * A phone on its side: too short for the answer keys under the drill, so they go beside it.
+   * The title, the drill and its buttons fill the left column; the keys fill the right.
+   */
+  @media (orientation: landscape) and (max-height: 500px) {
+    .drill {
+      gap: var(--s-2);
+    }
+
+    /* Rows sized by the left column; the last row takes whatever height the keys need beyond it. */
+    .drill:has(.main > :global(.kb)) {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      grid-template-rows: repeat(6, auto) 1fr;
+      gap: 0 var(--s-4);
+      align-items: start;
+    }
+
+    .drill:has(.main > :global(.kb)) :is(.body, .main) {
+      display: contents;
+    }
+
+    /* Spaced with margins, so rows the drill does not use add no height. */
+    .drill:has(.main > :global(.kb)) > *,
+    .drill:has(.main > :global(.kb)) .main > :global(*) {
+      grid-column: 1;
+      margin-bottom: var(--s-2);
+    }
+
+    .drill:has(.main > :global(.kb)) .main > :global(.kb) {
+      grid-column: 2;
+      grid-row: 1 / -1;
+      margin: 0;
     }
   }
 </style>
