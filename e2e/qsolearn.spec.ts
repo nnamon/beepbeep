@@ -5,8 +5,44 @@ import { patternOf, tokenize } from '../src/lib/morse/code';
 const YOU = { call: 'K1XYZ', name: 'TOM', qth: 'SALEM', state: 'MA', skcc: '' };
 
 async function open(page: Page, route: string, extra: Record<string, unknown> = {}) {
-  await page.addInitScript((x) => localStorage.setItem('beepbeep.settings.v1', JSON.stringify({ voice: 'off', guideSeen: true, ...x })), { you: YOU, ...extra });
+  await page.addInitScript((x) => {
+    localStorage.setItem('beepbeep.settings.v1', JSON.stringify({ voice: 'off', guideSeen: true, licwAsked: true, ...x }));
+    // Counts the CW playing now: sources started and not yet ended.
+    const w = window as unknown as { __active: number };
+    w.__active = 0;
+    const start = AudioBufferSourceNode.prototype.start;
+    AudioBufferSourceNode.prototype.start = function (this: AudioBufferSourceNode, ...a: number[]) {
+      w.__active++;
+      this.addEventListener('ended', () => w.__active--);
+      return start.apply(this, a as never);
+    };
+  }, { you: YOU, ...extra });
   await page.goto(`./#/${route}`);
+}
+
+const playing = (page: Page) => page.evaluate(() => (window as unknown as { __active: number }).__active);
+
+const THEM = { call: 'W1AW', name: 'BOB', qth: 'NEWINGTON', state: 'CT', skcc: '1234', rig: 'K3', ant: 'DIPOLE', pwr: '100', wx: 'SUNNY', age: '50', job: 'PILOT', rst: '579', serial: 42, pitchOffset: 0, verbosity: 0.5, repeats: 2, pace: 0, abbrev: 1 };
+
+/** A lesson already under way at this step, with W1AW, as after going to Setup and back or a reload. */
+async function underway(page: Page, lesson: string, idx: number) {
+  await page.addInitScript((r) => sessionStorage.setItem('beepbeep.qsoLearn.run', JSON.stringify({ ...r, at: Date.now() })), { lesson, them: THEM, idx, firstTry: 0 });
+}
+
+function all(page: Page, store: string): Promise<Record<string, unknown>[]> {
+  return page.evaluate(
+    (store) =>
+      new Promise((res, rej) => {
+        const r = indexedDB.open('beepbeep', 1);
+        r.onerror = () => rej(r.error);
+        r.onsuccess = () => {
+          const q = r.result.transaction(store).objectStore(store).getAll();
+          q.onsuccess = () => res(q.result);
+          q.onerror = () => rej(q.error);
+        };
+      }),
+    store,
+  );
 }
 
 /** Keys text on the Space-bar straight key at 15 wpm, timed inside the page. */
@@ -79,11 +115,85 @@ test('Answer a CQ, typed, with mistakes and second tries', async ({ page }, info
   await page.getByRole('button', { name: 'Next' }).click();
   await expect(page.getByText('You have a contact', { exact: false })).toBeVisible();
   await page.getByRole('button', { name: 'Next' }).click();
-  await expect(page.getByText('Lesson done.')).toBeVisible();
-  await expect(page.getByText('1 of 3 steps right the first time.')).toBeVisible();
+  await expect(page.getByText('You finished this lesson.')).toBeVisible();
+  // The note at the end is not checked, so it doesn't count.
+  await expect(page.getByText('Of the 2 steps where you copied or sent something, 0 were right the first time.')).toBeVisible();
+  // Saved under the lesson's own name, so Today can tell a whole QSO from this one.
+  await expect.poll(async () => (await all(page, 'sessions')).map((s) => s.mode)).toEqual(['qso-learn:answer-cq']);
+  // The next Learn QSOs lesson, by name.
+  await expect(page.getByRole('link', { name: 'Next: Copy their first over' })).toBeVisible();
   // Done once, on the list.
   await page.getByRole('link', { name: 'All lessons' }).click();
   await expect(page.getByText('Done once')).toBeVisible();
+});
+
+test('leaving a lesson stops its sound', async ({ page }) => {
+  await open(page, 'qso/learn/answer-cq', { qsoInput: 'type', qsoHelp: 'text' });
+  await page.getByRole('button', { name: /Start/ }).click();
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await expect.poll(() => playing(page)).toBeGreaterThan(0);
+  await page.getByRole('link', { name: 'Back' }).click();
+  await expect(page.getByRole('heading', { name: 'Learn QSOs' })).toBeVisible();
+  await page.waitForTimeout(500);
+  expect(await playing(page)).toBe(0);
+});
+
+test('Play, Slower and Play again play one at a time', async ({ page }) => {
+  await open(page, 'qso/learn/answer-cq', { qsoInput: 'type', qsoHelp: 'text' });
+  await page.getByRole('button', { name: /Start/ }).click();
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await page.waitForTimeout(400);
+  await page.getByRole('button', { name: 'Slower' }).click();
+  await page.waitForTimeout(400);
+  await page.getByRole('button', { name: 'Play again' }).click();
+  await page.waitForTimeout(400);
+  expect(await playing(page)).toBe(1);
+});
+
+test('typing your part needs no touch key over the Check button', async ({ page }) => {
+  test.skip(test.info().project.name !== 'phone', 'touch screen');
+  await open(page, 'qso/learn/answer-cq', { qsoInput: 'type', qsoHelp: 'text', input: 'touch' });
+  await toTheAnswer(page);
+  await expect(page.locator('.pad')).toHaveCount(0);
+  const check = page.getByRole('button', { name: 'Check' });
+  await check.scrollIntoViewIfNeeded();
+  const covered = await check.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return !!top && !el.contains(top);
+  });
+  expect(covered).toBe(false);
+});
+
+test('after a reload into a keyed step, the first key press starts the sound and keying works', async ({ page }) => {
+  test.skip(test.info().project.name !== 'desktop', 'keyboard straight key');
+  await underway(page, 'answer-cq', 1);
+  await open(page, 'qso/learn/answer-cq', { qsoInput: 'key', qsoHelp: 'text', input: 'straight', sendWpm: 15, overTimeout: 2 });
+  await expect(page.getByText('Step 2 of 3 · Answer it')).toBeVisible();
+  // A real key press (not a script's), as a browser needs before it plays sound: a dit.
+  await page.keyboard.down('Space');
+  await page.waitForTimeout(80);
+  await page.keyboard.up('Space');
+  await page.waitForTimeout(700);
+  await key(page, 'W1AW DE K1XYZ K1XYZ K');
+  await expect(page.getByText('Right.')).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator('.keyed .text')).toContainText(/W1AW\s*DE\s*K1XYZ/);
+});
+
+test('POTA: the reply without the leading BK is right', async ({ page }) => {
+  await underway(page, 'pota', 3);
+  await open(page, 'qso/learn/pota', { qsoInput: 'type', qsoHelp: 'text' });
+  await expect(page.getByText('Step 4 of 5 · Your report and region')).toBeVisible();
+  await page.getByLabel('Type what you would send').fill('TU 5NN MA MA BK');
+  await page.getByRole('button', { name: 'Check' }).click();
+  await expect(page.getByText('Right.')).toBeVisible();
+});
+
+test('LICW strict mode: prosigns are not drawn as dits and dahs', async ({ page }) => {
+  await underway(page, 'sign-off', 0);
+  await open(page, 'qso/learn/sign-off', { qsoInput: 'type', qsoHelp: 'text', track: 'licw', licwStrict: true });
+  await expect(page.getByText('SK, sent as one character, says the contact is over.', { exact: false })).toBeVisible();
+  await expect(page.locator('main')).not.toContainText('· · · – · –');
 });
 
 test('your part keyed on the straight key is decoded and checked', async ({ page }) => {
