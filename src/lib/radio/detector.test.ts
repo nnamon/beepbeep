@@ -359,31 +359,36 @@ describe('radio detector', () => {
   });
 
   it('runs well inside real time with five stations', () => {
-    // The busy band: five stations. Timed alone, the best of three runs; a
-    // phone is several times slower than this machine, so a tenth of a core
-    // here is the most to allow. Other test runs on the machine slow it down.
-    // In an AudioWorklet each call has 2.7 ms (128 samples at 48 kHz): the
-    // time per call is printed too, from the last run (a new channel hears
-    // the buffered audio over many calls, not in one).
+    // The busy band: five stations, the best of three runs. A phone is
+    // several times slower than this machine, so a tenth of a core here is
+    // the most to allow. It is this process's CPU time, not the clock's:
+    // other tests running on the machine take the clock, not this process's
+    // CPU. In an AudioWorklet each call has 2.7 ms (128 samples at 48 kHz):
+    // the clock's time per call is printed too, from the last run (a new
+    // channel hears the buffered audio over many calls, not in one).
     const { samples, seconds } = renderBand(SCENARIOS.find((s) => s.name === 'busy band')!.band, FS);
+    const cpu = () => {
+      const u = process.cpuUsage();
+      return (u.user + u.system) / 1e6;
+    };
     let best = Infinity;
     let calls: number[] = [];
     for (let run = 0; run < 3; run++) {
       const live = new Set<number>();
       const det = new RadioDetector(FS, { onChannel: (c) => c.what === 'live' && live.add(c.ch) });
       calls = [];
-      const t0 = performance.now();
+      const c0 = cpu();
       for (let i = 0; i < samples.length; i += BLOCK) {
         const t1 = performance.now();
         det.process(samples.subarray(i, i + BLOCK));
         calls.push(performance.now() - t1);
       }
-      best = Math.min(best, (performance.now() - t0) / 1000);
+      best = Math.min(best, cpu() - c0);
       expect(live.size).toBe(5);
     }
     calls.sort((a, b) => a - b);
     const q = (p: number) => calls[Math.floor(p * (calls.length - 1))].toFixed(2);
-    console.log(`Real time: ${(best / seconds).toFixed(4)} s of processing per second of 48 kHz audio with five stations; a call of 128 samples took ${q(0.5)} ms (median), ${q(0.99)} ms (99th percentile)`);
+    console.log(`Real time: ${(best / seconds).toFixed(4)} s of CPU per second of 48 kHz audio with five stations; a call of 128 samples took ${q(0.5)} ms (median), ${q(0.99)} ms (99th percentile) by the clock`);
     expect(best / seconds).toBeLessThan(0.1);
   }, 120_000);
 

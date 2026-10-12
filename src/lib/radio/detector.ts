@@ -89,10 +89,10 @@ export const frontTuning = { rate: 8000, envRate: 1000 };
  * keyed tone holds its pitch; a voice's harmonics glide 5 to 15 Hz from one
  * frame to the next). Bins whose floor is `skirt` dB under the band's median
  * floor are outside the receiver's filter and are left out. The scores add
- * up, fading over `tau` seconds, and a pitch (three bins summed) needs `least`, and `onsets`
- * starts (a bin that stands out now and did not a frame ago, fading the
- * same), held for `runSec`, to get a channel. Peaks within `mergeHz` of a
- * channel belong to it.
+ * up, fading over `tau` seconds. A bin whose score peaks, `least` with its
+ * two neighbours and with `onsets` starts (a bin that stands out now and did
+ * not a frame ago, fading the same), held for `runSec`, gets a channel.
+ * Peaks within `mergeHz` of a channel belong to it.
  */
 export const findTuning = { window: 0.064, hops: 4, base: 10, skirt: 10, near: 3, far: 8, steadyHz: 4, tau: 4, least: 40, onsets: 3, runSec: 0.5, mergeHz: 25 };
 
@@ -102,10 +102,10 @@ export const findTuning = { window: 0.064, hops: 4, base: 10, skirt: 10, near: 3
  * fast as that takes), plus `median` dB, the gap from that quantile of a
  * noise bin's power to its median. The broadband measure: frames of
  * `window` seconds, `hops` to a frame; its rise is the median over the bins
- * away from every channel passed on (`clearHz`), when at least `bins` are left. A
- * channel takes the power of that rise averaged over its own filter's
- * length (a crash shorter than that lifts its noise less), less `deadband`
- * dB (in plain noise it wanders a little).
+ * away from every channel passed on (`clearHz`), when at least `bins` are
+ * left. A channel takes the power of that rise averaged over its own
+ * filter's length (a crash shorter than that lifts its noise less), less
+ * `deadband` dB (in plain noise it wanders a little).
  */
 export const floorTuning = { quantile: 0.8, up: 2.5, median: 5, window: 0.016, hops: 4, clearHz: 120, bins: 4, deadband: 1 };
 
@@ -124,15 +124,17 @@ export const filterTuning = { first: 0.6, second: 0.3, startDit: 0.035, minDit: 
  * key-down needs `least` dB and halfway to the mark level; key-up comes at
  * 0.4 of the way, or `endDrop` below the mark's own level; the next
  * key-down needs the level to have fallen to key-up's, or to rise `rise` dB
- * from its lowest since (not the last mark's tail). The span used is
- * at most `spanCap`. A mark must peak over the noise's median by `valid`
- * dB, or by more for a stronger channel: up to `validMax` dB, and `validBelow`
- * dB under its mark level (in plain noise a narrow filter's level wanders by
- * that much now and then). Each accepted mark moves the mark level
- * `markWeight` of the way to its own. After `relaxAfter` seconds without a
- * mark it relaxes, with time constant `relax`, toward `relaxTo` dB over the
- * noise's median (no lower): the next marks may be weaker (fading, the
- * other side of a QSO), but a level at the noise would let noise through.
+ * from its lowest since (not the last mark's tail). The span used is at
+ * most `spanCap`. A mark must peak over the noise's median by `valid` dB;
+ * in a stronger channel by more, up to `validMax` dB but no closer than
+ * `validBelow` dB to its mark level (in plain noise a narrow filter's level
+ * passes 10 dB over its median now and then, 13 dB rarely; a mark that
+ * never peaks that far is never passed on). Each accepted mark moves the
+ * mark level `markWeight` of the way to its own. After `relaxAfter`
+ * seconds without a mark it relaxes, with time constant `relax`, toward
+ * `relaxTo` dB over the noise's median (no lower): the next marks may be
+ * weaker (fading, the other side of a QSO), but a level at the noise would
+ * let noise through.
  */
 export const levelTuning = { floorUp: 2.5, floorDown: 10, least: 8, valid: 10, validMax: 13, validBelow: 4, spanCap: 30, markWeight: 0.5, relaxAfter: 1, relax: 2, relaxTo: 20, endDrop: 12, rise: 6 };
 
@@ -141,7 +143,7 @@ export const levelTuning = { floorUp: 2.5, floorDown: 10, least: 8, valid: 10, v
  * its steady middle. A keyed tone holds its pitch; a voice's harmonics glide.
  * A mark of at least `steps` steps must be steady (`coherence`, 0..1) and
  * its second half's pitch within `glide` Hz of its first half's (a chirp
- * settles within about 4 Hz; speech glides 6 Hz and more). Its settled pitch
+ * settles within about 4 Hz; speech often glides further). Its settled pitch
  * (the second half) must sit within `capture` Hz of the channel's, and, once
  * the channel knows a pitch from `learn` marks, within `tol` Hz (plus
  * `short` over its steps) of one of at most `pitches` it knows: the station,
@@ -170,10 +172,10 @@ export const splitTuning = { window: 0.008, hz: 6, run: 0.015, dip: 9, clear: 15
 
 /**
  * Leakage between channels: a mark that overlaps (give or take the filter's
- * rise) a mark in a channel passed on within `hz` Hz, and is no louder than that mark
- * heard through this channel's filter (the envelope of its response, `db`
- * dB more for key clicks), is that station heard through the filter's skirt
- * and is dropped. Marks are remembered for `keep` seconds (longer than the
+ * rise) a mark in a channel passed on within `hz` Hz, and is no louder
+ * than that mark heard through this channel's filter (the envelope of its
+ * response, `db` dB more for key clicks), is that station heard through the
+ * filter's skirt and is dropped. Marks are remembered for `keep` seconds (longer than the
  * history a new channel hears again).
  */
 export const leakTuning = { hz: 300, db: 6, keep: 8 };
@@ -184,8 +186,10 @@ export const leakTuning = { hz: 300, db: 6, keep: 8 };
  * `spread` Hz of their median, and `agree` have levels within `levelSpread`
  * dB of theirs, and glides (second half's pitch from the first's) within
  * `glideSpread` Hz of theirs, with a mark level `strong` dB over the noise's
- * median, or dropped unheard after `tentative` seconds. A channel without a mark for `gone` seconds is
- * dropped. `history` seconds of audio are kept to hear again, `replay`
+ * median, or dropped unheard after `tentative` seconds. A channel without a
+ * mark for `gone` seconds is dropped, and its pitch is not searched again
+ * until its buffered audio has passed. `history` seconds of audio are kept
+ * to hear again, `replay`
  * decimated samples of it in each call to `process` (all new channels
  * together): in an AudioWorklet each call must be quick, and a new channel
  * catches up over a few hundred milliseconds instead. At most
