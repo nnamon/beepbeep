@@ -11,13 +11,13 @@ export type Format = 'ragchew' | 'licw' | 'skcc' | 'sst' | 'pota' | 'sota' | 'co
 export type Opener = 'bot' | 'you';
 
 export const FORMATS: { id: Format; name: string; exchange: string }[] = [
-  { id: 'ragchew', name: 'Ragchew', exchange: 'A relaxed chat. You swap reports, names and QTHs, then talk about your rig, antenna and weather.' },
-  { id: 'licw', name: 'LICW QSO Protocol', exchange: 'The contact the Long Island CW Club teaches. You swap callsigns, reports, names and QTHs, then send 73.' },
-  { id: 'skcc', name: 'SKCC', exchange: 'A Straight Key Century Club contact. You swap reports, regions (state, province or country), names and member numbers.' },
-  { id: 'sst', name: 'K1USN SST', exchange: 'The Slow Speed Test, a short contest at 20 wpm or slower. You swap names and regions.' },
-  { id: 'pota', name: 'POTA', exchange: 'Parks on the Air. One station is in a park, making many short contacts. You swap callsigns, 5NN (a 599 report) and regions.' },
-  { id: 'sota', name: 'SOTA', exchange: 'Summits on the Air. One station is on a hilltop. You swap callsigns, reports and regions.' },
-  { id: 'contest', name: 'Contest', exchange: 'A contest. You swap callsigns, 5NN (a 599 report) and serial numbers.' },
+  { id: 'ragchew', name: 'Ragchew', exchange: 'A ragchew is a relaxed chat. You swap reports, names and QTHs, then talk about your rig, antenna and weather.' },
+  { id: 'licw', name: 'LICW QSO Protocol', exchange: 'This is the contact the Long Island CW Club teaches. You swap callsigns, reports, names and QTHs, then send 73.' },
+  { id: 'skcc', name: 'SKCC', exchange: 'This is a Straight Key Century Club contact. You swap reports, regions (state, province or country), names and member numbers.' },
+  { id: 'sst', name: 'K1USN SST', exchange: 'The Slow Speed Test is a short contest at 20 wpm or slower. You swap names and regions.' },
+  { id: 'pota', name: 'POTA', exchange: 'In Parks on the Air, one station is in a park, making many short contacts. You swap callsigns, 5NN (a 599 report) and regions.' },
+  { id: 'sota', name: 'SOTA', exchange: 'In Summits on the Air, one station is on a hilltop. You swap callsigns, reports and regions.' },
+  { id: 'contest', name: 'Contest', exchange: 'In a contest you swap callsigns, 5NN (a 599 report) and serial numbers.' },
   { id: 'pileup', name: 'DX pileup', exchange: 'Several stations call you at once. You pick one by its callsign, and it sends 5NN and its region.' },
 ];
 

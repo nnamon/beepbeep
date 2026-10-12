@@ -23,7 +23,7 @@
 <section class="ref">
   <h1>Character reference</h1>
   {#if strict()}
-    <p class="muted">Hidden in LICW strict mode. <a href={href('settings')}>Settings</a></p>
+    <p class="muted">The character reference is hidden in LICW strict mode. You can turn strict mode off in <a href={href('settings')}>Settings</a>.</p>
   {:else}
     <p class="muted small">Rhythm drawn to scale at 20 wpm. Select a character to hear it.</p>
     {#each GROUPS as g (g.name)}

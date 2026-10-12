@@ -200,7 +200,7 @@ for (const sz of LANDSCAPE) {
 }
 
 // The header fits on one row at every width, upright and on its side, with the widest input
-// name and a notice showing (Alt+Up shows "Receive 21 wpm").
+// name and a notice showing (Alt+Up shows "Character speed 21 wpm").
 test('the header fits from 600 to 1280 px wide', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('beepbeep.settings.v1', JSON.stringify({ voice: 'off', guideSeen: true, input: 'straight', visualCue: true })));
   await page.goto('./#/practice');

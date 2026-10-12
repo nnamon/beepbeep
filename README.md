@@ -1,6 +1,6 @@
 # BeepBeep
 
-CW trainer for the browser. It decodes your keying from the microphone, so it works with any sidetone source, such as a transceiver or a practice oscillator.
+BeepBeep is a CW trainer for the browser. It decodes your keying from the microphone, so it works with any sidetone source, such as a transceiver or a practice oscillator.
 
 **https://nnamon.github.io/beepbeep/**
 

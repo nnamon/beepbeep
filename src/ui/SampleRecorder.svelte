@@ -200,7 +200,7 @@
       bind:value={playPitch}
       options={[
         { value: 'mine' as PitchChoice, label: `Yours, ${settings.pinnedHz ?? settings.pitch} Hz` },
-        { value: 'random' as PitchChoice, label: 'Random, 400–1000 Hz' },
+        { value: 'random' as PitchChoice, label: 'Random, 400 to 1000 Hz' },
       ]}
     />
     <p class="muted small">Plays through the device speaker. The take stops by itself.</p>

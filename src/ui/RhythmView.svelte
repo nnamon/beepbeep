@@ -24,7 +24,7 @@
   );
   const W = 1000;
   const x = (r: RhythmRow, t: number) => ((t - (r.marks[0]?.start ?? 0)) / span) * W;
-  const desc = $derived(rows.map((r) => `${r.label || 'rhythm'}: ${r.marks.length} marks${r.note ? `, ${r.note}` : ''}`).join('; '));
+  const desc = $derived(rows.map((r) => `${r.label || 'rhythm'}: ${r.marks.length} dits and dahs${r.note ? `, ${r.note}` : ''}`).join('; '));
   const hasNotes = $derived(rows.some((r) => r.note));
 </script>
 

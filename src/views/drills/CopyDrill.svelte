@@ -228,7 +228,7 @@
         ]}
       />
       <p class="muted">
-        {ROUND} to copy, using the {known.length} characters you know. Type what you hear. Replay as often as you like; it
+        There are {ROUND} to copy, made from the {known.length} characters you know. Type what you hear. Replay as often as you like; it
         doesn't affect your score. {strict() ? 'You see the answers at the end.' : 'You see the answer after each one.'}
       </p>
       {#if fewWords && (material === 'words' || material === 'context')}

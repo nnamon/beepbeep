@@ -183,7 +183,7 @@
       <TokenText tokens={shown} size="xl" label="Decoded sending" />
     {:else}
       <p class="muted placeholder">
-        {running ? (strict() ? `Decoded text shows after ${settings.overTimeout} s of silence.` : 'Decoded text shows here.') : 'Press Start and send.'}
+        {running ? (strict() ? `Decoded text shows after ${settings.overTimeout} seconds of silence.` : 'Decoded text shows here.') : 'Press Start and send.'}
       </p>
     {/if}
   </div>

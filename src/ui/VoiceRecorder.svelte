@@ -61,7 +61,7 @@
 </script>
 
 <div class="rec">
-  <p class="muted small">Each clip records for 1.4 s from when you press Record. Say the name only: "{spoken('K')}", "{spoken('<AR>')}".</p>
+  <p class="muted small">Each clip records for 1.4 seconds from when you press Record. Say the name only: "{spoken('K')}", "{spoken('<AR>')}".</p>
   {#if error}<p class="small">{error}</p>{/if}
   <ul>
     {#each TOKENS as t (t)}

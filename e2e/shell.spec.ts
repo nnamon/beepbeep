@@ -86,7 +86,7 @@ test('Delete progress says what it deletes and keeps your texts', async ({ page 
     void d.accept();
   });
   await page.getByRole('button', { name: 'Delete progress' }).click();
-  await expect(page.getByText('Progress deleted.')).toBeVisible();
+  await expect(page.getByText('Your progress was deleted.')).toBeVisible();
   expect(message).toContain('Your saved texts and Pocket custom set are kept');
   expect(await count(page, 'sessions')).toBe(0);
   expect(await kv(page, 'texts')).toHaveLength(1);

@@ -319,7 +319,7 @@
 
   {#if phase === 'ready'}
     <div class="center">
-      <p class="muted">A round of {ROUND}{stage === 'characters' ? `, using the ${level.known.length} characters you know` : ''}.</p>
+      <p class="muted">A round has {ROUND} questions{stage === 'characters' ? `, made from the ${level.known.length} characters you know` : ''}.</p>
       <button type="button" class="play" onclick={begin} aria-label="Start the round"><Icon name="play" size={40} /></button>
       <span class="muted">Start</span>
     </div>

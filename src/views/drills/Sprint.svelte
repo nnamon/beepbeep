@@ -125,7 +125,7 @@
 <DrillFrame title="Callsign and word sprint" eyebrow={material === 'callsigns' ? 'Callsigns' : 'Words'} count={stage !== 'ready' && stage !== 'done' ? `${Math.min(n + 1, ROUND)} / ${ROUND}` : ''}>
   {#if stage === 'ready'}
     <Segmented label="Material" bind:value={material} options={[{ value: 'callsigns', label: 'Callsigns' }, { value: 'words', label: 'Words' }]} />
-    <p class="muted">{ROUND} to copy, starting at {receiveSpeeds().charWpm} wpm. Each one you get right makes the next 2 wpm faster; each miss makes it 2 wpm slower.</p>
+    <p class="muted">There are {ROUND} to copy, starting at {receiveSpeeds().charWpm} wpm. Each one you get right makes the next 2 wpm faster; each miss makes it 2 wpm slower.</p>
     {#if tooFew}
       <p>There aren't enough {material} yet that use only the characters in {currentLevel().name}. Try {material === 'callsigns' ? 'words' : 'callsigns'}, or come back in a later lesson.</p>
     {/if}

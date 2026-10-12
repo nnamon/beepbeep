@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { KOCH_LEVELS, KOCH_ORDER, LICW_BC1, LICW_BC2, licwLevels, migrateLevelId } from './courses';
 import { callsign, items, fillPhrase, stationLine } from './generate';
 import { newStat, recordAnswer, pickNext, NEW_HEAT } from './srs';
-import { compareCopy, recoveryLength, spacingIssues, oneNote } from './scoring';
+import { compareCopy, describeIssue, recoveryLength, spacingIssues, oneNote } from './scoring';
 import { analyseFist } from './fist';
 import { Decoder, type DecoderOutput } from '../decoder/decoder';
 import { buildSchedule, type FistOptions } from '../morse/schedule';
@@ -101,6 +101,9 @@ describe('scoring', () => {
     expect(spacingIssues('SET TO', 'SA TO').map((i) => i.detail)).toEqual(['ET as A']);
     expect(spacingIssues('CAR', 'CAEN').map((i) => i.detail)).toEqual(['R as EN']);
     expect(oneNote(null, spacingIssues('CALL ES', 'CALLES'))).toMatch(/Word gap too short/);
+    // Each note says where.
+    expect(spacingIssues('TNX FER CALL ES 73', 'TNX FER CALLES 73').map(describeIssue)).toEqual(['Two words heard as one: CALLES.']);
+    expect(spacingIssues('DE 9V1NE K', 'DE 9V1 NE K').map(describeIssue)).toEqual(['One word heard as two: 9V1 NE.']);
   });
 });
 

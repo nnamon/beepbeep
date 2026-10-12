@@ -75,7 +75,7 @@ test('your own text, with Morse Browser markup, plays one card per line', async 
 
 test('VET runs two minutes of groups with the spacing stepping up', async ({ page }, info) => {
   await open(page, 'practice/class/bc1/vet', { level: { koch: 'koch-1', licw: 'licw-bc1-REA' } });
-  await expect(page.getByText('Groups of three to copy. The gaps between characters start wide and shrink every 30 seconds.')).toBeVisible();
+  await expect(page.getByText('Copy groups of three. The gaps between characters start wide and shrink every 30 seconds.')).toBeVisible();
   await page.getByRole('button', { name: /Start/ }).click();
   await expect(page.getByText(/^[12]:\d\d left$/)).toBeVisible();
   await expect(page.getByText('BC1 · REA · 12 wpm, 8 overall')).toBeVisible();

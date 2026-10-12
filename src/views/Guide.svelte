@@ -19,11 +19,11 @@
 
   const AREAS = [
     { name: 'Practice', to: ['practice'], what: "Your course (Koch or LICW) and lesson, today's list, and every drill: sending drills first, then receive drills." },
-    { name: 'Pocket', to: ['pocket'], what: 'Quiz rounds by ear on characters, chunks, words, callsigns, phrases, or your own set.' },
+    { name: 'Pocket', to: ['pocket'], what: 'Quiz yourself by ear on characters, chunks, words, callsigns, phrases, or your own set.' },
     { name: 'QSO', to: ['qso'], what: 'Learn QSOs, with guided lessons on each part of a contact, and a simulated station for several kinds of contact, from a chat to a contest.' },
     { name: 'Progress', to: ['progress'], what: 'Your speeds over time, accuracy for each character, spacing slips, recent sends and your QSO log.' },
     { name: 'Settings', to: ['settings'], what: 'Speeds, pitch, spoken answers, band conditions, input, and export and import of your progress.' },
-    { name: 'Signal bar', to: ['setup'], what: 'Top right, or under the header on a phone. It shows the input, your tone and a key light. Select it to open Setup.' },
+    { name: 'Signal bar', to: ['setup'], what: 'It sits at the top right, or under the header on a phone. It shows the input, your tone and a key light. Select it to open Setup.' },
   ];
 
   const INPUTS = [

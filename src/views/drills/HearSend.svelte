@@ -168,7 +168,7 @@
     <div class="intro">
       <Segmented label="Material" bind:value={material} options={[{ value: 'characters', label: 'Characters' }, { value: 'words', label: 'Words' }]} />
       <p class="muted">
-        A character or word plays. Copy it, then send it back on your key. You have 8 seconds to start. When you stop
+        A character or word plays. Copy it, then send it back on your key. Each one waits up to 8 seconds for your sending. When you stop
         sending for about a second, BeepBeep shows what it received and plays the next one.
       </p>
       {#if settings.input === 'mic'}<p class="muted">Use headphones, so the microphone hears only your key and not the app.</p>{/if}

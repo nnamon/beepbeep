@@ -158,8 +158,8 @@ function sendWholeOver(c: Ctx): Step {
     kind: 'send',
     title: 'Send your first over',
     explain: [
-      'All of it in one go: who it is to and from, thanks, a report, your name and where you are, then hand it back.',
-      'Send it slowly. A clean over at a slow speed is better than a fast one with mistakes.',
+      'An over is one turn of sending. Send all of yours in one go: who it is to and from, thanks, a report, your name and where you are, then hand it back.',
+      'Send it slowly. A clean over at a slow speed is easier to copy than a fast one with mistakes.',
     ],
     model: `${c.them.call} DE ${up(me.call)} R TNX ${first(c.them.name)} <BT> UR RST 579 579 <BT> NAME ${first(me.name)} ${first(me.name)} <BT> QTH ${where(me)} <BT> HW? ${c.them.call} DE ${up(me.call)} K`,
     outline: 'their call · DE · your call · R TNX and their name · UR RST and a report twice · NAME and yours twice · QTH and where you are · HW? · their call DE your call · K',
@@ -257,7 +257,7 @@ export const LESSONS: Lesson[] = [
   {
     id: 'send-over',
     name: 'Send your first over',
-    summary: 'Your report, name and town, a piece at a time, then your whole turn.',
+    summary: 'Send your report, name and town a piece at a time, then your whole turn, called an over.',
     steps: (c) => [
       {
         kind: 'send',
@@ -439,7 +439,7 @@ export const LESSONS: Lesson[] = [
       {
         kind: 'note',
         title: 'Done',
-        explain: ['They finish with TU 73 and go on to the next hunter. A whole POTA contact takes about twenty seconds.'],
+        explain: ['They finish with TU 73 and go on to the next hunter. A whole POTA contact takes about 20 seconds.'],
         play: 'TU 73 EE',
       },
     ],

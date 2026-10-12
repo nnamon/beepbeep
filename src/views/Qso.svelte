@@ -787,7 +787,7 @@
         {#if stage === 'running'}
           <p class="muted small">
             Your turn ends when you finish with K, KN, BK, AR or SK and then stop keying for about two word spaces. Press
-            Enter or End my turn to end it at once. It also ends after {settings.overTimeout} s without keying.
+            Enter or End my turn to end it at once. It also ends after {settings.overTimeout} seconds without keying.
             {#if NO_K[format]}In this format K is optional: your turn also ends when you stop for about three word spaces
               after any of these: {NO_K[format]}.{/if}
           </p>

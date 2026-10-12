@@ -60,7 +60,7 @@ test('a send drill session, with its fist report, is saved', async ({ page }) =>
   await open(page, 'practice/send');
   await page.getByRole('radio', { name: 'Callsigns' }).click();
   await page.getByRole('button', { name: /Start/ }).click();
-  const prompt = (await page.locator('.block').first().locator('p').innerText()).trim();
+  const prompt = (await page.locator('.block').first().locator('p').first().innerText()).trim();
   await key(page, prompt);
   await page.getByRole('button', { name: /Done/ }).click();
   await expect(page.getByText('Received')).toBeVisible();

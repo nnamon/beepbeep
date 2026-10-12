@@ -488,7 +488,7 @@
               />
               {#if fieldResults?.[f.key]}
                 {@const r = fieldResults[f.key]}
-                <span class="verdict {r.result}">{r.result === 'right' ? 'Right' : r.result === 'close' ? `Close: it was ${r.answer}` : revealed ? `It was ${r.answer}` : 'Not quite. Listen again.'}</span>
+                <span class="verdict {r.result}">{r.result === 'right' ? 'Right' : r.result === 'close' ? `Close: it was ${r.answer}` : revealed ? `It was ${r.answer}` : "That isn't it. Listen again."}</span>
               {/if}
             </label>
           {/each}
@@ -524,7 +524,7 @@
           <div class="keyed" aria-live="polite">
             <span class="label">{verdict ? 'You sent' : 'Decoded'}</span>
             {#if verdict || !strict()}
-              {#if keyed.length}<TokenText tokens={keyed} size="l" />{:else}<p class="muted">Send when you are ready. It is checked {settings.overTimeout} s after you stop, or press Done.</p>{/if}
+              {#if keyed.length}<TokenText tokens={keyed} size="l" />{:else}<p class="muted">Send when you are ready. It is checked {settings.overTimeout} seconds after you stop, or press Done.</p>{/if}
             {:else}
               <p class="muted">Send when you are ready. It shows after you stop.</p>
             {/if}

@@ -75,13 +75,13 @@
   async function clearProgress() {
     if (
       !confirm(
-        'Delete your progress on this device? That is your scores, sessions, QSO log, Learn QSOs results, recent sends and recorded voice clips. Your saved texts and Pocket custom set are kept.',
+        'Delete your progress on this device? This deletes your scores, sessions, QSO log, Learn QSOs results, recent sends and recorded voice clips. Your saved texts and Pocket custom set are kept.',
       )
     )
       return;
     try {
       await clearAll();
-      dataNote = 'Progress deleted.';
+      dataNote = 'Your progress was deleted.';
     } catch {
       dataNote = "Nothing was deleted: the browser's storage isn't available.";
     }
@@ -90,7 +90,7 @@
   function resetAll() {
     if (!confirm('Put every setting back to its default? Your progress, QSO log and texts are kept.')) return;
     resetSettings();
-    dataNote = 'Settings reset.';
+    dataNote = 'Every setting is back to its default.';
   }
 
   // Desktop Chrome has navigator.vibrate but no motor; offer it on touch devices only.
@@ -98,7 +98,7 @@
   const mixNote = $derived(
     settings.stationMix === 'auto'
       ? areaOf(settings.you)
-        ? `Auto: mostly from ${MIX_NAME[effectiveMix()]}, worked out from your callsign or region.`
+        ? `Auto: most often from ${MIX_NAME[effectiveMix()]}, worked out from your callsign or region.`
         : 'Auto: stations from all over the world. Set your callsign to hear more from your area.'
       : settings.stationMix === 'world'
         ? 'Stations from all over the world.'
@@ -155,7 +155,7 @@
         ]}
       />
     </div>
-    <p class="muted small">Where QSO stations and practice callsigns come from. {mixNote}</p>
+    <p class="muted small">This sets where QSO stations and practice callsigns come from. {mixNote}</p>
   </div>
 
   <div class="group">
@@ -173,17 +173,17 @@
       bind:checked={settings.licwStrict}
       onchange={() => (settings.licwAsked = true)}
       label="LICW strict mode"
-      detail="LICW track only. No rhythm bars or character reference; your sending shows only when you finish; receive drills show the answers at the end; BC lessons use the straight key."
+      detail="This works on the LICW track only. It shows no rhythm bars or character reference, shows your sending only when you finish, shows receive drill answers at the end, and keeps BC lessons to the straight key."
     />
     <Toggle
       bind:checked={settings.licwEnrolled}
       label="In an LICW class"
-      detail="LICW track. Lets the carousel start at the lesson you joined at."
+      detail="On the LICW track, this lets the carousel start at the lesson you joined at."
     />
     <Toggle
       bind:checked={settings.useCourseSpeeds}
       label="Use lesson speeds"
-      detail="LICW track. Receive drills use the lesson's speed instead of the speeds below: 12 wpm characters with 8 wpm overall in BC1 and 10 in BC2, then each stage's speed up to ADV. TTR+ and OverLearn use the speeds below."
+      detail="On the LICW track, receive drills use the lesson's speed instead of the speeds below: 12 wpm characters with 8 wpm overall in BC1 and 10 in BC2, then each stage's speed up to ADV. TTR+ and OverLearn use the speeds below."
     />
     <p class="muted small">
       Classic Koch order: K M R S U A P T L O W I . N J E F 0 Y , V G 5 / Q 9 Z H 3 8 B ? 4 2 7 C 1 D 6 X, then the
@@ -213,7 +213,7 @@
     <Toggle
       bind:checked={settings.autoTaper}
       label="Raise the overall speed automatically"
-      detail="After a Copy drill, Sound surfing or Head copy session at 85% or better, the overall speed goes up 1 wpm, up to the character speed. LICW strict mode does this too. Not while lesson speeds are in use."
+      detail="After a Copy drill, Sound surfing or Head copy session at 85% or better, the overall speed goes up 1 wpm, up to the character speed. LICW strict mode does this too. It doesn't apply while lesson speeds are in use."
     />
   </div>
 
@@ -261,14 +261,14 @@
     <Toggle
       bind:checked={settings.visualCue}
       label="Visual cue"
-      detail="A light pulses with the app's tone. For noisy rooms or hard-of-hearing operators. Off in LICW strict mode."
+      detail="A light pulses with the app's tone. It helps in noisy rooms and for hard-of-hearing operators. It is off in LICW strict mode."
     />
   </div>
 
   <div class="group">
     <h2>Band conditions</h2>
     <p class="muted small">
-      Used in the Copy drill, Time to recognise, Sound surfing, Head copy, the sprint, Pocket rounds and the QSO simulator.
+      Band conditions are used in the Copy drill, Time to recognise, Sound surfing, Head copy, the sprint, Pocket rounds and the QSO simulator.
       LICW exercises, Spot the new character, Hear it, send it and Learn QSOs play clean.
     </p>
     <Segmented label="Noise" bind:value={settings.noise} options={[{ value: 0, label: 'No noise' }, { value: 1, label: 'Light' }, { value: 2, label: 'Moderate' }, { value: 3, label: 'Heavy' }]} />

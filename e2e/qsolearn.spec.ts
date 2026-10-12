@@ -101,7 +101,7 @@ test('Answer a CQ, typed, with mistakes and second tries', async ({ page }, info
   await page.getByRole('button', { name: 'Play', exact: true }).click();
   await page.getByLabel('Their call').fill('K2ZZZ');
   await page.getByRole('button', { name: 'Check' }).click();
-  await expect(page.getByText('Not quite. Listen again.')).toBeVisible();
+  await expect(page.getByText("That isn't it. Listen again.")).toBeVisible();
   await page.getByRole('button', { name: 'Show what they sent' }).click();
   const sent = (await page.locator('.sent .text').innerText()).replace(/\s+/g, ' ');
   const call = /DE (\S+)/.exec(sent)![1];

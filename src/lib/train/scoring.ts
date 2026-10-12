@@ -1,7 +1,7 @@
 // Comparing what was sent with what was received, and turning a fist report
 // into one actionable note.
 
-import { patternOf } from '../morse/code';
+import { displayToken, patternOf } from '../morse/code';
 import { align, textTokens, type AlignOp } from '../util/text';
 import type { FistReport } from './fist';
 
@@ -91,12 +91,24 @@ export function spacingIssues(intended: string, received: string): SendIssue[] {
   const b = textTokens(received);
   const issues: SendIssue[] = [];
   const ops = align(a, b);
+  /** The received word around token `at`, as received (spaces inside it kept for a split). */
+  const wordAt = (at: number, from = at, to = at) => {
+    let i = from;
+    let j = to;
+    while (i > 0 && b[i - 1] !== ' ') i--;
+    while (j < b.length - 1 && b[j + 1] !== ' ') j++;
+    return b.slice(i, j + 1).map(displayToken).join('');
+  };
   for (let i = 0; i < ops.length; i++) {
     const o = ops[i];
     if (o.op === 'del' && o.want === ' ') {
-      issues.push({ kind: 'merged-words', at: ops.slice(0, i).filter((x) => x.op !== 'del').length, detail: 'heard as one word' });
+      const at = ops.slice(0, i).filter((x) => x.op !== 'del').length;
+      issues.push({ kind: 'merged-words', at, detail: b.length ? wordAt(Math.min(at, b.length - 1)) : '' });
     } else if (o.op === 'ins' && o.got === ' ') {
-      issues.push({ kind: 'split-word', at: o.gi, detail: 'heard as two words' });
+      // Both halves, with the space that split them: "9V1 NE".
+      const left = o.gi > 0 ? wordAt(o.gi - 1) : '';
+      const right = o.gi < b.length - 1 ? wordAt(o.gi + 1) : '';
+      issues.push({ kind: 'split-word', at: o.gi, detail: `${left} ${right}`.trim() });
     } else if (o.op === 'sub' && o.got !== ' ' && o.want !== ' ') {
       // The alignment may put the extra or missing letter on either side.
       const prev = ops[i - 1];
@@ -131,9 +143,9 @@ export function spacingIssues(intended: string, received: string): SendIssue[] {
 export function describeIssue(i: SendIssue): string {
   switch (i.kind) {
     case 'merged-words':
-      return 'Two words heard as one.';
+      return i.detail ? `Two words heard as one: ${i.detail}.` : 'Two words heard as one.';
     case 'split-word':
-      return 'One word heard as two.';
+      return i.detail ? `One word heard as two: ${i.detail}.` : 'One word heard as two.';
     case 'merged-letters':
       return `Letters ran together: ${i.detail}.`;
     case 'split-letter':

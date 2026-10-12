@@ -132,7 +132,7 @@ test('the signal bar is named by what it shows', async ({ page }) => {
   await page.reload();
   await expect(page.locator('header .signal a')).toHaveAccessibleName(/^Touch key\b.*input setup/i);
   await page.keyboard.press('Alt+ArrowUp');
-  await expect(page.locator('header .signal a')).toHaveAccessibleName(/Receive \d+ wpm/);
+  await expect(page.locator('header .signal a')).toHaveAccessibleName(/Character speed \d+ wpm/);
 });
 
 test('notices are announced', async ({ page }) => {
@@ -140,10 +140,10 @@ test('notices are announced', async ({ page }) => {
   const live = await page.locator('[aria-live="polite"], [role="status"]').elementHandles();
   expect(live.length).toBeGreaterThan(0);
   await page.keyboard.press('Alt+ArrowUp');
-  await expect(page.getByRole('status').filter({ hasText: /^Receive \d+ wpm$/ })).toHaveCount(1);
+  await expect(page.getByRole('status').filter({ hasText: /^Character speed \d+ wpm$/ })).toHaveCount(1);
   // The region was there before the text arrived, so screen readers notice the change.
   const texts = await Promise.all(live.map((h) => h.evaluate((e) => e.isConnected && e.textContent)));
-  expect(texts.some((t) => t && /Receive \d+ wpm/.test(t))).toBe(true);
+  expect(texts.some((t) => t && /Character speed \d+ wpm/.test(t))).toBe(true);
 });
 
 test('Pocket: the answer after a miss is announced', async ({ page }) => {

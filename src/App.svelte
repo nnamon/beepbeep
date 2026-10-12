@@ -21,7 +21,7 @@
   import { setMix } from './lib/train/world';
   import { notify, signal, stopMic } from './lib/state/signal.svelte';
   import { engine } from './lib/audio/engine';
-  import { courseSpeedsInUse } from './lib/train/session';
+  import { courseSpeedsInUse, laterStage } from './lib/train/session';
   import { inField } from './lib/util/keys';
 
   // The audio engine follows the saved volume and headphone setting.
@@ -37,10 +37,10 @@
     if (!e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') || inField(e)) return;
     e.preventDefault();
     // The LICW lesson's own speed is in use, so the setting would change nothing.
-    if (courseSpeedsInUse()) return notify('This lesson sets the speed.');
+    if (courseSpeedsInUse()) return notify(laterStage() ? 'This stage sets the speed.' : 'This lesson sets the speed.');
     settings.charWpm = Math.max(5, Math.min(45, settings.charWpm + (e.key === 'ArrowUp' ? 1 : -1)));
     if (settings.effectiveWpm > settings.charWpm) settings.effectiveWpm = settings.charWpm;
-    notify(`Receive ${settings.charWpm} wpm`);
+    notify(`Character speed ${settings.charWpm} wpm`);
   }
 
   // The microphone stays on only while a screen that listens is open: sending

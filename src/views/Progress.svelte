@@ -92,13 +92,14 @@
     <div>
       <dt class="label">Sending share</dt>
       <dd class="value">{sendShare === null ? 'none yet' : `${sendShare}%`}</dd>
-      <dd class="aim muted">aim 25% or more</dd>
+      <dd class="aim muted">aim 20% or more</dd>
     </div>
     <div><dt class="label">QSOs</dt><dd class="value">{log.length}</dd></div>
     <div><dt class="label">Lesson</dt><dd class="value small-value">{level.name}</dd></div>
     <div>
       <dt class="label">Comfort and stretch speeds</dt>
-      <dd class="value small-value">{settings.comfortWpm} / {settings.stretchWpm} <span class="muted unit">wpm</span></dd>
+      <dd class="value small-value">{settings.comfortWpm} and {settings.stretchWpm} <span class="muted unit">wpm</span></dd>
+      <dd class="aim muted">for the extra copy sessions</dd>
     </div>
   </dl>
 
@@ -109,14 +110,14 @@
   {#if list.length}
   <div class="charts">
     {#if strict()}
-      <LineChart title="Time before the voice in the TTR drill" unit="s" digits={2} points={ttr} lowerIsBetter />
+      <LineChart title="Time before the voice, Time to recognise (TTR)" unit="s" digits={2} points={ttr} lowerIsBetter />
       <LineChart title="Characters missed in a row, Sound surfing" unit="characters" digits={1} points={recovery} lowerIsBetter />
       <LineChart title="Speed you practised copying at" unit="wpm" points={receive} />
       <LineChart title="Your sending speed, as decoded" unit="wpm" points={sent} />
     {:else}
       <LineChart title="Speed you practised copying at" unit="wpm" points={receive} />
       <LineChart title="Your sending speed, as decoded" unit="wpm" points={sent} />
-      <LineChart title="Time before the voice in the TTR drill" unit="s" digits={2} points={ttr} lowerIsBetter />
+      <LineChart title="Time before the voice, Time to recognise (TTR)" unit="s" digits={2} points={ttr} lowerIsBetter />
       <LineChart title="Characters missed in a row, Sound surfing" unit="characters" digits={1} points={recovery} lowerIsBetter />
     {/if}
   </div>

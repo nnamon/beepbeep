@@ -94,8 +94,8 @@ function later(stage: ClassId, i: TodayInput): Step[] {
       const b = pick[(i.day + 3) % pick.length];
       return [
         { id: 'chars', title: 'Characters', why: 'Warm up on single characters at speed.', minutes: 2, to: ex(stage, 'characters'), modes: [mode(stage, 'characters')] },
-        { id: 'a', title: a[1], why: 'One of the two OverLearn exercises for today. They change each day.', minutes: 5, to: ex(stage, a[0]), modes: [mode(stage, a[0])] },
-        { id: 'b', title: b[1], why: 'The other OverLearn exercise for today.', minutes: 5, to: ex(stage, b[0]), modes: [mode(stage, b[0])] },
+        { id: 'a', title: a[1], why: 'This is one of the two OverLearn exercises for today. They change each day.', minutes: 5, to: ex(stage, a[0]), modes: [mode(stage, a[0])] },
+        { id: 'b', title: b[1], why: 'This is the other OverLearn exercise for today.', minutes: 5, to: ex(stage, b[0]), modes: [mode(stage, b[0])] },
         send,
       ];
     }
@@ -125,7 +125,7 @@ function koch(i: TodayInput): Step[] {
     { id: 'ttr', title: 'Time to recognise (TTR)', why: 'Type each character before the voice names it.', minutes: 3, to: ['practice', 'ttr'], modes: ['ttr'] },
     { id: 'send', title: 'Hear it, send it', why: 'Copy a character or word, then send it on your key.', minutes: 4, to: ['practice', 'hear-send'], modes: ['hear-send', 'send', 'live'] },
     ...(i.weak.length
-      ? [{ id: 'weak', title: `Pocket round for ${i.weak.join(' ')}`, why: 'A quiz round where your weakest characters this month come up more often.', minutes: 2, to: ['pocket', 'round', 'characters'], modes: ['pocket-characters'], optional: true }]
+      ? [{ id: 'weak', title: `Pocket round for ${i.weak.join(' ')}`, why: 'In this quiz round, your weakest characters this month come up more often.', minutes: 2, to: ['pocket', 'round', 'characters'], modes: ['pocket-characters'], optional: true }]
       : []),
     { id: 'more', title: 'Sound surfing', why: 'Copy a continuous stream. Keep going when you miss one.', minutes: 3, to: ['practice', 'ifr'], modes: ['ifr'], optional: true },
   ];

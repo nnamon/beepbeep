@@ -151,7 +151,7 @@
     const inner = model.gapModel ? model.elemGap / model.dit : null;
     if (!marks) {
       calNote = mic
-        ? 'Nothing heard. Check that your sidetone is on and loud enough, and move the mic closer to it.'
+        ? 'Nothing was heard. Check that your sidetone is on and loud enough, and move the mic closer to it.'
         : 'Nothing keyed. Hold the key down for each dit and dah.';
     } else if (vs >= 2 && (!mic || marks <= vs * 4 + 2)) {
       settings.sendWpm = Math.round(wpm);
@@ -376,7 +376,7 @@
     {#if calPin}
       <div class="row">
         <Button kind="primary" onclick={() => { pin(calPin); calPin = null; }}>Pin {calPin} Hz</Button>
-        <span class="muted small">Listen only at this pitch from now on.</span>
+        <span class="muted small">Pin this pitch: from now on the decoder listens there first.</span>
       </div>
     {/if}
     <div class="row">

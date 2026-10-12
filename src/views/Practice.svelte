@@ -147,7 +147,7 @@
     ] },
     { group: 'Both', items: [
       { id: 'hear-send', name: 'Hear it, send it', text: 'Copy a character or word, then send it.' },
-      { id: 'qso-learn', name: 'Learn QSOs', text: 'Guided lessons on each part of a QSO, a contact with another station. Repeat each step until you get it right.', href: href('qso', 'learn') },
+      { id: 'qso-learn', name: 'Learn QSOs', text: 'Guided lessons take you through each part of a QSO, a contact with another station. Repeat each step until you get it right.', href: href('qso', 'learn') },
       { id: 'qso', name: 'QSO simulator', text: 'Make whole contacts with a simulated station: a chat, a contest, a park activation and more.', href: href('qso') },
     ] },
     { group: 'Receive', items: [
@@ -239,13 +239,9 @@
           </div>
         {/if}
         <div class="level-meta">
-          {#if speeds.charWpm === speeds.effectiveWpm}
-            <span class="label">Receive speed</span>
-            <Value value={speeds.charWpm} unit="wpm" size="l" />
-          {:else}
-            <span class="label">Receive speed: characters / overall</span>
-            <Value value="{speeds.charWpm} / {speeds.effectiveWpm}" unit="wpm" size="l" />
-          {/if}
+          <span class="label">Receive speed</span>
+          <Value value={speeds.charWpm} unit="wpm" size="l" />
+          {#if speeds.charWpm !== speeds.effectiveWpm}<span class="muted small">characters, {speeds.effectiveWpm} wpm overall</span>{/if}
         </div>
         <div class="level-meta">
           <span class="label">Characters known</span>
