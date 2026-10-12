@@ -34,12 +34,12 @@ export default defineConfig({
     reuseExistingServer: true,
   },
   projects: [
-    { name: 'desktop', use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 860 } }, testMatch: /(screens|visual|a11y|classes|qsolearn|storage|drills)\.spec/ },
+    { name: 'desktop', use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 860 } }, testMatch: /(screens|visual|a11y|classes|qsolearn|storage|drills|shell)\.spec/ },
     { name: 'phone', use: { ...devices['iPhone 13'] }, testMatch: /(screens|touch|ios|calibrate|classes|layout|qsolearn)\.spec/ },
     { name: 'pixel', use: { ...devices['Pixel 7'] }, testMatch: /screens\.spec/ },
     // Small Android phones: 360 px is the narrowest common width.
     { name: 'small', use: { ...devices['Pixel 7'], viewport: { width: 360, height: 740 } }, testMatch: /screens\.spec/ },
-    { name: 'mic', testMatch: /(decode|flows|voice|touch|calibrate|station)\.spec/, use: { ...devices['Desktop Chrome'], ...fakeMic } },
+    { name: 'mic', testMatch: /(decode|flows|voice|touch|calibrate|station|micrelease)\.spec/, use: { ...devices['Desktop Chrome'], ...fakeMic } },
     { name: 'mic-pixel', testMatch: /(decode|touch)\.spec/, use: { ...devices['Pixel 7'], ...fakeMic } },
     // README images, on demand (README_SHOTS=1; see e2e/readme.spec.ts).
     { name: 'readme', testMatch: /readme\.spec/, use: { ...devices['Desktop Chrome'], ...micPlaying('room-cq.wav') } },

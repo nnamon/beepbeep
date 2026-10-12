@@ -24,7 +24,7 @@
 
 {#if IS_IOS && !running}
   <div class="gate" role="status">
-    <span>Sound is off until you tap. It plays with the silent switch on.</span>
+    <span>Sound is off until you tap. Once it is on, it plays even with the silent switch on.</span>
     <button type="button" onclick={enable}>Turn sound on</button>
   </div>
 {/if}

@@ -208,8 +208,9 @@
         <div class="ask" role="group" aria-labelledby="ask-h">
           <h2 id="ask-h">LICW strict mode</h2>
           <p class="muted">
-            Follows LICW's method closely: no rhythm bars or character chart, your decoded sending appears only after you
-            finish, and receive drills show the answers only at the end. You can change this in Settings.
+            It follows LICW's method closely: no rhythm bars or character reference, your sending is shown only when you
+            finish, receive drills show the answers at the end, and BC lessons use the straight key. You can change this in
+            Settings.
           </p>
           <div class="ask-actions">
             <Button kind="primary" onclick={() => { settings.licwStrict = true; settings.licwAsked = true; }}>Turn on</Button>

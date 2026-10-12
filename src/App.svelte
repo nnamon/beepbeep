@@ -18,8 +18,10 @@
   import Specimen from './views/Specimen.svelte';
   import { effectiveMix, settings } from './lib/state/settings.svelte';
   import { setMix } from './lib/train/world';
-  import { notify, signal } from './lib/state/signal.svelte';
+  import { notify, signal, stopMic } from './lib/state/signal.svelte';
   import { engine } from './lib/audio/engine';
+  import { courseSpeedsInUse } from './lib/train/session';
+  import { inField } from './lib/util/keys';
 
   // The audio engine follows the saved volume and headphone setting.
   $effect(() => {
@@ -31,12 +33,26 @@
 
   // Alt+Up / Alt+Down: receive speed. On touch screens the same is in Settings.
   function onKey(e: KeyboardEvent) {
-    if (!e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+    if (!e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') || inField(e)) return;
     e.preventDefault();
+    // The LICW lesson's own speed is in use, so the setting would change nothing.
+    if (courseSpeedsInUse()) return notify('This lesson sets the speed.');
     settings.charWpm = Math.max(5, Math.min(45, settings.charWpm + (e.key === 'ArrowUp' ? 1 : -1)));
     if (settings.effectiveWpm > settings.charWpm) settings.effectiveWpm = settings.charWpm;
     notify(`Receive ${settings.charWpm} wpm`);
   }
+
+  // The microphone stays on only while a screen that listens is open: sending
+  // drills, QSOs and Setup. Leave them and it is released after a short
+  // while, so a quick visit elsewhere doesn't ask for it again.
+  const listens = (p: string[]) => p[0] === 'setup' || p[0] === 'qso' || (p[0] === 'practice' && ['live', 'send', 'hear-send'].includes(p[1] ?? ''));
+  let micTimer: ReturnType<typeof setTimeout> | null = null;
+  $effect(() => {
+    const away = !listens(route.path);
+    if (micTimer) clearTimeout(micTimer);
+    micTimer = null;
+    if (away) micTimer = setTimeout(() => signal.micOn && !listens(route.path) && stopMic(), 10_000);
+  });
 
   const tabs = [
     { id: 'practice', label: 'Practice' },

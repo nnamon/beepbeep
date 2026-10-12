@@ -61,7 +61,7 @@
     }),
   );
   const charRows = $derived(chars.filter((c) => c.r || c.x));
-  const pct = (v: number | null | undefined) => (v === null || v === undefined ? '–' : `${Math.round(v * 100)}%`);
+  const pct = (v: number | null | undefined) => (v === null || v === undefined ? 'no data' : `${Math.round(v * 100)}%`);
   const SLIPS: { kind: Exclude<keyof SlipCounts, 'pairs'>; label: string }[] = [
     { kind: 'merged-words', label: 'Words ran together' },
     { kind: 'merged-letters', label: 'Letters ran together' },
@@ -91,7 +91,7 @@
     <div><dt class="label">Minutes, 7 days</dt><dd class="value">{minutes}</dd></div>
     <div>
       <dt class="label">Sending share</dt>
-      <dd class="value">{sendShare === null ? '–' : `${sendShare}%`}</dd>
+      <dd class="value">{sendShare === null ? 'none yet' : `${sendShare}%`}</dd>
       <dd class="aim muted">aim 25% or more</dd>
     </div>
     <div><dt class="label">QSOs</dt><dd class="value">{log.length}</dd></div>
@@ -109,15 +109,15 @@
   {#if list.length}
   <div class="charts">
     {#if strict()}
-      <LineChart title="TTR voice delay" unit="s" digits={2} points={ttr} lowerIsBetter />
-      <LineChart title="Recovery after misses" unit="chars" digits={1} points={recovery} lowerIsBetter />
-      <LineChart title="Receive speed" unit="wpm" points={receive} />
-      <LineChart title="Sending speed" unit="wpm" points={sent} />
+      <LineChart title="Time before the voice in the TTR drill" unit="s" digits={2} points={ttr} lowerIsBetter />
+      <LineChart title="Characters missed in a row, Sound surfing" unit="characters" digits={1} points={recovery} lowerIsBetter />
+      <LineChart title="Speed you practised copying at" unit="wpm" points={receive} />
+      <LineChart title="Your sending speed, as decoded" unit="wpm" points={sent} />
     {:else}
-      <LineChart title="Receive speed" unit="wpm" points={receive} />
-      <LineChart title="Sending speed" unit="wpm" points={sent} />
-      <LineChart title="TTR voice delay" unit="s" digits={2} points={ttr} lowerIsBetter />
-      <LineChart title="Recovery after misses" unit="chars" digits={1} points={recovery} lowerIsBetter />
+      <LineChart title="Speed you practised copying at" unit="wpm" points={receive} />
+      <LineChart title="Your sending speed, as decoded" unit="wpm" points={sent} />
+      <LineChart title="Time before the voice in the TTR drill" unit="s" digits={2} points={ttr} lowerIsBetter />
+      <LineChart title="Characters missed in a row, Sound surfing" unit="characters" digits={1} points={recovery} lowerIsBetter />
     {/if}
   </div>
   {/if}
@@ -148,9 +148,9 @@
               <tr>
                 <td class="mono" class:prosign={isProsign(c.t)}>{displayToken(c.t)}</td>
                 <td class="num">{pct(c.r?.accuracy)} <span class="muted">{c.r ? `of ${c.r.n}` : ''}</span></td>
-                <td class="num">{c.r?.value ? `${(c.r.value / 1000).toFixed(1)} s` : '–'}</td>
+                <td class="num">{c.r?.value ? `${(c.r.value / 1000).toFixed(1)} s` : 'no data'}</td>
                 <td class="num">{pct(c.x?.accuracy)} <span class="muted">{c.x ? `of ${c.x.n}` : ''}</span></td>
-                <td class="num">{c.x?.value ? `${Math.round(c.x.value / 10)}%` : '–'}</td>
+                <td class="num">{c.x?.value ? `${Math.round(c.x.value / 10)}%` : 'no data'}</td>
               </tr>
             {/each}
           </tbody>
@@ -204,14 +204,15 @@
 
   {#if lastFist}
     <div class="block">
-      <h2>Latest fist report</h2>
+      <h2>Your latest sending timing</h2>
       <dl class="fist">
         <div><dt class="label">Speed</dt><dd class="num">{lastFist.wpm.toFixed(0)} wpm</dd></div>
-        <div><dt class="label">Dah to dit</dt><dd class="num">{lastFist.dahRatio.toFixed(1)} <span class="muted">aim 3</span></dd></div>
-        <div><dt class="label">Letter gap</dt><dd class="num">{lastFist.charGap.toFixed(1)} u <span class="muted">aim 3</span></dd></div>
-        <div><dt class="label">Word gap</dt><dd class="num">{lastFist.wordGap?.toFixed(1) ?? '–'} u <span class="muted">aim 7</span></dd></div>
-        <div><dt class="label">Weighting</dt><dd class="num">{lastFist.weighting.toFixed(2)} <span class="muted">aim 1.0</span></dd></div>
+        <div><dt class="label">Dah length, in dits</dt><dd class="num">{lastFist.dahRatio?.toFixed(1) ?? 'none sent'} <span class="muted">aim 3</span></dd></div>
+        <div><dt class="label">Gap between letters</dt><dd class="num">{lastFist.charGap.toFixed(1)} units <span class="muted">aim 3</span></dd></div>
+        <div><dt class="label">Gap between words</dt><dd class="num">{lastFist.wordGap === null || lastFist.wordGap === undefined ? 'none sent' : `${lastFist.wordGap.toFixed(1)} units`} <span class="muted">aim 7</span></dd></div>
+        <div><dt class="label">Dit length against the gaps inside letters</dt><dd class="num">{lastFist.weighting.toFixed(2)} <span class="muted">aim 1.0</span></dd></div>
       </dl>
+      <p class="muted small">A unit is one dit long at your speed.</p>
     </div>
   {/if}
 
@@ -223,7 +224,7 @@
           {#each sends as r (r.at)}
             <li>
               <div class="send-head">
-                <span class="mono">{r.text || '–'}</span>
+                <span class="mono">{r.text || 'nothing decoded'}</span>
                 <span class="muted small">{time(r.at)}</span>
                 <button type="button" class="play" onclick={() => playMarks(r.marks)}>Replay</button>
               </div>
@@ -232,7 +233,7 @@
           {/each}
         </ul>
       {:else}
-        <p class="muted small">None yet. Sends from the send drills appear here.</p>
+        <p class="muted small">None yet. What you send in the sending drills appears here.</p>
       {/if}
     </div>
   {:else}
@@ -251,7 +252,7 @@
             {#each [...log].reverse() as q (q.id)}
               <tr>
                 <td>{day(q.at)}</td><td>{fmtName(q.format)}</td><td class="mono">{q.call}</td><td class="mono">{q.name}</td>
-                <td class="mono">{q.qth} {q.state}</td><td class="num">{q.rstSent || '–'}</td><td class="num">{q.rstRcvd}</td>
+                <td class="mono">{q.qth} {q.state}</td><td class="num">{q.rstSent || 'none'}</td><td class="num">{q.rstRcvd}</td>
                 <td class="num">{Math.floor(q.seconds / 60)}:{String(q.seconds % 60).padStart(2, '0')}</td>
                 <td class="num">{Math.round(q.copyScore * 100)}%</td><td class="num">{Math.round(q.sendScore * 100)}%</td>
               </tr>

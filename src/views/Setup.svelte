@@ -34,6 +34,8 @@
 
   onDestroy(() => {
     if (poll) clearInterval(poll);
+    // Left in the middle of calibrating: put back the squelch it took off.
+    if (cal === 'listening' || cal === 'settling') engine.command({ type: 'squelch', db: settings.squelchDb });
     calLive?.stop();
     calUnsub?.();
     stopCalTimer();
@@ -79,6 +81,11 @@
     stopCalTimer();
     if (settings.input === 'mic' && !signal.micOn) await micOn();
     if (run !== calRun) return;
+    if (settings.input === 'mic' && !signal.micOn) {
+      cal = 'idle';
+      calNote = `The microphone isn't on, so there is nothing to calibrate. ${signal.error}`.trim();
+      return;
+    }
     calReq++;
     calText = '';
     calNote = '';
@@ -143,14 +150,16 @@
     // Inside a letter the gap is one dit by the book; hand keying often runs longer.
     const inner = model.gapModel ? model.elemGap / model.dit : null;
     if (!marks) {
-      calNote = mic ? 'Nothing heard. Check the level meter and move the mic closer.' : 'Nothing keyed. Hold the key for each element.';
+      calNote = mic
+        ? 'Nothing heard. Check that your sidetone is on and loud enough, and move the mic closer to it.'
+        : 'Nothing keyed. Hold the key down for each dit and dah.';
     } else if (vs >= 2 && (!mic || marks <= vs * 4 + 2)) {
       settings.sendWpm = Math.round(wpm);
       const where = mic && signal.pitch ? ` at ${Math.round(signal.pitch)} Hz` : '';
       const gaps = inner !== null && inner >= 1.8 ? ` The gaps inside your letters are ${inner.toFixed(1)} dits long; the standard is 1.` : '';
       calNote = `Heard ${vs} V's at ${Math.round(wpm)} wpm${where}. Saved as your sending speed.${gaps}`;
     } else if (mic && marks > (vs || 3) * 4 + 2) {
-      calNote = 'Tone breaking up. Lower the sidetone volume, move the mic or use a wired mic.';
+      calNote = 'The tone is breaking up. Lower the sidetone volume, move the mic, or use a wired mic.';
     } else {
       calNote = `Heard ${calText || 'nothing clear'}. V is di-di-di-dah. Gaps inside a V should be shorter than gaps between V's.`;
     }
@@ -171,15 +180,13 @@
       return;
     }
     const rise = Math.round(median(calLevels.rise));
-    const room = calLevels.floor.length ? Math.round(median(calLevels.floor)) : null;
-    const where = room === null ? '' : ` (room ${room} dBFS, tone ${room + rise} dBFS)`;
     if (good) {
       settings.squelchDb = Math.max(9, Math.min(20, Math.round(rise / 2)));
-      calLevelNote = `Tone ${rise} dB over the room${where}. Squelch set to ${settings.squelchDb} dB, so quieter sounds are ignored.`;
+      calLevelNote = `Your tone is ${rise} dB louder than the room. Squelch set to ${settings.squelchDb} dB: sounds quieter than that are ignored.`;
     } else {
-      calLevelNote = `Tone ${rise} dB over the room${where}. Squelch left at ${settings.squelchDb ? `${settings.squelchDb} dB` : 'the default'}.`;
+      calLevelNote = `Your tone is ${rise} dB louder than the room. Squelch left at ${settings.squelchDb ? `${settings.squelchDb} dB` : 'the default'}.`;
     }
-    if (rise < 15) calLevelNote += ' Weak. Turn the sidetone up or move the mic closer.';
+    if (rise < 15) calLevelNote += ' The tone is weak. Turn the sidetone up or move the mic closer.';
     engine.command({ type: 'squelch', db: settings.squelchDb });
     if (good && signal.pitch && (!settings.pinnedHz || Math.abs(settings.pinnedHz - signal.pitch) > 10)) calPin = Math.round(signal.pitch);
   }
@@ -247,7 +254,7 @@
       options={[
         { value: 'mic' as InputSource, label: 'Microphone' },
         { value: 'touch' as InputSource, label: 'Touch key' },
-        { value: 'straight' as InputSource, label: 'Keyboard straight key' },
+        { value: 'straight' as InputSource, label: 'Straight key' },
         ...(straightOnly()
           ? []
           : [
@@ -257,8 +264,11 @@
       ]}
     />
   </div>
+  {#if settings.input === 'straight' || settings.input === 'iambicA' || settings.input === 'iambicB'}
+    <p class="muted small">The straight key and paddles use your keyboard: Space is the straight key; [ and ] (or Z and X) are the paddles.</p>
+  {/if}
   {#if straightOnly()}
-    <p class="muted">LICW strict mode, BC lessons: straight key only. Turn strict mode off in Settings to use paddles.</p>
+    <p class="muted">In LICW strict mode, BC lessons use the straight key only. Turn strict mode off in Settings to use paddles.</p>
   {/if}
 
   {#if settings.input === 'mic'}
@@ -295,7 +305,7 @@
           <p class="warn">The browser kept voice processing on. Tones may break up.</p>
         {/if}
         {#if signal.info.bluetooth}
-          <p class="warn">Bluetooth input: audio drops to call quality. Use wired earphones or the built-in mic.</p>
+          <p class="warn">Bluetooth input drops the audio to call quality. Use wired earphones or the built-in mic.</p>
         {/if}
       {/if}
     </div>
@@ -325,11 +335,15 @@
             </div>
             <Button kind="quiet" onclick={() => pin(null)}>Unpin</Button>
           {:else}
-            <span class="muted">{#if signal.pitch}Heard at <span class="num">{Math.round(signal.pitch)} Hz</span>{:else}Searching 300–1200 Hz{/if}</span>
+            <span class="muted">{#if signal.pitch}Heard at <span class="num">{Math.round(signal.pitch)} Hz</span>{:else}Searching 300 to 1200 Hz{/if}</span>
             <Button kind={signal.pitch ? 'primary' : 'secondary'} onclick={() => setPitch(signal.pitch ?? 600)}>Pin {Math.round(signal.pitch ?? 600)} Hz</Button>
           {/if}
         </div>
-        <p class="muted small">When a pitch is pinned, the decoder listens only at that pitch and ignores other sounds. Key a few V's and pin the pitch it hears, or enter your sidetone's pitch.</p>
+        <p class="muted small">
+          When a pitch is pinned, the decoder listens at that pitch and ignores sounds at other pitches. If it keeps hearing
+          your keying at a different pitch, it moves there. Key a few V's and pin the pitch it hears, or enter your
+          sidetone's pitch.
+        </p>
         <div class="spec-wrap" bind:clientWidth={specWidth}>
         <svg class="spec" viewBox="0 0 {W} {H}" width={W} height={H} role="img" aria-label="Input spectrum, 200 to 1500 Hz">
           <rect x={xOf(300)} y="0" width={xOf(1200) - xOf(300)} height={H} class="band" />
@@ -340,8 +354,8 @@
         </div>
         <div class="row between">
           <p class="muted small">
-            Level {Math.round(signal.level)} dBFS, signal {Math.round(signal.snr)} dB over noise.{#if settings.squelchDb}
-              Squelch {settings.squelchDb} dB, from calibration.{/if}
+            Input level {Math.round(signal.level)} dB. Your tone is {Math.round(signal.snr)} dB over the noise.{#if settings.squelchDb}
+              Squelch is {settings.squelchDb} dB, from calibration.{/if}
           </p>
           {#if settings.squelchDb}<Button kind="quiet" onclick={clearSquelch}>Clear squelch</Button>{/if}
         </div>
@@ -352,7 +366,7 @@
 
   <div class="block">
     <h2>Calibrate</h2>
-    <p class="muted">Send <span class="mono">V V V</span>. Sets your sending speed and checks the tone.</p>
+    <p class="muted">Send <span class="mono">V V V</span>. This sets your sending speed and checks your tone.</p>
     {#if cal === 'listening'}
       <p class="muted">Listening, {calLeft} s left</p>
     {/if}
@@ -382,7 +396,7 @@
       {#if __DEBUG__}
         <li>Debug server: samples you record are saved on the machine serving this page.</li>
       {:else}
-        <li>Audio stays on this device. Nothing is recorded or uploaded.</li>
+        <li>Microphone audio stays on this device and is never uploaded.</li>
       {/if}
       <li>LICW classes are private: LICW counts automated transcription as recording. Don't run the decoder during a class.</li>
       <li>On iPhone, keep BeepBeep in the foreground while it listens.</li>

@@ -12,6 +12,7 @@
   import { voices } from '../lib/audio/speech';
   import { clearAll, exportAll, importAll, readExport } from '../lib/state/db';
   import type { TrackId } from '../lib/train/courses';
+  import { courseSpeedsInUse } from '../lib/train/session';
 
   let voiceList = $state<SpeechSynthesisVoice[]>([]);
   let showRecorder = $state(false);
@@ -23,15 +24,22 @@
   });
 
   async function exportData() {
-    const data = await exportAll();
+    let data;
+    try {
+      data = await exportAll();
+    } catch {
+      dataNote = "Nothing was exported: the browser's storage isn't available.";
+      return;
+    }
     const blob = new Blob([JSON.stringify({ ...data, settings: $state.snapshot(settings) }, null, 1)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
+    const name = `beepbeep-${new Date().toISOString().slice(0, 10)}.json`;
     a.href = url;
-    a.download = `beepbeep-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = name;
     a.click();
     URL.revokeObjectURL(url);
-    dataNote = 'Exported.';
+    dataNote = `Saved ${name} to your downloads.`;
   }
 
   async function importData(e: Event) {
@@ -58,22 +66,43 @@
       if (s) applySettings(s);
       dataNote = `Imported ${what}.`;
     } catch (err) {
-      dataNote = (err as Error).message;
+      // The file's own problems come with a plain message; anything else is the browser's storage.
+      const msg = (err as Error).message ?? '';
+      dataNote = msg.endsWith('Nothing was changed.') ? msg : "The import didn't happen: the browser's storage isn't available. Nothing was changed.";
     }
   }
 
   async function clearProgress() {
-    if (!confirm('Delete all progress, QSO log and recorded voice clips on this device?')) return;
-    await clearAll();
-    dataNote = 'Progress deleted.';
+    if (
+      !confirm(
+        'Delete your progress on this device? That is your scores, sessions, QSO log, Learn QSOs results, recent sends and recorded voice clips. Your saved texts and Pocket custom set are kept.',
+      )
+    )
+      return;
+    try {
+      await clearAll();
+      dataNote = 'Progress deleted.';
+    } catch {
+      dataNote = "Nothing was deleted: the browser's storage isn't available.";
+    }
+  }
+
+  function resetAll() {
+    if (!confirm('Put every setting back to its default? Your progress, QSO log and texts are kept.')) return;
+    resetSettings();
+    dataNote = 'Settings reset.';
   }
 
   // Desktop Chrome has navigator.vibrate but no motor; offer it on touch devices only.
-  const MIX_NAME = { asia: 'Asia-Pacific', europe: 'Europe', americas: 'the Americas', world: 'everywhere' } as const;
+  const MIX_NAME = { asia: 'Asia-Pacific', europe: 'Europe', americas: 'the Americas', world: 'all over the world' } as const;
   const mixNote = $derived(
     settings.stationMix === 'auto'
-      ? `Auto: mostly ${MIX_NAME[effectiveMix()]}${areaOf(settings.you) ? ', from your callsign or region' : '; set your callsign to focus it'}.`
-      : `Mostly ${MIX_NAME[settings.stationMix]}, some from elsewhere.`,
+      ? areaOf(settings.you)
+        ? `Auto: mostly from ${MIX_NAME[effectiveMix()]}, worked out from your callsign or region.`
+        : 'Auto: stations from all over the world. Set your callsign to hear more from your area.'
+      : settings.stationMix === 'world'
+        ? 'Stations from all over the world.'
+        : `Mostly from ${MIX_NAME[settings.stationMix]}, with some from elsewhere.`,
   );
   const canVibrate =
     typeof navigator !== 'undefined' && 'vibrate' in navigator && window.matchMedia('(pointer: coarse)').matches;
@@ -101,15 +130,16 @@
   <div class="group">
     <h2>Your station</h2>
     <div class="station">
-      <label><span class="label">Callsign</span><input id="you-call" class="mono" bind:value={settings.you.call} autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="K1ABC" /></label>
-      <label><span class="label">Name</span><input id="you-name" class="mono" bind:value={settings.you.name} autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="TOM" /></label>
-      <label><span class="label">QTH</span><input id="you-qth" class="mono" bind:value={settings.you.qth} autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="BOSTON" /></label>
-      <label><span class="label">State, province or country (optional)</span><input id="you-region" class="mono" bind:value={settings.you.state} autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="MA, ON, JAPAN" /></label>
-      <label><span class="label">SKCC number</span><input id="you-skcc" class="mono" bind:value={settings.you.skcc} autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="Optional" /></label>
+      <label><span class="label">Callsign</span><input id="you-call" class="mono" bind:value={settings.you.call} autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="G4ABC" /></label>
+      <label><span class="label">Name</span><input id="you-name" class="mono" bind:value={settings.you.name} autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="ANN" /></label>
+      <label><span class="label">QTH</span><input id="you-qth" class="mono" bind:value={settings.you.qth} autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="LEEDS" /></label>
+      <label><span class="label">Region (optional)</span><input id="you-region" class="mono" bind:value={settings.you.state} autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="TX, ON, JAPAN" /></label>
+      <label><span class="label">SKCC member number (optional)</span><input id="you-skcc" class="mono" bind:value={settings.you.skcc} autocapitalize="characters" autocomplete="off" spellcheck="false" /></label>
     </div>
     <p class="muted small">
-      Used in QSOs and the send drill's My station practice. QTH is where you are, as you would send it. The state, province
-      or country goes in contest and POTA exchanges; leave it blank if it would repeat your QTH.
+      These are used in QSOs and in the Send drill's My station practice. QTH is where you are, as you would send it. Your
+      region is your state, province or country; it is sent in SST, POTA, SOTA, SKCC and pileup exchanges. Leave it blank
+      if it would repeat your QTH, as in Singapore. SKCC is the Straight Key Century Club.
     </p>
     <div class="field">
       <span class="label">Stations you hear</span>
@@ -125,7 +155,7 @@
         ]}
       />
     </div>
-    <p class="muted small">QSO stations and practice callsigns. {mixNote}</p>
+    <p class="muted small">Where QSO stations and practice callsigns come from. {mixNote}</p>
   </div>
 
   <div class="group">
@@ -143,41 +173,47 @@
       bind:checked={settings.licwStrict}
       onchange={() => (settings.licwAsked = true)}
       label="LICW strict mode"
-      detail="LICW track only. Hides rhythm bars and the character reference; answers show at the end of a drill."
+      detail="LICW track only. No rhythm bars or character reference; your sending shows only when you finish; receive drills show the answers at the end; BC lessons use the straight key."
     />
     <Toggle
       bind:checked={settings.licwEnrolled}
       label="In an LICW class"
-      detail="LICW track. Lets the carousel start at the group you joined, and names exercise sets by class."
+      detail="LICW track. Lets the carousel start at the lesson you joined at."
     />
     <Toggle
       bind:checked={settings.useCourseSpeeds}
       label="Use lesson speeds"
-      detail="LICW track: 12/8 in BC1, 12/10 in BC2."
+      detail="LICW track. Receive drills use the lesson's speed instead of the speeds below: 12 wpm characters with 8 wpm overall in BC1 and 10 in BC2, then each stage's speed up to ADV. TTR+ and OverLearn use the speeds below."
     />
     <p class="muted small">
-      Classic Koch order: K M R S U A P T L O W I . N J E F 0 Y , V G 5 / Q 9 Z H 3 8 B ? 4 2 7 C 1 D 6 X, the sequence
-      most Koch trainers use. LICW's Method Guide traces it to Otto Lipmann (1919).
+      Classic Koch order: K M R S U A P T L O W I . N J E F 0 Y , V G 5 / Q 9 Z H 3 8 B ? 4 2 7 C 1 D 6 X, then the
+      prosigns BT AR SK KN BK. Most Koch trainers use this order; LICW's Method Guide traces it to Otto Lipmann (1919).
     </p>
   </div>
 
   <div class="group">
     <h2>Speed</h2>
     <div class="two">
-      <Slider label="Receive, character" bind:value={settings.charWpm} min={5} max={45} unit="wpm" />
-      <Slider label="Receive, effective" bind:value={settings.effectiveWpm} min={3} max={settings.charWpm} unit="wpm" />
+      <Slider label="Receive: character speed" bind:value={settings.charWpm} min={5} max={45} unit="wpm" />
+      <Slider label="Receive: overall speed" bind:value={settings.effectiveWpm} min={3} max={settings.charWpm} unit="wpm" />
       <Slider label="Your sending" bind:value={settings.sendWpm} min={5} max={45} unit="wpm" />
-      <Slider label="Session" bind:value={settings.sessionMinutes} min={5} max={45} step={5} unit="min" />
-      <Slider label="Comfort" bind:value={settings.comfortWpm} min={5} max={45} unit="wpm" />
-      <Slider label="Stretch" bind:value={settings.stretchWpm} min={5} max={50} unit="wpm" />
+      <Slider label="Session length" bind:value={settings.sessionMinutes} min={5} max={45} step={5} unit="min" />
+      <Slider label="Comfort speed" bind:value={settings.comfortWpm} min={5} max={45} unit="wpm" />
+      <Slider label="Stretch speed" bind:value={settings.stretchWpm} min={5} max={50} unit="wpm" />
     </div>
-    {#if settings.effectiveWpm < settings.charWpm}
-      <p class="muted small">Farnsworth spacing is on. LICW treats extra spacing as temporary; raise effective speed toward character speed over time.</p>
+    <p class="muted small">
+      Character speed is how fast each character is sent; overall speed adds space between characters. Comfort and stretch
+      are for the extra copy sessions on Practice: a speed you copy easily and one that pushes you.
+    </p>
+    {#if courseSpeedsInUse()}
+      <p class="muted small">On the LICW track with Use lesson speeds on, receive drills use the lesson's speed, not the two receive speeds here.</p>
+    {:else if settings.effectiveWpm < settings.charWpm}
+      <p class="muted small">Extra space between characters is on. LICW treats extra space as temporary: raise the overall speed toward the character speed over time.</p>
     {/if}
     <Toggle
       bind:checked={settings.autoTaper}
-      label="Raise effective speed automatically"
-      detail="+1 wpm after a receive drill at 85% or better, up to character speed. Always on in LICW strict mode."
+      label="Raise the overall speed automatically"
+      detail="After a Copy drill, Sound surfing or Head copy session at 85% or better, the overall speed goes up 1 wpm, up to the character speed. LICW strict mode does this too. Not while lesson speeds are in use."
     />
   </div>
 
@@ -231,7 +267,10 @@
 
   <div class="group">
     <h2>Band conditions</h2>
-    <p class="muted small">Applied to receive drills and QSOs.</p>
+    <p class="muted small">
+      Used in the Copy drill, Time to recognise, Sound surfing, Head copy, the sprint, Pocket rounds and the QSO simulator.
+      LICW exercises, Spot the new character, Hear it, send it and Learn QSOs play clean.
+    </p>
     <Segmented label="Noise" bind:value={settings.noise} options={[{ value: 0, label: 'No noise' }, { value: 1, label: 'Light' }, { value: 2, label: 'Moderate' }, { value: 3, label: 'Heavy' }]} />
     <div class="two">
       <Slider label="Fading (QSB)" bind:value={settings.qsb} min={0} max={3} format={(v) => ['Off', 'Light', 'Moderate', 'Deep'][v]} />
@@ -252,19 +291,23 @@
         options={[
           { value: 'mic', label: 'Microphone' },
           { value: 'touch', label: 'Touch key' },
-          { value: 'straight', label: 'Keyboard straight key' },
+          { value: 'straight', label: 'Straight key' },
           { value: 'iambicA', label: 'Paddles A' },
           { value: 'iambicB', label: 'Paddles B' },
         ]}
       />
     </div>
-    <p class="muted small">Touch key: a pad at the bottom of the screen while a drill or QSO listens. <a href={href('setup')}>Setup</a> has the mic, calibration and spectrum.</p>
+    <p class="muted small">
+      The touch key is a pad at the bottom of the screen, shown while a drill or QSO listens. The straight key and paddles
+      use your keyboard: Space, and [ and ] (or Z and X). <a href={href('setup')}>Setup</a> has the microphone, calibration
+      and spectrum.
+    </p>
     <Toggle
       bind:checked={settings.headphones}
       label="Headphones"
-      detail="App audio goes to headphones. The mic stays open while the app sends, so keying stops a QSO station (break-in). Leave off when the app plays through a speaker."
+      detail="Turn on when the app's sound goes to headphones. The microphone then keeps listening while the app sends, so your keying can interrupt a QSO station. Leave it off when the app plays through a speaker."
     />
-    <Slider label="End your over after" bind:value={settings.overTimeout} min={1.5} max={6} step={0.5} unit="s of silence" />
+    <Slider label="Your turn ends after" bind:value={settings.overTimeout} min={1.5} max={6} step={0.5} unit="s of silence" />
     <div class="field">
       <span class="label">Timing notes</span>
       <Segmented
@@ -277,24 +320,24 @@
         ]}
       />
     </div>
-    <p class="muted small">How far your dah ratio and gaps can drift from standard before a note appears.</p>
+    <p class="muted small">How far your timing can drift from standard before a note about it appears.</p>
     <Toggle
       bind:checked={settings.keepSends}
       label="Keep recent sends"
-      detail="Stores key timing of your last 8 sends for replay in Progress. Timing only, no audio."
+      detail="Keeps the timing of your last 8 sends so you can replay them in Progress. Timing only, no audio."
     />
   </div>
 
   <div class="group">
     <h2>Data</h2>
-    <p class="muted small">Progress is stored in this browser only. Export it to move between devices.</p>
+    <p class="muted small">Progress is stored in this browser only. Export it to a file to move it to another device, then import it there.</p>
     <div class="row">
       <Button onclick={exportData}>Export</Button>
       <label class="file">
         <span>Import</span>
         <input type="file" accept="application/json,.json" onchange={importData} />
       </label>
-      <Button kind="quiet" onclick={resetSettings}>Reset settings</Button>
+      <Button kind="quiet" onclick={resetAll}>Reset settings</Button>
       <Button kind="quiet" onclick={clearProgress}>Delete progress</Button>
     </div>
     {#if dataNote}<p class="small">{dataNote}</p>{/if}

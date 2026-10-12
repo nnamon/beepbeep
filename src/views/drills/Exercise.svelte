@@ -83,6 +83,38 @@
   let startedAt = 0;
   let saved = false;
 
+  // A run left part-way (another tab, another screen) can be picked up again
+  // for half an hour in this browser tab. Timed runs (VET, VST) start afresh.
+  const LEFT = 'beepbeep.exercise.left';
+  type Left = { key: string; cards: Card[]; index: number; at: number };
+  let left = $state<Left | null>(null);
+  try {
+    const l = JSON.parse(sessionStorage.getItem(LEFT) ?? 'null') as Left | null;
+    if (l && l.key === key && Date.now() - l.at < 30 * 60_000 && l.cards?.length) left = l;
+  } catch {
+    /* storage unavailable */
+  }
+  function keepPlace() {
+    try {
+      if (player && st && player.length === null && !['ready', 'done', 'recap'].includes(st.phase) && st.index > 0) {
+        sessionStorage.setItem(LEFT, JSON.stringify({ key, cards: player.cards, index: st.index, at: Date.now() } satisfies Left));
+      } else if (left === null) sessionStorage.removeItem(LEFT);
+    } catch {
+      /* storage unavailable */
+    }
+  }
+  function carryOn() {
+    if (!left || !recipe) return;
+    const l = left;
+    left = null;
+    try {
+      sessionStorage.removeItem(LEFT);
+    } catch {
+      /* storage unavailable */
+    }
+    begin(l.cards, l.index);
+  }
+
   const deps = {
     cw: async (text: string, wpm: number, fwpm: number) => {
       const pb = await playCw(text, { charWpm: wpm, effectiveWpm: fwpm, plain: true });
@@ -94,10 +126,11 @@
     now: () => performance.now(),
   };
 
-  function begin() {
+  function begin(given?: Card[], at?: number) {
     if (!recipe) return;
-    const cards = build();
+    const cards = given ?? build();
     if (!cards.length) return;
+    if (!given) left = null;
     player?.stop();
     saved = false;
     startedAt = Date.now();
@@ -108,7 +141,7 @@
     });
     st = { ...player.state };
     void keepAwake(true);
-    player.start();
+    player.start(at);
   }
 
   let loopTimer: ReturnType<typeof setTimeout> | null = null;
@@ -142,6 +175,7 @@
   }
 
   onDestroy(() => {
+    keepPlace();
     if (loopTimer) clearTimeout(loopTimer);
     record();
     player?.stop();
@@ -250,6 +284,12 @@
   <DrillFrame title={ex.name} eyebrow="{cls.name}{cls.carousel ? ` · ${level.name.split(' · ')[1]}` : ''} · {st ? speedText(st.wpm, st.fwpm) : speedText(recipe.wpm, recipe.fwpm)}" {count}>
     {#if !st || st.phase === 'ready'}
       <p class="summary">{ex.summary}</p>
+      {#if left}
+        <div class="left">
+          <p>You left this exercise at {left.index + 1} of {left.cards.length}.</p>
+          <Button kind="primary" onclick={carryOn}>Carry on from there</Button>
+        </div>
+      {/if}
       {#if !onlyText}
         <Segmented
           label="Material"
@@ -340,9 +380,9 @@
 
     {#snippet footer()}
       {#if !st || st.phase === 'ready'}
-        <Button kind="primary" onclick={begin} hint="Enter" disabled={!playable}>Start</Button>
+        <Button kind={left ? 'secondary' : 'primary'} onclick={() => begin()} hint="Enter" disabled={!playable}>{left ? 'Start again' : 'Start'}</Button>
       {:else if finishedRun}
-        <Button kind="primary" onclick={begin} hint="Enter">Again</Button>
+        <Button kind="primary" onclick={() => begin()} hint="Enter">Again</Button>
         {#if ex.recipe.voice && st.phase === 'done'}<Button onclick={() => player?.recap()}>Read back</Button>{/if}
         <Button kind="quiet" onclick={() => { stop(); st = null; }}>Change options</Button>
       {:else}
@@ -362,6 +402,15 @@
 <style>
   .summary {
     font-size: var(--size-m);
+  }
+
+  .left {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-1) var(--s-2);
+    border-left: 2px solid var(--signal);
+    padding-left: var(--s-2);
   }
 
   .texts {

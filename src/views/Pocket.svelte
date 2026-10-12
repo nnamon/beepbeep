@@ -29,12 +29,13 @@
     wordsText = custom.words.join(' ');
   });
 
-  const STAGES = $derived([
+  // A round needs at least two different things to ask.
+  const ROUNDS = $derived([
     { id: 'characters', name: 'Characters', count: level.known.length, note: level.name },
-    { id: 'chunks', name: 'Chunks', count: wordsFromKnown(CHUNKS, known).length, note: 'CQ, DE, TU, 5NN, -ING' },
+    { id: 'chunks', name: 'Chunks', count: wordsFromKnown(CHUNKS, known).length, note: 'Short pieces heard as one sound: CQ, DE, TU, 5NN, ING' },
     { id: 'words', name: 'Words', count: wordsFromKnown([...QSO_WORDS, ...COMMON_WORDS], known).length, note: 'Operating and common words' },
-    { id: 'callsigns', name: 'Callsigns', count: null, note: 'Generated, with real prefixes' },
-    { id: 'phrases', name: 'Phrases', count: null, note: 'Whole QSO lines' },
+    { id: 'callsigns', name: 'Callsigns', count: null, note: 'Made up, with real prefixes' },
+    { id: 'phrases', name: 'Phrases', count: null, note: 'Whole lines from a QSO' },
     { id: 'custom', name: 'Custom', count: custom.chars.length + custom.words.length, note: 'Your own set' },
   ]);
 
@@ -94,16 +95,17 @@
       </div>
     </div>
     <p class="muted lead">
-      Learn and quiz by ear, no key needed. Each round plays 20, using only what your lesson has covered. Score
-      {settings.track === 'licw' ? '80' : '90'}% or better in a Characters round to open the next lesson.
+      Quiz yourself by ear; no key needed. Each round asks 20 questions, and everything in it uses only the characters
+      of your lesson. Score {settings.track === 'licw' ? '80' : '90'}% or more in a Characters round to move on to the
+      next lesson.
     </p>
     <ul class="stages">
-      {#each STAGES as s (s.id)}
+      {#each ROUNDS as s (s.id)}
         <li>
           <a href={href('pocket', 'round', s.id)}>
             <span class="name">{s.name}</span>
             <span class="muted">{s.note}</span>
-            {#if s.count !== null}<span class="num muted count">{s.count}</span>{/if}
+            {#if s.count !== null}<span class="num muted count">{s.count < 2 && s.id !== 'custom' ? 'not yet' : s.count}</span>{/if}
           </a>
         </li>
       {/each}

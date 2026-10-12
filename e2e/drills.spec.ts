@@ -221,8 +221,19 @@ test('Sound surfing: stopping before much has played saves nothing', async ({ pa
 test('Sprint: callsigns use only the lesson\'s characters', async ({ page }) => {
   await settings(page, { ...BASE, track: 'koch', level: { koch: 'koch-1', licw: 'licw-bc1-REA' } });
   await page.goto('./#/practice/sprint');
+  await page.getByRole('radio', { name: 'Callsigns' }).click();
   await page.getByRole('button', { name: /Start/ }).click();
   await expect(page.getByText(/There aren't enough callsigns yet that use only the characters in Lesson 1/)).toBeVisible();
+});
+
+test('Sprint: before the lesson has digits it opens on words, which play', async ({ page }) => {
+  await instrument(page);
+  await settings(page, { ...BASE, track: 'koch', level: { koch: 'koch-14', licw: 'licw-bc1-REA' } });
+  await page.goto('./#/practice/sprint');
+  await expect(page.getByRole('radio', { name: 'Words' })).toHaveAttribute('aria-checked', 'true');
+  await page.getByRole('button', { name: /Start/ }).click();
+  const word = await nextAudio(page, 0);
+  expect(word.split('').every((c) => 'KMRSUAPTLOWI.NJ'.includes(c))).toBe(true);
 });
 
 test('Head copy: one letter is not a copy of a name', async ({ page }) => {

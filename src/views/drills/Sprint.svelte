@@ -41,10 +41,12 @@
   let turn = 0;
 
   /** Callsigns or words made only of the characters you know. */
-  function buildPool(): string[] {
+  function buildPool(kind = material): string[] {
     const known = new Set(currentLevel().known);
-    return [...new Set(items(rng, material, known, 60).filter((x) => usesOnly(x, known)))];
+    return [...new Set(items(rng, kind, known, 60).filter((x) => usesOnly(x, known)))];
   }
+  // Callsigns need digits: until the lesson has some, start on words.
+  if (buildPool('callsigns').length < 2) material = 'words';
 
   async function start() {
     if (stage !== 'ready' && stage !== 'done') return;

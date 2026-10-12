@@ -1,6 +1,7 @@
 <script lang="ts">
   // One series over time: 2px line, end label, hairline grid, crosshair with a
-  // tooltip on hover or arrow keys, and a table view of every value. Drawn at
+  // tooltip on hover or arrow keys, and a table view of every value. Points sit
+  // at their dates, so a busy week takes no more room than a quiet one. Drawn at
   // the container's pixel width so text stays at its real size.
   let {
     points,
@@ -32,9 +33,12 @@
     let lo = Math.min(...ys);
     let hi = Math.max(...ys);
     if (lo === hi) {
-      lo -= 1;
-      hi += 1;
+      const pad = lo ? Math.abs(lo) * 0.2 : 1;
+      lo -= pad;
+      hi += pad;
     }
+    // Times, speeds and counts are never below zero, so neither is the axis.
+    if (Math.min(...ys) >= 0) lo = Math.max(0, lo);
     const raw = (hi - lo) / 4;
     const mag = Math.pow(10, Math.floor(Math.log10(raw)));
     const step = [1, 2, 5, 10].map((m) => m * mag).find((s) => s >= raw) ?? raw;
@@ -45,7 +49,12 @@
     for (let v = ext.lo; v <= ext.hi + ext.step / 2; v += ext.step) out.push(+v.toFixed(6));
     return out;
   });
-  const x = (i: number) => L + (points.length <= 1 ? (W - L - R) / 2 : (i / (points.length - 1)) * (W - L - R));
+  const span = $derived(points.length > 1 ? points[points.length - 1].t - points[0].t : 0);
+  const x = (i: number) => {
+    if (points.length <= 1) return L + (W - L - R) / 2;
+    const f = span > 0 ? (points[i].t - points[0].t) / span : i / (points.length - 1);
+    return L + f * (W - L - R);
+  };
   const y = (v: number) => T + (1 - (v - ext.lo) / (ext.hi - ext.lo)) * (H - T - B);
   const d = $derived(points.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(p.y).toFixed(1)}`).join(''));
   const fmt = (v: number) => v.toFixed(digits);

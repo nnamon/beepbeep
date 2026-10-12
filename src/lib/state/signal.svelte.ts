@@ -79,10 +79,10 @@ export function stopMic() {
 
 function micError(err: unknown): string {
   const name = (err as { name?: string })?.name;
-  if (name === 'NotAllowedError') return 'Microphone blocked. Allow it in site settings and retry.';
-  if (name === 'NotFoundError') return 'No microphone found.';
-  if (name === 'NotReadableError') return 'Microphone in use by another app.';
-  return (err as Error)?.message || 'Microphone failed to start.';
+  if (name === 'NotAllowedError') return "The microphone is blocked. Allow it in the browser's site settings, then try again.";
+  if (name === 'NotFoundError') return 'No microphone was found.';
+  if (name === 'NotReadableError') return 'Another app is using the microphone.';
+  return "The microphone didn't start.";
 }
 
 /**

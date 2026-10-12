@@ -113,11 +113,13 @@ export class Player {
     }
   }
 
-  start() {
+  /** Starts the run, or with `at`, carries on from that card (cards before it count as done). */
+  start(at?: number) {
     if (this.state.phase === 'done' || this.state.phase === 'recap') {
       this.activeMs = 0;
       this.set({ index: 0, done: 0 });
     }
+    if (at !== undefined) this.set({ index: Math.max(0, Math.min(at, this.cards.length - 1)), done: Math.max(0, Math.min(at, this.cards.length)) });
     this.interrupt();
     void this.run(this.gen);
   }

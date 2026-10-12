@@ -210,7 +210,13 @@ export async function importAll(data: unknown) {
   }
 }
 
+/** Things you made rather than progress: kept by Delete progress. */
+const KEPT_KV = ['texts', 'pocket.custom'];
+
+/** Deletes progress: scores, sessions, the QSO log, notes kept about your sending, and recorded voice clips. */
 export async function clearAll() {
   const d = await db();
+  const kept = await Promise.all(KEPT_KV.map((key) => d.get('kv', key)));
   for (const s of ['items', 'sessions', 'qsos', 'confusions', 'kv', 'voice'] as const) await d.clear(s);
+  for (const row of kept) if (row) await d.put('kv', row);
 }
