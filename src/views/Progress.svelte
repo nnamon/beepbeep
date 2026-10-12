@@ -253,7 +253,7 @@
             {#each [...log].reverse() as q (q.id)}
               <tr>
                 <td>{day(q.at)}</td><td>{fmtName(q.format)}</td><td class="mono">{q.call}</td><td class="mono">{q.name}</td>
-                <td class="mono">{q.qth} {q.state}</td><td class="num">{q.rstSent || 'none'}</td><td class="num">{q.rstRcvd}</td>
+                <td class="mono">{q.qth}{q.state && q.state !== q.qth ? ` ${q.state}` : ''}</td><td class="num">{q.format === 'sst' ? 'no report in SST' : q.rstSent || 'none'}</td><td class="num">{q.format === 'sst' ? 'no report in SST' : q.rstRcvd || 'none'}</td>
                 <td class="num">{Math.floor(q.seconds / 60)}:{String(q.seconds % 60).padStart(2, '0')}</td>
                 <td class="num">{Math.round(q.copyScore * 100)}%</td><td class="num">{Math.round(q.sendScore * 100)}%</td>
               </tr>

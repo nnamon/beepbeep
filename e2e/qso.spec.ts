@@ -185,6 +185,34 @@ test('what the station sends last can still be copied, and is scored; the QSO is
   await expect.poll(async () => (await all(page, 'sessions')).map((s) => s.mode)).toContain('qso');
 });
 
+test('the QSO log: SST has no report and says so; a city-state QTH shows once', async ({ page }) => {
+  test.skip(!desktop(), 'one screen size is enough');
+  await open(page);
+  // Progress opens the database; the log is written into it, then read again.
+  await page.getByRole('link', { name: 'Progress' }).first().click();
+  await expect(page.getByText('No QSOs yet.')).toBeVisible();
+  await page.evaluate(async () => {
+    const db: IDBDatabase = await new Promise((res, rej) => {
+      const r = indexedDB.open('beepbeep', 1);
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    });
+    const tx = db.transaction('qsos', 'readwrite');
+    const base = { opener: 'bot', seconds: 40, overs: 2, copyScore: 1, sendScore: 1, wpm: 18 };
+    tx.objectStore('qsos').add({ ...base, at: Date.now() - 2000, format: 'sst', call: 'VR2SP', name: 'WING', qth: 'KOWLOON', state: 'HK', rstSent: '', rstRcvd: '' });
+    tx.objectStore('qsos').add({ ...base, at: Date.now() - 1000, format: 'ragchew', call: '9V1AB', name: 'TAN', qth: 'SINGAPORE', state: 'SINGAPORE', rstSent: '579', rstRcvd: '599' });
+    await new Promise((res) => (tx.oncomplete = res));
+    db.close();
+  });
+  await page.reload();
+  const cells = (call: string) => page.locator('tr', { hasText: call }).locator('td').allInnerTexts();
+  await expect.poll(() => cells('VR2SP')).toHaveLength(10);
+  const sst = await cells('VR2SP');
+  // QTH, RST sent, RST rcvd.
+  expect(sst.slice(4, 7)).toEqual(['KOWLOON HK', 'no report in SST', 'no report in SST']);
+  expect((await cells('9V1AB')).slice(4, 7)).toEqual(['SINGAPORE', '579', '599']);
+});
+
 test('the copy boxes say Region, not State', async ({ page }) => {
   test.skip(!desktop(), 'one screen size is enough');
   await open(page);
