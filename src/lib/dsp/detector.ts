@@ -1,6 +1,8 @@
 // Microphone audio in, key-down/key-up times out.
 //
-// 1. A peak-hold FFT finds the strongest keyed tone in 300-1200 Hz and locks to it.
+// 1. An FFT search finds the keyed tone in 300-1200 Hz and locks to it: the
+//    pitch that most often stands out as a narrow peak, steady for a while
+//    (room rumble is broad, voices move).
 // 2. An I/Q (lock-in) detector at that pitch, with a low-pass sized to the
 //    sending speed, gives a smooth tone envelope at ~1 kHz. Two more, a few
 //    hundred hertz either side, watch the room.
@@ -48,6 +50,8 @@ export interface DetectorOptions {
   squelchDb?: number | null;
   /** Tests: the envelope stage's state at every step (1 kHz). */
   trace?: (s: TraceStep) => void;
+  /** Tests: each mark's pitch check when it ends. */
+  onMark?: (m: MarkCheck) => void;
   /** Internal: a second ear at the tone's third harmonic (pinned, no search, no ear of its own). */
   overtone?: boolean;
 }
@@ -71,6 +75,16 @@ export interface TraceStep {
   markLevel: number;
   keyDown: boolean;
   pending: boolean | null;
+}
+
+export interface MarkCheck {
+  /** Steps (ms) of the mark's steady middle. */
+  steps: number;
+  /** Its pitch from the lock, and how far the second half's pitch sits from the first half's, Hz. */
+  offset: number;
+  glide: number;
+  coherence: number;
+  accepted: boolean;
 }
 
 /** One lock-in channel: low-passed I and Q of the input mixed down from `hz`. */
@@ -169,7 +183,11 @@ export const steadyTuning = { lag: 4, smooth: 4, coherence: 0.4, tol: 10, wide: 
  * (`coherence`). Until `learn` marks are in, the allowance is `pinned` Hz
  * around a pinned pitch, `wide` around a found one. A mark that fails is
  * withdrawn. While a mark lasts, it ends if the pitch has left the sender's
- * for `leave` dits (40 ms at least: a click passes in less).
+ * for `leave` dits (40 ms at least: a click passes in less). Until `learn`
+ * marks are in, the pitch of the mark's second half must also sit within
+ * `glide` Hz (plus `glideShort` / its length in ms) of its first half's: a
+ * voice's harmonic glides through the tone's pitch and can average out to it
+ * (speech-only marks glide 5 to 11 Hz between halves, keyed marks under 3).
  */
 /**
  * Timbre: a buzzer or square-wave oscillator has a strong third harmonic at
@@ -191,7 +209,19 @@ export const timbreTuning = { learn: 3, strong: -15, minRise: 12, rise: 6, slack
  * a tone it is itself deciding on.
  */
 export const earTuning = { overtone: true, silence: 6 };
-export const markTuning = { lag: 10, tol: 3, wide: 8, pinned: 4, learn: 3, coherence: 0.5, leave: 0.6, short: 120 };
+/**
+ * The pitch search scores a bin, in each frame where it is a local peak, by
+ * how far it stands above the median power of the bins `near` to `far` away
+ * (35 to 117 Hz at 48 kHz), beyond `base` dB; scores fade over `tau` seconds
+ * and a pitch needs `least` (three bins summed) to be taken. In the owner's
+ * recordings the keyed tone stands 21 to 35 dB above them on average, in 20
+ * to 60% of frames; the room's resonance near 300 Hz 13 to 15 dB, in 5 to 11%.
+ * A pitch must lead for `runs` frames (about 0.85 s) before the first lock:
+ * a voice's harmonics lead for moments at a time. Another pitch takes over a
+ * lock once it scores `relock` times as much for `relockSec`.
+ */
+export const searchTuning = { base: 12, tau: 4, least: 40, near: 3, far: 10, runs: 20, relock: 4, relockSec: 1 };
+export const markTuning = { lag: 10, tol: 3, wide: 8, pinned: 4, learn: 3, coherence: 0.5, leave: 0.6, short: 120, glide: 6, glideShort: 150 };
 
 export class Detector {
   readonly fs: number;
@@ -210,6 +240,9 @@ export class Detector {
   private readonly im: Float64Array;
   private readonly maxHold: Float64Array;
   private readonly minHold: Float64Array;
+  /** Per bin: how often and how far it has stood out as a narrow peak lately (dB above `searchTuning.base`, summed, fading). */
+  private readonly toneScore: Float64Array;
+  private readonly power: Float64Array;
   private readonly fftBuf: Float32Array;
   private fftFill = 0;
   private sinceHop = 0;
@@ -246,12 +279,15 @@ export class Detector {
   private contrastDb: number;
   private squelchDb: number | null;
   private trace: ((s: TraceStep) => void) | null;
+  private onMark: ((m: MarkCheck) => void) | null;
   private noise = 0;
   private refNoise = [0, 0];
   private peak = 0;
   private envInit = false;
   private warmup = 0;
   private warmAcc = [0, 0, 0, 0];
+  /** Floors measured over the buffered audio at the last lock, used once the warm-up ends. */
+  private seeded: number[] | null = null;
   private keyDown = false;
   private pendingState: boolean | null = null;
   private pendingT = 0;
@@ -292,6 +328,10 @@ export class Detector {
   private mIm = 0;
   private mMag = 0;
   private mN = 0;
+  /** The current mark's phase products, step by step, to compare its two halves. */
+  private readonly mStepRe = new Float64Array(4000);
+  private readonly mStepIm = new Float64Array(4000);
+
   /** This step's phase product at `markTuning.lag`. */
   private lagRe = 0;
   private lagIm = 0;
@@ -329,6 +369,7 @@ export class Detector {
     this.squelchDb = opts.squelchDb ?? null;
     this.isOvertone = opts.overtone ?? false;
     this.trace = opts.trace ?? null;
+    this.onMark = opts.onMark ?? null;
     this.dit = opts.dit ?? 0.08;
     this.fftSize = sampleRate > 30000 ? 4096 : 2048;
     this.hop = this.fftSize / 2;
@@ -338,6 +379,8 @@ export class Detector {
     this.im = new Float64Array(this.fftSize);
     this.maxHold = new Float64Array(this.fftSize / 2);
     this.minHold = new Float64Array(this.fftSize / 2).fill(Infinity);
+    this.toneScore = new Float64Array(this.fftSize / 2);
+    this.power = new Float64Array(this.fftSize / 2);
     this.fftBuf = new Float32Array(this.fftSize);
     this.history = new Float32Array(Math.round(sampleRate * 2.5));
     this.decim = Math.max(1, Math.round(sampleRate / 1000));
@@ -558,18 +601,54 @@ export class Detector {
     const binHz = this.fs / n;
     const lo = Math.max(1, Math.floor(this.minHz / binHz));
     const hi = Math.min(n / 2 - 2, Math.ceil(this.maxHz / binHz));
-    let best = -1;
-    let bestP = 0;
     for (let k = 1; k < n / 2; k++) {
       const p = this.re[k] * this.re[k] + this.im[k] * this.im[k];
+      this.power[k] = p;
       this.maxHold[k] = Math.max(p, this.maxHold[k] * decay);
       this.minHold[k] = Math.min(p, this.minHold[k] === Infinity ? p : this.minHold[k] * rise);
-      if (k >= lo && k <= hi && this.maxHold[k] > bestP) {
-        bestP = this.maxHold[k];
+    }
+    // A keyed tone is a narrow peak: in the frames it sounds, its bin stands
+    // far above the bins a few away, and it does so again and again at the
+    // same pitch. Room rumble, fans and thumps are broad; a laptop's rumble
+    // rises below the band and has a resonance near 300 Hz louder than the
+    // tone but only now and then, and only a little, above its neighbours.
+    // Each bin scores how far it stands out, summed over recent frames.
+    const keep = Math.exp(-hopSec / searchTuning.tau);
+    const ring: number[] = [];
+    for (let k = lo - 1; k <= hi + 1; k++) this.toneScore[k] *= keep;
+    const found: number[] = [];
+    for (let k = lo; k <= hi; k++) {
+      const p = this.power[k];
+      if (!(p >= this.power[k - 1] && p >= this.power[k + 1]) || k - searchTuning.far < 1 || k + searchTuning.far >= n / 2) continue;
+      ring.length = 0;
+      for (let d = searchTuning.near; d <= searchTuning.far; d++) ring.push(this.power[k - d], this.power[k + d]);
+      ring.sort((a, b) => a - b);
+      const db = 10 * Math.log10(p / (ring[ring.length >> 1] + 1e-30));
+      if (db > searchTuning.base) found.push(k, db - searchTuning.base);
+    }
+    for (let i = 0; i < found.length; i += 2) this.toneScore[found[i]] += found[i + 1];
+    const score = (k: number) => this.toneScore[k - 1] + this.toneScore[k] + this.toneScore[k + 1];
+    let best = -1;
+    let bestS = 0;
+    for (let k = lo; k <= hi; k++) {
+      const sc = score(k);
+      if (sc > bestS) {
+        bestS = sc;
         best = k;
       }
     }
-    if (this.pinned || best < 0) return;
+    if (this.pinned || best < 0 || bestS < searchTuning.least) {
+      this.candidateRuns = Math.max(0, this.candidateRuns - 2);
+      return;
+    }
+    // Its pitch: where its narrow peaks fell, weighted by their scores. The
+    // max-hold spectrum would do, but rumble beside the tone tilts it.
+    const ts = this.toneScore;
+    const hz = (best + (ts[best + 1] - ts[best - 1]) / (ts[best - 1] + ts[best] + ts[best + 1])) * binHz;
+    // The loudest of its bins, for its level.
+    if (this.maxHold[best - 1] > this.maxHold[best] && this.maxHold[best - 1] >= this.maxHold[best + 1]) best--;
+    else if (this.maxHold[best + 1] > this.maxHold[best]) best++;
+    const bestP = this.maxHold[best];
 
     // Prominence against the band's median, and keyedness (max-hold vs min-hold).
     const band: number[] = [];
@@ -579,22 +658,21 @@ export class Detector {
     const prominent = bestP / median > 10;
     const keyed = bestP / (this.minHold[best] + 1e-20) > 4;
     if (!prominent || !keyed) {
-      this.candidateRuns = 0;
+      this.candidateRuns = Math.max(0, this.candidateRuns - 2);
       return;
     }
-    // Parabolic interpolation on log power for sub-bin pitch.
-    const a = Math.log(this.maxHold[best - 1] + 1e-20);
-    const b = Math.log(this.maxHold[best] + 1e-20);
-    const c = Math.log(this.maxHold[best + 1] + 1e-20);
-    const denom = a - 2 * b + c;
-    const delta = denom !== 0 ? (0.5 * (a - c)) / denom : 0;
-    const hz = (best + Math.max(-0.5, Math.min(0.5, delta))) * binHz;
-
     if (this.lockedHz === null) {
-      if (Math.abs(hz - this.candidateHz) < 2 * binHz) this.candidateRuns++;
-      else this.candidateRuns = 1;
-      this.candidateHz = hz;
-      if (this.candidateRuns >= 2) this.lock(hz, true, out);
+      // The same pitch must lead for a while (the lock replays the audio
+      // before it, so waiting costs nothing); a stray frame only sets it back.
+      if (Math.abs(hz - this.candidateHz) < 2 * binHz) {
+        this.candidateRuns++;
+        this.candidateHz = hz;
+      } else if (this.candidateRuns > 2) this.candidateRuns -= 2;
+      else {
+        this.candidateRuns = 1;
+        this.candidateHz = hz;
+      }
+      if (this.candidateRuns >= searchTuning.runs) this.lock(hz, true, out);
       return;
     }
 
@@ -606,9 +684,9 @@ export class Detector {
       return;
     }
     const lockedBin = Math.round(this.lockedHz / binHz);
-    if (bestP > 4 * this.maxHold[lockedBin]) {
+    if (bestS > searchTuning.relock * score(lockedBin)) {
       this.relockRuns++;
-      if (this.relockRuns * hopSec > 1.0) {
+      if (this.relockRuns * hopSec > searchTuning.relockSec) {
         this.relockRuns = 0;
         this.lock(hz, false, out);
       }
@@ -634,6 +712,7 @@ export class Detector {
 
   private lock(hz: number, replayHistory: boolean, out: DetectorEvent[]) {
     this.setOscillator(hz);
+    this.seedFloors();
     this.tone.reset();
     for (const r of this.refs) r.reset();
     this.overtone.reset();
@@ -668,6 +747,39 @@ export class Detector {
         this.iqStep(this.history[idx], startSample + j, out);
       }
     }
+  }
+
+  /**
+   * Floors for a new pitch from the buffered audio: the 20th percentile of
+   * each channel's level over it, which lies in the gaps between marks. The
+   * warm-up alone measures the first 45 ms, and a lock or pin that comes in
+   * the middle of keying would take a mark for the floor (and then hear
+   * nothing for seconds while the floor came down).
+   */
+  private seedFloors() {
+    this.seeded = null;
+    if (this.historyCount < 0.3 * this.fs) return;
+    const L = this.history.length;
+    const first = this.historyPos - this.historyCount;
+    const levels: number[][] = [[], [], [], []];
+    let d = 0;
+    for (let j = 0; j < this.historyCount; j++) {
+      const x = this.history[(first + j + L) % L];
+      this.tone.step(x);
+      this.refs[0].step(x);
+      this.refs[1].step(x);
+      this.overtone.step(x);
+      if (++d < this.decim) continue;
+      d = 0;
+      if (j < 0.02 * this.fs) continue;
+      levels[0].push(this.tone.db);
+      levels[1].push(this.refs[0].db);
+      levels[2].push(this.refs[1].db);
+      levels[3].push(this.overtone.db);
+    }
+    const floors = levels.map((v) => v.sort((a, b) => a - b)[Math.floor(0.2 * (v.length - 1))]);
+    // Digital silence (muted while the app sends) says nothing about the room.
+    if (floors[0] > -140) this.seeded = floors;
   }
 
   private iqStep(x: number, sampleIndex: number, out: DetectorEvent[]) {
@@ -730,7 +842,32 @@ export class Detector {
     const gap = this.mGapN ? this.mGap / this.mGapN : -60;
     const rise = this.mGapN ? this.mRise / this.mGapN : 0;
     const timbre = this.hasHarmonic();
-    if (coherence >= markTuning.coherence && Math.abs(offset - this.toneOffset) <= tol && (!timbre || gap >= this.harmonicGap - timbreTuning.markSlack)) {
+    // The pitch of each half: a keyed tone holds its pitch, a voice's harmonic
+    // glides through (and can average out to the sender's pitch).
+    const n = Math.min(this.mN, this.mStepRe.length);
+    const half = n >> 1;
+    let r1 = 0;
+    let i1 = 0;
+    let r2 = 0;
+    let i2 = 0;
+    for (let i = 0; i < half; i++) {
+      r1 += this.mStepRe[i];
+      i1 += this.mStepIm[i];
+    }
+    for (let i = half; i < n; i++) {
+      r2 += this.mStepRe[i];
+      i2 += this.mStepIm[i];
+    }
+    const perRad = (2 * Math.PI * markTuning.lag * this.decim) / this.fs;
+    const glide = Math.abs(Math.atan2(i2 * r1 - r2 * i1, r2 * r1 + i2 * i1)) / perRad;
+    // Until the sender's pitch is learned, any steady-enough sound near the
+    // tone passes the pitch check; this is when a voice gets through. Later,
+    // the 3 Hz check does the work (and a real sidetone can wander a few hertz
+    // within a long mark, so the glide check would cost marks).
+    const held = this.offsetMarks >= markTuning.learn || glide <= markTuning.glide + markTuning.glideShort / this.mN;
+    const accepted = coherence >= markTuning.coherence && Math.abs(offset - this.toneOffset) <= tol && held && (!timbre || gap >= this.harmonicGap - timbreTuning.markSlack);
+    this.onMark?.({ steps: this.mN, offset, glide, coherence, accepted });
+    if (accepted) {
       this.toneOffset = this.offsetMarks ? this.toneOffset + 0.3 * (offset - this.toneOffset) : offset;
       this.offsetMarks++;
       this.harmonicGap = this.harmonicMarks ? this.harmonicGap + 0.3 * (gap - this.harmonicGap) : gap;
@@ -771,9 +908,11 @@ export class Detector {
         this.warmAcc[3] += ovt;
       }
       if (this.warmup >= 45) {
-        this.noise = this.warmAcc[0] / 30;
-        this.refNoise = [this.warmAcc[1] / 30, this.warmAcc[2] / 30];
-        this.overtoneNoise = this.warmAcc[3] / 30;
+        const f = this.seeded ?? this.warmAcc.map((a) => a / 30);
+        this.seeded = null;
+        this.noise = f[0];
+        this.refNoise = [f[1], f[2]];
+        this.overtoneNoise = f[3];
         this.peak = this.noise;
         this.envInit = true;
       }
@@ -850,6 +989,11 @@ export class Detector {
         this.mRe += this.lagRe;
         this.mIm += this.lagIm;
         this.mMag += this.lagMag;
+        if (this.mN < this.mStepRe.length) {
+          this.mStepRe[this.mN] = this.lagRe;
+          this.mStepIm[this.mN] = this.lagIm;
+        }
+
         this.mN++;
         this.mGap += ovt - env;
         this.mRise += ovt - this.overtoneNoise;
@@ -891,6 +1035,7 @@ export class Detector {
           this.downT = t;
           this.onPitchT = t;
           this.mRe = this.mIm = this.mMag = this.mN = 0;
+
           this.mGap = this.mRise = this.mGapN = 0;
           this.peakBefore = this.peak;
           // A key-down is timed where the envelope rose through half the mark's amplitude.

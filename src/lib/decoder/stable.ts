@@ -8,7 +8,7 @@ import type { DecoderModel, DecoderOutput } from './decoder';
 import type { Kept } from './settle';
 
 type Marks = { start: number; end: number }[];
-export type Reread = (model: DecoderModel, marks: Marks, until: number | undefined, keep: Kept[], full?: boolean) => Promise<DecoderOutput[]>;
+export type Reread = (model: DecoderModel, marks: Marks, until: number | undefined, keep: Kept[], full?: boolean, prefer?: Kept[]) => Promise<DecoderOutput[]>;
 
 /**
  * Marks keyed after a word before it is written down (five or six letters),
@@ -20,6 +20,15 @@ export type Reread = (model: DecoderModel, marks: Marks, until: number | undefin
  * one began, with the quick search, about doubled it.
  */
 export const WRITE_AFTER = 20;
+
+/** Letters of a reading with whether a word space follows each. */
+function kept(outputs: DecoderOutput[]): Kept[] {
+  const out: Kept[] = [];
+  outputs.forEach((o, i) => {
+    if (o.kind === 'char') out.push({ pattern: o.char.pattern, space: outputs[i + 1]?.kind === 'space' });
+  });
+  return out;
+}
 
 export class StableReading {
   /** Whole words written down, each with the space after it. */
@@ -61,11 +70,15 @@ export class StableReading {
     });
   }
 
-  /** End of the over: what is not written down is read once more with the full search. Then a new over. */
+  /**
+   * End of the over: what is not written down is read once more with the
+   * full search, keeping what is on screen unless a clearly better reading
+   * changes it. Then a new over.
+   */
   finish(model: DecoderModel, marks: Marks): Promise<DecoderOutput[]> {
     this.latest++;
     return this.serial(async () => {
-      const out = marks.length ? await this.read(model, marks) : [];
+      const out = marks.length ? await this.read(model, marks, undefined, false, kept(this.last)) : [];
       this.reset();
       return out;
     });
@@ -83,12 +96,8 @@ export class StableReading {
     return -1;
   }
 
-  private async read(model: DecoderModel, marks: Marks, until?: number, full = false): Promise<DecoderOutput[]> {
-    const keep: Kept[] = [];
-    this.written.forEach((o, i) => {
-      if (o.kind === 'char') keep.push({ pattern: o.char.pattern, space: this.written[i + 1]?.kind === 'space' });
-    });
-    const out = await this.reread(model, marks, until, keep, full);
+  private async read(model: DecoderModel, marks: Marks, until?: number, full = false, prefer?: Kept[]): Promise<DecoderOutput[]> {
+    const out = await this.reread(model, marks, until, kept(this.written), full, prefer);
     // The written words come back as they were; keep the very same objects.
     return [...this.written, ...out.slice(this.written.length)];
   }

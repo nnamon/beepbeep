@@ -16,7 +16,7 @@ import { tokenOf } from '../morse/code';
 import type { DecodedChar, DecodedMark, DecoderModel, DecoderOutput } from './decoder';
 import { languageModel, wordEvidence } from './lm';
 import { kmeans2 } from './kmeans';
-import { gapClasses } from './breaks';
+import { gapClasses, settledClasses, upperRole } from './breaks';
 
 interface Mark {
   start: number;
@@ -41,8 +41,14 @@ export interface FistParams {
 }
 
 /** Search settings; tests sweep them. */
-export const tuning = { lmWeight: 1, unknown: -12, beam: 600, fitBeam: 80, rounds: 2, sdTempo: 0.15, sdMark: 0.22, wordBonus: 1.2, repeatBonus: 0.9, outlier: 0.05, markOutlier: 0.03, minWord: 1, drift: true, sdInter: 0.35, sdGap: 0.3 };
+export const tuning = { rewrite: 3, lmWeight: 1, unknown: -12, beam: 600, fitBeam: 80, rounds: 2, sdTempo: 0.15, sdMark: 0.22, wordBonus: 1.2, repeatBonus: 0.9, outlier: 0.05, markOutlier: 0.03, minWord: 1, drift: true, sdInter: 0.35, sdGap: 0.3 };
 const MAX_PATTERN = 9;
+/** Where timing cannot tell letter gaps from word gaps, both classes sit this factor either side of the gaps. */
+const OPEN = 1.35;
+/** A gap longer than a word gap is still a word gap: how much of the excess counts against it. */
+const WORD_TAIL = 0.5;
+/** Gaps an over needs before a small group of quick gaps is folded into the gaps inside letters. */
+const SETTLE_CLASSES = 8;
 
 const LN2PI = Math.log(2 * Math.PI);
 
@@ -132,7 +138,9 @@ function letterScore(marks: Mark[], from: number, to: number, pattern: string, p
 
 function gapScore(gap: number, cls: 'char' | 'word', h: Hyp, t: number, p: FistParams): number {
   const local = h.lastTempo === null ? tempoAt(p, t) : 0.5 * h.lastTempo + 0.5 * tempoAt(p, t);
-  return robust(Math.log(gap) - local - (cls === 'char' ? p.char : p.word), p.sdInter, true);
+  const r = Math.log(gap) - local - (cls === 'char' ? p.char : p.word);
+  // Beginners pause between words for as long as they like.
+  return robust(cls === 'word' && r > 0 ? r * WORD_TAIL : r, p.sdInter, true);
 }
 
 /** A reading the search must follow for the first marks: dit or dah per mark, and per gap e (inside a letter), c (letter) or w (word). */
@@ -141,7 +149,8 @@ export interface Fixed {
   gap: string;
 }
 
-export function decodeOnce(marks: Mark[], p: FistParams, beam = tuning.beam, fixed: Fixed = { sym: '', gap: '' }): Item[] {
+/** The best reading and its score (log probability, up to a constant). */
+export function decodeOnce(marks: Mark[], p: FistParams, beam = tuning.beam, fixed: Fixed = { sym: '', gap: '' }): { items: Item[]; score: number } {
   const lm = languageModel();
   // Many readings share a letter (same marks, same pattern): score it once.
   const letters = new Map<string, { score: number; tempo: number }>();
@@ -233,7 +242,7 @@ export function decodeOnce(marks: Mark[], p: FistParams, beam = tuning.beam, fix
   }
   const items: Item[] = [];
   for (let c = hyps[0]?.chain ?? null; c; c = c.prev) items.unshift(c.item);
-  return items;
+  return { items, score: hyps[0]?.score ?? -Infinity };
 }
 
 const median = (xs: number[]) => {
@@ -256,8 +265,21 @@ export function initialParams(model: DecoderModel, marks: Mark[]): FistParams {
   let dit = model.dit;
   let dahRatio = model.dah / model.dit;
   if (logs.length >= 4) {
-    const lo = Math.min(...logs);
-    const hi = Math.max(...logs);
+    // Seeded at the shortest and longest marks, except one far from the rest
+    // (1.6 times shorter or longer than its neighbour) when the rest still
+    // hold dits and dahs: a blip from the room, or a voice merged into a
+    // mark, must not pose as the dit or the dah. The one dah of SET stays.
+    const sorted = [...logs].sort((a, b) => a - b);
+    const last = sorted.length - 1;
+    const apart = Math.log(1.6);
+    let i = 0;
+    while (i < last - 1 && sorted[i + 1] - sorted[i] > apart) i++;
+    if (sorted[last] - sorted[i] < apart) i = 0;
+    let j = last;
+    while (j > i + 1 && sorted[j] - sorted[j - 1] > apart) j--;
+    if (sorted[j] - sorted[i] < apart) j = last;
+    const lo = sorted[i];
+    const hi = sorted[j];
     const k = kmeans2(logs, lo, hi);
     if (k.nLow >= 1 && k.nHigh >= 1 && k.high - k.low >= Math.log(1.6)) {
       dit = Math.exp(k.low);
@@ -270,8 +292,24 @@ export function initialParams(model: DecoderModel, marks: Mark[]): FistParams {
   let word = Math.log((model.wordBoundaryEst * 1.4) / dit);
   const gaps = marks.slice(1).map((m, i) => Math.log(m.start - marks[i].end)).filter((g) => Number.isFinite(g));
   if (gaps.length >= 3) {
-    const c = gapClasses(gaps);
-    if (c.modes.length >= 2) {
+    const raw = gapClasses(gaps);
+    // As the live decoder reads them (a few hurried gaps are not a class),
+    // once there are enough gaps to tell.
+    const c = gaps.length >= SETTLE_CLASSES ? settledClasses(raw) : raw;
+    const role = c.modes.length === 2 && c.modes[1] - c.modes[0] >= Math.log(1.8) ? upperRole(c.modes[1], c.modes[0], Math.log(dit), c.counts[1]) : 'char';
+    if (role === 'word') {
+      // Words of one letter (V V V): the class above the gaps inside letters
+      // is word gaps, and letter gaps keep their expected length.
+      elem = c.modes[0] - Math.log(dit);
+      word = c.modes[1] - Math.log(dit);
+      char = Math.min(Math.log(3) + Math.max(elem, 0), word - Math.log(1.8));
+    } else if (role === 'open') {
+      // Letter gaps or word gaps, timing cannot tell: both fit them equally
+      // and the language model decides (VVV or V V V).
+      elem = c.modes[0] - Math.log(dit);
+      char = c.modes[1] - Math.log(dit) - Math.log(OPEN);
+      word = c.modes[1] - Math.log(dit) + Math.log(OPEN);
+    } else if (c.modes.length >= 2) {
       elem = c.modes[0] - Math.log(dit);
       char = c.modes[1] - Math.log(dit);
       if (c.modes.length >= 3) word = c.modes[2] - Math.log(dit);
@@ -286,7 +324,7 @@ export function initialParams(model: DecoderModel, marks: Mark[]): FistParams {
 }
 
 /** Re-estimates the fist from a reading. */
-function refit(marks: Mark[], items: Item[], p: FistParams): FistParams {
+export function refit(marks: Mark[], items: Item[], p: FistParams): FistParams {
   const q = { ...p };
   const dahs: number[] = [];
   const dits: number[] = [];
@@ -344,6 +382,38 @@ export interface SettleOptions {
   beam?: number;
   /** Letters already written down, from the start of the over: the reading begins with them. */
   keep?: Kept[];
+  /** Letters on screen: kept when a reading that changes them scores less than `tuning.rewrite` better and has fewer letters in known words. */
+  prefer?: Kept[];
+}
+
+/** Letters of a reading in real words, callsigns, numbers or repeats of an earlier word, and whether that is all of them. */
+function known(items: Item[]): { letters: number; all: boolean } {
+  let letters = 0;
+  let all = true;
+  let word = '';
+  const recent: string[] = [];
+  items.forEach((it, i) => {
+    word += it.token ?? '?';
+    if (it.space || i === items.length - 1) {
+      const ev = wordEvidence(word, recent);
+      if (ev.known || ev.repeat) letters += word.length;
+      else all = false;
+      recent.push(word);
+      word = '';
+    }
+  });
+  return { letters, all };
+}
+
+/** The search's constraint for letters given from the start of the over (as far as the marks reach). */
+function fixedFrom(letters: Kept[], marks: number): Fixed {
+  const fixed: Fixed = { sym: '', gap: '' };
+  for (const k of letters) {
+    if (fixed.sym.length + k.pattern.length > marks) break;
+    fixed.sym += k.pattern;
+    fixed.gap += 'e'.repeat(Math.max(0, k.pattern.length - 1)) + (k.space ? 'w' : 'c');
+  }
+  return fixed;
 }
 
 /** A letter already written down: its dits and dahs, and whether a word space follows. */
@@ -361,15 +431,26 @@ export function settleOver(marks: Mark[], model: DecoderModel, until?: number, o
   let p = initialParams(model, ms);
   // Fitting rounds use a narrower search; the final reading the full one.
   const rounds = opts.rounds ?? tuning.rounds;
-  const fixed: Fixed = { sym: '', gap: '' };
-  for (const k of opts.keep ?? []) {
-    fixed.sym += k.pattern;
-    fixed.gap += 'e'.repeat(Math.max(0, k.pattern.length - 1)) + (k.space ? 'w' : 'c');
-  }
-  let items = decodeOnce(ms, p, tuning.fitBeam, fixed);
+  const fixed = fixedFrom(opts.keep ?? [], ms.length);
+  let items = decodeOnce(ms, p, tuning.fitBeam, fixed).items;
+  let best = { items, score: -Infinity };
   for (let round = 0; round < rounds; round++) {
     p = refit(ms, items, p);
-    items = decodeOnce(ms, p, round === rounds - 1 ? (opts.beam ?? tuning.beam) : tuning.fitBeam, fixed);
+    best = decodeOnce(ms, p, round === rounds - 1 ? (opts.beam ?? tuning.beam) : tuning.fitBeam, fixed);
+    items = best.items;
+  }
+  // The reading already on screen stands unless another is clearly better:
+  // reading the whole over again must not turn a right reading wrong.
+  const shown = opts.prefer ?? [];
+  if (shown.length > (opts.keep ?? []).length && rounds > 0) {
+    const kept = decodeOnce(ms, p, opts.beam ?? tuning.beam, fixedFrom(shown, ms.length));
+    // In a near tie the full search is usually right (QRL to QRP, G3XKP to
+    // G3YKP, TU V V to V V V), but not when what is on screen is all real
+    // words, callsigns, numbers or repeats and it would turn some of them
+    // into something else (PARIS to EGAENIS, VVV to EUVEU, TU to Q).
+    const close = best.score - kept.score < tuning.rewrite;
+    const onScreen = known(kept.items);
+    if (kept.items.length && close && onScreen.all && onScreen.letters > known(items).letters) items = kept.items;
   }
   // A letter is still open while the silence after it is shorter than a letter gap.
   if (until !== undefined && items.length) {

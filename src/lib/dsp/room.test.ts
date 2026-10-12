@@ -69,3 +69,43 @@ describe('a tone over room sounds', () => {
     });
   }
 });
+
+// Talking near the microphone while keying, or while not keying at all. The
+// keyed CQ under speech 20 and 13 dB below it, at two pitches, six takes each;
+// and two minutes of speech alone at two levels, searching and pinned.
+describe('speech near the microphone', () => {
+  // Before (12 Oct 2026): 0 of 24 exact, mean letter error 9.1%. Now 17 of
+  // 24, 4.4%: the search waits for a pitch that holds, the first marks must
+  // hold their pitch from one half to the other, and one blip from the room
+  // no longer seeds the dit.
+  it('reads a tone keyed under speech', () => {
+    const TEXT = 'CQ CQ DE 9V1XX 9V1XX K';
+    let exact = 0;
+    let err = 0;
+    for (const roomDb of [-40, -33]) {
+      for (const pitch of [600, 800]) {
+        for (const seed of [1, 2, 3, 4, 5, 6]) {
+          const { samples } = renderText(TEXT, { sampleRate: FS, pitch, amplitude: dbfs(-20), charWpm: 15, seed });
+          const tone = new Float32Array(samples.length + 2 * FS);
+          tone.set(samples, FS);
+          const got = decode(mix(tone, roomNoise('speech', tone.length / FS, FS, dbfs(roomDb), seed + 10)), null);
+          exact += got === TEXT ? 1 : 0;
+          err += cer(TEXT, got);
+        }
+      }
+    }
+    expect(exact).toBeGreaterThanOrEqual(15);
+    expect(err / 24).toBeLessThanOrEqual(0.055);
+  });
+
+  // Before: 40 letters in 8 minutes. Now 30.
+  it('keys fewer stray letters from speech alone', () => {
+    let n = 0;
+    for (const level of [-30, -20]) {
+      for (const pinned of [null, 600]) {
+        for (const seed of [1, 2, 3, 4, 5, 6]) n += letters(decode(roomNoise('speech', 20, FS, dbfs(level), seed), pinned));
+      }
+    }
+    expect(n).toBeLessThanOrEqual(33);
+  });
+});

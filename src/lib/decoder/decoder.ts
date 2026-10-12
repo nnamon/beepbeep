@@ -9,7 +9,7 @@
 
 import { tokenOf } from '../morse/code';
 import { kmeans2 } from './kmeans';
-import { gapClasses } from './breaks';
+import { gapClasses, settledClasses } from './breaks';
 import { LIVE, settleOver, type Kept } from './settle';
 
 export interface DecodedMark {
@@ -150,13 +150,14 @@ export class Decoder {
    * Decodes marks again from a learned model: the second pass at the end of an
    * over, so characters keyed before the fist was learned come out right too.
    */
-  static redecode(model: DecoderModel, marks: { start: number; end: number }[], until?: number, keep?: Kept[], full = false): DecoderOutput[] {
+  static redecode(model: DecoderModel, marks: { start: number; end: number }[], until?: number, keep?: Kept[], full = false, prefer?: Kept[]): DecoderOutput[] {
     // The whole-over search (settle.ts): per-letter tempo, the fist refitted
     // from the reading, and a light language model for what timing leaves open.
     // While an over is still open (`until`), a quicker search: it runs on every
     // letter (`full` asks for the full one anyway). `keep`: letters already
-    // written down, which the reading must begin with.
-    const settled = settleOver(marks, model, until, { ...(until === undefined || full ? {} : LIVE), keep });
+    // written down, which the reading must begin with. `prefer`: letters on
+    // screen, kept unless a clearly better reading changes them.
+    const settled = settleOver(marks, model, until, { ...(until === undefined || full ? {} : LIVE), keep, prefer });
     if (settled.length || !marks.length) return settled;
     // Should the search ever come back empty, the live reading stands.
     return Decoder.greedy(model, marks, until);
@@ -396,34 +397,11 @@ export class Decoder {
   /** Splits recent gaps into element, character and word classes (see breaks.ts). */
   private fitGaps() {
     if (this.gaps.length < 3) return;
-    const c = gapClasses(this.gaps);
-    const modes = [...c.modes];
-    const valleys = [...c.valleys];
-    const counts = [...c.counts];
-    const n = this.gaps.length;
-    // Element gaps are a large share of all gaps (even all-E/T text has more
-    // than a fifth); a small group below them is a few hurried gaps, not a class.
-    while (modes.length > 1 && counts[0] < Math.max(2, 0.2 * n)) {
-      counts[1] += counts[0];
-      modes.shift();
-      valleys.shift();
-      counts.shift();
-    }
-    // A single stray gap between two classes joins the nearer one.
-    for (let i = 1; i < modes.length - 1; i++) {
-      if (counts[i] >= 2) continue;
-      const intoLower = modes[i] - modes[i - 1] <= modes[i + 1] - modes[i];
-      if (intoLower) {
-        counts[i - 1] += counts[i];
-        valleys.splice(i - 1, 1);
-      } else {
-        counts[i + 1] += counts[i];
-        valleys.splice(i, 1);
-      }
-      modes.splice(i, 1);
-      counts.splice(i, 1);
-      i--;
-    }
+    // With two classes the upper one is taken as letter gaps here, though it
+    // may be word gaps (V V V). Long letter gaps (Farnsworth spacing) look the
+    // same, and this pass has no language model to settle it: the second pass
+    // decides (settle.ts).
+    const { modes, valleys } = settledClasses(gapClasses(this.gaps));
     if (modes.length >= 2 && modes[1] - modes[0] >= ELEM_CHAR) {
       this.elemGap = Math.exp(modes[0]);
       this.charGap = Math.exp(modes[1]);

@@ -5,8 +5,10 @@ import { FISTS, keyText } from './fists';
 import { StableReading, WRITE_AFTER } from './stable';
 import type { Kept } from './settle';
 import { cer } from '../util/text';
+import { patternOf, tokenize } from '../morse/code';
+import { gaussian, mulberry32 } from '../util/random';
 
-const sync = new StableReading((m, mk, until, keep, full) => Promise.resolve(Decoder.redecode(m, mk, until, keep, full)));
+const sync = new StableReading((m, mk, until, keep, full, prefer) => Promise.resolve(Decoder.redecode(m, mk, until, keep, full, prefer)));
 
 /** Streams marks through a live decoder and the reading; returns every reading shown. */
 async function stream(reading: StableReading, marks: { start: number; end: number }[], wpm: number): Promise<DecoderOutput[][]> {
@@ -89,10 +91,10 @@ describe('stable reading', () => {
     const keeps: Kept[][] = [];
     let release: () => void = () => {};
     const gate = new Promise<void>((res) => (release = res));
-    const r = new StableReading(async (m, mk, until, keep, full) => {
+    const r = new StableReading(async (m, mk, until, keep, full, prefer) => {
       keeps.push(keep);
       if (keeps.length === 1) await gate;
-      return Decoder.redecode(m, mk, until, keep, full);
+      return Decoder.redecode(m, mk, until, keep, full, prefer);
     });
     const pending = r.update(model, marks, marks[marks.length - 1].end + 1);
     r.reset();
@@ -100,5 +102,57 @@ describe('stable reading', () => {
     await pending;
     await r.update(model, marks.slice(0, 4), marks[3].end + 1);
     expect(keeps[keeps.length - 1]).toEqual([]);
+  });
+});
+
+/**
+ * Keying with a long pause inside some letters (`hes`: letter index to how
+ * many times the first gap inside it is stretched), 10% jitter on marks and
+ * 15% on gaps: the audit's generator, so its cases come out the same.
+ */
+function hesitant(text: string, wpm: number, hes: Record<number, number>, seed: number) {
+  const rng = mulberry32(seed);
+  const ln = (sd: number) => Math.exp(gaussian(rng) * sd);
+  const unit = 1.2 / wpm;
+  const out: { start: number; end: number }[] = [];
+  let t = 0.5;
+  let n = 0;
+  let space = false;
+  for (const tok of tokenize(text)) {
+    if (tok === ' ') {
+      space = true;
+      continue;
+    }
+    if (out.length) t += (space ? 7 : 3) * unit * ln(0.15);
+    space = false;
+    const p = patternOf(tok)!;
+    for (let i = 0; i < p.length; i++) {
+      if (i) t += unit * ln(0.15) * (i === 1 ? (hes[n] ?? 1) : 1);
+      const len = (p[i] === '.' ? 1 : 3) * unit * ln(0.1);
+      out.push({ start: t, end: t + len });
+      t += len;
+    }
+    n++;
+  }
+  return out;
+}
+
+describe('end of the over', () => {
+  // Reading the whole over again at End over turned right readings into
+  // wrong ones when two readings scored about the same: PARIS on screen
+  // became EGAENIS (audit, 12 Oct 2026). On the audit's 1,320 sends it now
+  // makes 1 reading worse (4 before) and still corrects 3.
+  it('keeps a reading of real words on screen when a re-read is no clearer', async () => {
+    for (const [text, wpm, hes] of [
+      ['PARIS', 8, { 0: 3.5, 2: 3.5 }],
+      ['PARIS', 18, { 0: 3.5, 2: 3.5 }],
+    ] as const) {
+      const marks = hesitant(text, wpm, hes, 101 + wpm);
+      const shown = await stream(sync, marks, 15);
+      const before = outputsToText(shown[shown.length - 2]);
+      const after = outputsToText(shown[shown.length - 1]);
+      expect(before, `${text} at ${wpm} wpm on screen`).toBe(text);
+      expect(after, `${text} at ${wpm} wpm after the over`).toBe(text);
+    }
   });
 });

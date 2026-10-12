@@ -1,0 +1,72 @@
+# Handoff: audit fixes, October 2026
+
+Where the work stopped and what is left. Read [AGENTS.md](../AGENTS.md) first: it has the tooling, the test rules and the rules for the app's wording.
+
+## What happened
+
+A skeptical audit of the whole app found 3 critical, 16 high and about 60 medium and low problems, plus a list of wording problems. Almost all of them are fixed on `main`. Every fix has a test that failed on the old code.
+
+| Commit | What |
+| --- | --- |
+| `5d689de` | The 3 critical bugs: sessions not saved, a damaged import wiping progress, Learn QSOs freezing |
+| `04e9941` | AGENTS.md: wording rules, the words we use, tooling, design rules |
+| `abfdc16`, `32dd369`, `ce4bf02`, `b7544f0` | Drills, Pocket, Today, LICW exercises, Settings, Setup, Progress, Guide, keyboard handling, wording |
+| `7febe48` | Merge: layout and accessibility (phones on their side, tap targets, titles and focus, word wrapping) |
+| `2d04706` | Merge: QSO simulator and Learn QSOs (when your turn ends, scoring, the checker, region instead of state) |
+| the merge after `2d04706` | Merge: decoder (one-letter words keep their spaces, unpinned pitch search, speech near the mic, end-of-over re-read) |
+
+Decoder results recorded in the decoder commits (fists.ts beginner fists and your recordings in `samples/`):
+
+- V V V read exactly: 0 of 192 sends before, 108 after. Other one-letter words: 103 to 242 of 384.
+- Nothing pinned: every labelled keying take in `samples/` used to lock onto room rumble near 300 Hz and read nothing; now they read as well as with the 600 Hz pin, except one take (33% against 17% pinned).
+- Speech 13 dB below the tone, nothing pinned: 64.5% to 34.1% letter error. Speech alone for 6 minutes, pinned: 38 to 19 stray letters.
+- End-of-over re-read making a right reading wrong: 4 to 1 in 1,320 sends.
+
+## What is left, in order
+
+### Decoder (`src/lib/dsp`, `src/lib/decoder`)
+
+1. **A pin 25 to 50 Hz off the real tone makes decoding go silent.** It must keep decoding, or move to the real tone. Test with the pin set off the tone of a recording.
+2. **"EE" keyed at 8 wpm decodes as "T T" when the speed setting is 15.** The decoder trusts the setting too much when the first marks disagree with it.
+3. **Holding the key down for several seconds prints "T".** A very long mark should print nothing.
+4. **Stray letters from talking are halved, not gone.** `samples.test.ts` take `154427-noise-t4` (talking, no keying, pinned) reads 4 stray letters where `samples/best.json` has 3; the decoder agent left it as a known difference.
+5. **One small step back from the V V V fix:** on joined texts (VVV, VVV VVV, EE, TEST, PARIS, RR, TU, 5NN) exact readings went from 431 to 421 of 512, while letter error improved from 17.1% to 15.5%. Check whether it can be won back.
+6. **Unfinished change:** the decoder agent was trying a rule in `settle.ts` that reads TEST correctly and was "neutral to slightly positive" on the benchmark. It is not on `main`. The diff is saved locally at `.claude/decoder-wip-settle.patch` (not in git). Apply it, test it, keep it or drop it.
+7. **The audio clock stalls under heavy load.** Key events are mapped to audio time through `engine.now` (`eventTime` in `src/lib/audio/live.ts`), so when the clock stalls, dits shorten or vanish (K read as M). This shows in the keyed e2e tests on a busy machine and may hit slow phones. A test with a stalled audio clock and steady event times would show it.
+
+### Timing notes beside the Send drill and Live decoder
+
+`src/lib/train/fist.ts`, the note functions in `src/lib/train/scoring.ts` (from about line 60), `src/ui/FistPanel.svelte`:
+
+8. A dah ratio of 3.0 is shown for sends with no dits; it is made up. Show none when it can't be measured.
+9. "Letter gap, aim 3: 6.7 units" can show together with "Timing within range." Pick one.
+10. "Weighting, aim 1.0" and "Clean characters" are unexplained. Progress now calls the first "Dit length against the gaps inside letters"; use the same words in the panel and in the note ("Light weighting: 0.50, aim 1.0."). Keep the measured-note format ("Word gaps short: 4.8 units, aim 7.").
+11. `FistPanel.svelte` uses a dash as an empty value; write "none" or "no data yet".
+12. If `dahRatio` becomes nullable, `Progress.svelte` already guards it with `?.`; check the type.
+
+### Small
+
+13. **README latency:** "81 ms at 30 wpm" in "How decoding works"; it measured 84 ms. Re-run `src/lib/decoder/latency.test.ts` after the decoder merge and write what it prints.
+14. **README images** (`docs/images/`) show a few old labels (Level 14, older layout). Regenerate: `docker compose run --rm -T -e README_SHOTS=1 -e GITHUB_SHA=$(git rev-parse HEAD) e2e npx playwright test --project=readme`, then look at every image before committing.
+
+## Not checked
+
+- A real iPhone, the installed app, real notch insets (only emulated with the safe-area tokens) and VoiceOver.
+- The reload into a new build after an update (`src/main.ts`): it reloads at the next main screen after the service worker changes. No test covers it.
+- Starting sound on the first tap after a reload in Learn QSOs is tried only in emulated WebKit. With paddles, that first press starts the sound but is not decoded.
+
+## Tests that fail at random on a busy machine
+
+The tests that key in the browser with timers (Learn QSOs on the touch key and straight key, "go to Setup mid-lesson", calibrate on the touch key, the Send drill flow on the mic project) misread when the machine is loaded (load average over about 10), because the page's timers and audio clock run late. They pass when run alone. `e2e/qso.spec.ts` and `e2e/qsolearn.spec.ts` retry twice for this reason. Before believing such a failure, run the spec alone with `--workers=1`.
+
+## Housekeeping
+
+- The agent worktrees and branches are merged and removed. Item 6's unfinished change is kept only in `.claude/decoder-wip-settle.patch` on the owner's machine.
+- The audit's own files (specs, logs, screenshots) were in a temporary scratch folder and may be gone. The findings that matter are written out above.
+
+## How to resume
+
+1. Read AGENTS.md and this file.
+2. `docker compose run --rm -T dev npm install`, then the checks in AGENTS.md, to see that `main` is green.
+3. Work down "What is left" from item 1. Decoder changes: run `npm test` (it includes the accuracy suites and the `samples/` takes) and `npm run bench`, and give before and after numbers in the commit message, as the decoder commits do.
+4. Delete each item from this file when it is done; delete the file when the list is empty.

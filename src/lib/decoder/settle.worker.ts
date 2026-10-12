@@ -10,9 +10,10 @@ interface Request {
   until?: number;
   keep?: Kept[];
   full?: boolean;
+  prefer?: Kept[];
 }
 
 self.onmessage = (e: MessageEvent<Request>) => {
-  const { id, model, marks, until, keep, full } = e.data;
-  self.postMessage({ id, outputs: Decoder.redecode(model, marks, until, keep, full) });
+  const { id, model, marks, until, keep, full, prefer } = e.data;
+  self.postMessage({ id, outputs: Decoder.redecode(model, marks, until, keep, full, prefer) });
 };

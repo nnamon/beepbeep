@@ -1,6 +1,6 @@
 # Working on BeepBeep
 
-Rules for anyone changing this repo, people and coding agents alike. Read the whole file before you start.
+Rules for anyone changing this repo, people and coding agents alike. Read the whole file before you start. If `docs/HANDOFF.md` exists, read it next: it lists unfinished work.
 
 BeepBeep is a CW (Morse code) trainer that runs in the browser. Its users are mostly beginners. Many of them follow the LICW syllabus. Write and build for someone who started learning Morse a few weeks ago.
 
