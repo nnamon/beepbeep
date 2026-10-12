@@ -52,7 +52,9 @@ for (const phone of PHONES) {
     await page.addInitScript(() => localStorage.setItem('beepbeep.settings.v1', JSON.stringify({ voice: 'off', guideSeen: true })));
     await page.goto('./#/radio');
     await safeAreas(page, phone);
-    await soundOn(page);
+    // Radio plays nothing and its Start tap starts the audio: no Turn sound on banner pushing it down.
+    await expect(page.getByRole('heading', { level: 1, name: 'Radio' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Turn sound on' })).toHaveCount(0);
     const bar = () => page.evaluate(() => document.querySelector('.tabbar')!.getBoundingClientRect().top);
     const start = (await page.getByRole('button', { name: 'Start' }).boundingBox())!;
     expect(start.y + start.height, 'Start above the tab bar').toBeLessThanOrEqual(await bar());

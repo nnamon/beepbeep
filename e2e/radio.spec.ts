@@ -141,13 +141,15 @@ test('at 360 px: no sideways scrolling, five tabs that fit, and nothing under th
     expect(t.cut, `${t.text} fits`).toBe(false);
     expect(t.w, `${t.text} is wide enough to tap`).toBeGreaterThanOrEqual(44);
   }
-  // The newest line is at the bottom of the text box: the box ends above the tab bar without scrolling the page.
+  // The newest line is at the bottom of the text box: the box, and the buttons under it, end above the tab bar
+  // without scrolling the page.
   const fit = await page.evaluate(() => ({
     box: document.querySelector('main .box')!.getBoundingClientRect().bottom,
+    tools: document.querySelector('main .tools')!.getBoundingClientRect().bottom,
     barTop: document.querySelector('.tabbar')!.getBoundingClientRect().top,
   }));
   expect(fit.box, 'text box above the tab bar').toBeLessThanOrEqual(fit.barTop);
-  expect(fit.box, 'text box fills most of the screen').toBeGreaterThan(fit.barTop - 40);
+  expect(fit.tools, 'Copy text, Save and Clear above the tab bar').toBeLessThanOrEqual(fit.barTop);
   // Scrolled to the end, the last of the screen sits above the tab bar.
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
   const end = await page.evaluate(() => {
@@ -163,11 +165,34 @@ test('at 360 px: no sideways scrolling, five tabs that fit, and nothing under th
   }
 });
 
-test('on a wide screen the text box reaches near the bottom of the window', async ({ page }) => {
+test('on a wide screen the text box and the buttons under it fit in the window', async ({ page }) => {
   await listen(page);
-  const m = await page.evaluate(() => ({ bottom: document.querySelector('main .box')!.getBoundingClientRect().bottom, vh: innerHeight }));
-  expect(m.bottom).toBeLessThanOrEqual(m.vh);
-  expect(m.bottom).toBeGreaterThan(m.vh - 60);
+  const m = await page.evaluate(() => ({
+    box: document.querySelector('main .box')!.getBoundingClientRect().bottom,
+    tools: document.querySelector('main .tools')!.getBoundingClientRect().bottom,
+    vh: innerHeight,
+  }));
+  expect(m.tools, 'buttons in the window').toBeLessThanOrEqual(m.vh);
+  expect(m.box, 'the box uses most of the height').toBeGreaterThan(m.vh - 160);
+});
+
+test('before Start: the instructions are plain text, with no reading box', async ({ page }) => {
+  await instrument(page);
+  await settings(page, { ...BASE, input: 'mic' });
+  for (const size of [
+    { width: 360, height: 740 },
+    { width: 1280, height: 860 },
+  ]) {
+    await page.setViewportSize(size);
+    await page.goto('./#/radio');
+    const intro = page.getByText("Connect your radio's audio to the microphone");
+    await expect(intro).toBeVisible();
+    await expect(page.locator('main .box')).toHaveCount(0);
+    expect(await intro.evaluate((p) => getComputedStyle(p).fontSize)).toBe('15px');
+    // Nothing is cut off: every paragraph shows in full.
+    const cut = await page.evaluate(() => [...document.querySelectorAll('main .intro p')].filter((p) => p.scrollHeight > p.clientHeight + 1).length);
+    expect(cut).toBe(0);
+  }
 });
 
 test('scrolled up to read, the text stays put until Show newest', async ({ page }) => {

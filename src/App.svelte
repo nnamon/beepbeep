@@ -132,7 +132,8 @@
     <a class="guide-link" href={href('guide')} class:on={top === 'guide'}>Guide</a>
     <a class="gear" href={href('settings')} aria-label="Settings"><Icon name="settings" /></a>
   </header>
-  <SoundGate />
+  <!-- Radio plays nothing, and its Start tap starts the audio, so it needs no sound banner. -->
+  {#if top !== 'radio'}<SoundGate />{/if}
   {#if top !== 'pocket'}<div class="signal-strip"><SignalBar compact /></div>{/if}
 
   <main class="main" id="main-content">

@@ -90,6 +90,33 @@ test('at 360 px the list fits, rows are big enough to tap, and nothing sits unde
   expect(m.last).toBeLessThanOrEqual(m.bar);
 });
 
+// A 390 x 844 phone, in Safari and installed (notch and home bar set with the app's safe-area tokens).
+for (const insets of [
+  { name: 'Safari', top: 0, bottom: 0 },
+  { name: 'installed', top: 47, bottom: 34 },
+]) {
+  test(`390 x 844 phone, ${insets.name}: six lines of text and the first of Other signals without scrolling`, async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await listen(page);
+    await page.addStyleTag({ content: `:root { --safe-top: ${insets.top}px !important; --safe-bottom: ${insets.bottom}px !important; }` });
+    await page.evaluate(() => window.scrollTo(0, 0));
+    const m = await page.evaluate(() => {
+      const box = document.querySelector('main .box')!;
+      const cs = getComputedStyle(box);
+      const inner = box.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+      return {
+        lines: Math.floor(inner / parseFloat(cs.lineHeight)),
+        firstRow: document.querySelector('.side ul li')!.getBoundingClientRect().bottom,
+        helper: document.querySelector('.side p')!.getBoundingClientRect().bottom,
+        bar: document.querySelector('.tabbar')!.getBoundingClientRect().top,
+      };
+    });
+    expect(m.lines, 'lines of text in the box').toBeGreaterThanOrEqual(6);
+    expect(m.helper, 'Other signals help above the tab bar').toBeLessThanOrEqual(m.bar);
+    expect(m.firstRow, 'first of Other signals above the tab bar').toBeLessThanOrEqual(m.bar);
+  });
+}
+
 test('axe passes with signals listed', async ({ page }) => {
   await listen(page);
   const r = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).analyze();

@@ -31,7 +31,7 @@
   import Select from '../ui/Select.svelte';
   import { engine } from '../lib/audio/engine';
   import { settings } from '../lib/state/settings.svelte';
-  import { micError, signal, stopMic } from '../lib/state/signal.svelte';
+  import { micError, stopMic } from '../lib/state/signal.svelte';
   import { ending, fileName, parts, readable } from '../lib/radio/transcript';
   import { keepAwake } from '../lib/util/wakelock';
   import { forControl, inField } from '../lib/util/keys';
@@ -87,10 +87,17 @@
   const lines = $derived(followed ? followed.text.split('\n') : []);
 
   const quiet = (s: RadioSignal) => !s.keying && now - s.lastHeard >= QUIET_MS;
-  const speed = (s: RadioSignal) => (s.wpm ? `${Math.round(s.wpm)} wpm` : 'speed not measured yet');
+  const speed = (s: RadioSignal) => (s.wpm ? `${Math.round(s.wpm)} wpm` : 'measuring speed');
   const strength = (s: RadioSignal) => (s.snr <= 0 ? '' : s.snr >= 35 ? 'strong' : s.snr >= 20 ? 'fair' : 'weak');
 
-  const tickTimer = setInterval(() => (now = performance.now()), 1000);
+  const tickTimer = setInterval(() => {
+    now = performance.now();
+    // iOS pauses all audio for a call, or for another app taking the sound: listening has stopped, so say so.
+    if (listening && engine.ctx && engine.ctx.state !== 'running') {
+      stop();
+      error = `Listening stopped because the ${device} paused its audio, for example for a call. Press Start to listen again.`;
+    }
+  }, 1000);
 
   /** Set on leaving: a start still waiting for the microphone gives up. */
   let gone = false;
@@ -116,16 +123,20 @@
     }
   }
 
-  // A cable from the radio may come in on another input than the browser's choice.
+  // A cable from the radio may come in on another device than the browser's choice. The browser
+  // names its devices only once the microphone has been allowed, so unnamed ones are not offered.
   let devices = $state<{ value: string; label: string }[]>([]);
+  /** While listening, the device list shows only after Change device. */
+  let changing = $state(false);
   async function listDevices() {
     const all = await engine.inputDevices().catch(() => []);
-    if (!gone) devices = all.map((d) => ({ value: d.deviceId, label: d.label || 'Microphone' }));
+    if (!gone) devices = all.filter((d) => d.label).map((d) => ({ value: d.deviceId, label: d.label }));
   }
-  if (signal.micOn) void listDevices();
+  void listDevices();
 
   async function changeDevice(id: string) {
     settings.micDeviceId = id;
+    changing = false;
     if (!listening) return;
     stop();
     await start();
@@ -220,37 +231,6 @@
     box?.focus();
   }
 
-  // The box fills the screen down to the tab bar (or near the bottom of a wide window), so the
-  // newest line is in view without scrolling the page. Measured again whenever anything above it
-  // changes size, and when the window does.
-  let section = $state<HTMLElement | null>(null);
-  let fitted = $state<number | null>(null);
-  function fit() {
-    if (!box) return;
-    const top = box.getBoundingClientRect().top + window.scrollY;
-    const bar = document.querySelector('.tabbar');
-    const below = bar && getComputedStyle(bar).display !== 'none' ? bar.getBoundingClientRect().height + 16 : 32;
-    const h = Math.max(160, Math.floor(window.innerHeight - top - below));
-    if (h !== fitted) fitted = h;
-  }
-  $effect(() => {
-    if (!section) return;
-    // In the next frame: a height set inside the observer's callback would resize what it watches in the same frame.
-    let frame = 0;
-    const refit = () => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(fit);
-    };
-    const watch = new ResizeObserver(refit);
-    watch.observe(section);
-    window.addEventListener('resize', refit);
-    return () => {
-      cancelAnimationFrame(frame);
-      watch.disconnect();
-      window.removeEventListener('resize', refit);
-    };
-  });
-
   // Arrow keys move through the list; Enter or Space on a row follows it.
   let focusId = $state<number | null>(null);
   const tabStop = $derived(others.some((s) => s.id === focusId) ? focusId : (others[0]?.id ?? null));
@@ -286,6 +266,9 @@
     void keepAwake(false);
   });
 
+  // Copy text acts on the followed signal's text: enabled once it has any.
+  const hasAny = $derived(!!followed && !!(followed.text || followed.pending));
+
   const status = $derived(
     error || notice || (!listening && !starting && total > 0 ? 'BeepBeep has stopped listening. Press Start to listen again.' : ''),
   );
@@ -293,105 +276,118 @@
 
 <svelte:window onkeydown={onKey} />
 
-<section class="radio" bind:this={section}>
-  <div class="head">
+<section class="radio">
+  <div class="top">
     <h1>Radio</h1>
-    <p class="lead muted">Each signal shows its pitch (how high its tone is, in Hz) and its speed in wpm (words per minute).</p>
-  </div>
-
-  <div class="actions">
     <Button kind="primary" onclick={() => (listening ? stop() : void start())} disabled={starting || (!listening && !secure)} hint={listening ? 'Esc' : 'Enter'}
       >{listening ? 'Stop' : 'Start'}</Button
     >
-    <Button onclick={copy} disabled={!followed || !(followed.text || followed.pending)}>Copy text</Button>
-    <Button onclick={save} disabled={total === 0}>Save</Button>
-    <Button kind="quiet" onclick={clear} disabled={total === 0}>Clear</Button>
   </div>
-  {#if devices.length > 1}
-    <div class="device">
-      <Select label="Device" options={[{ value: '', label: 'Default' }, ...devices]} value={settings.micDeviceId} onchange={changeDevice} />
-    </div>
-  {/if}
 
   {#if !secure}
     <p class="warn">The microphone needs a secure (https) page. Open BeepBeep from its https address.</p>
   {/if}
   <p class="status" class:warn={!!error} role="status">{status}</p>
 
-  <div class="cols">
-    <div class="main">
-      {#if followed}
+  {#if !followed}
+    <!-- Until a signal is heard: what to do, in plain text. The reading box comes with the first signal. -->
+    <div class="intro">
+      {#if starting}
+        <p>The microphone is starting. If the browser asks, allow it.</p>
+      {:else if listening}
+        <p>
+          BeepBeep is listening but hasn't heard any Morse yet. Text shows here as soon as it decodes a signal. If nothing shows,
+          turn the radio's volume up or bring the {device} closer to its speaker.
+        </p>
+      {:else}
+        <p>
+          Connect your radio's audio to the microphone, or put the {device} near its speaker, then press Start. BeepBeep writes down
+          the Morse it hears.
+        </p>
+      {/if}
+      <p class="muted">Each signal shows its pitch (how high its tone is, in Hz) and its speed in wpm (words per minute).</p>
+      {#if devices.length > 1}
+        {#if listening && !changing}
+          <div><Button kind="quiet" onclick={() => (changing = true)}>Change device</Button></div>
+        {:else}
+          {@render chooser()}
+        {/if}
+      {:else if !listening}
+        <p class="muted small">
+          With a cable from the radio, press Start first. If there is more than one device to choose from, you can then pick the
+          cable's with Change device.
+        </p>
+      {/if}
+    </div>
+  {:else}
+    <div class="cols">
+      <div class="main">
         <div class="following">
           <span class="led" class:on={followed.keying} aria-hidden="true"></span>
           <span class="label">Following</span>
           <span class="facts">{@render facts([`${Math.round(followed.pitch)} Hz`, speed(followed), strength(followed), quiet(followed) ? 'quiet' : ''])}</span>
-          {#if chosen !== null}<span class="auto"><Button kind="quiet" onclick={() => (chosen = null)}>Follow automatically</Button></span>{/if}
         </div>
-      {/if}
 
-      <div class="frame">
-        <!-- Scrolls on its own, newest at the bottom; it can take focus, so the keyboard scrolls it too. -->
-        <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-        <div
-          class="box"
-          bind:this={box}
-          style:height={fitted ? `${fitted}px` : undefined}
-          onscroll={onScroll}
-          tabindex="0"
-          role="region"
-          aria-label={followed ? `Text from the signal at ${Math.round(followed.pitch)} Hz` : 'Decoded text'}
-        >
-          {#if followed}
-            {#each lines as line, i (i)}
-              {#if i < lines.length - 1}
-                <p class="line">{@render text(line)}</p>
-              {:else if line || followed.pending}
-                <!-- The over in progress goes on from the last line; its last word is still being read. -->
-                {@const cut = followed.pending.lastIndexOf(' ') + 1}
-                <p class="line">{@render text(line)}{@render text(followed.pending.slice(0, cut))}<span class="pending">{@render text(followed.pending.slice(cut))}</span></p>
-              {/if}
-            {/each}
-          {:else if starting}
-            <p class="empty">The microphone is starting. If the browser asks, allow it.</p>
-          {:else if listening}
-            <p class="empty">
-              BeepBeep is listening but hasn't heard any Morse yet. Text shows here as soon as it decodes a signal. If nothing
-              shows, turn the radio's volume up or bring the {device} closer to its speaker.
-            </p>
-          {:else}
-            <p class="empty">
-              Connect your radio's audio to the microphone, or put the {device} near its speaker, then press Start. BeepBeep writes
-              down the Morse it hears.
-            </p>
-            <p class="empty small">
-              If the radio's audio comes in through a cable, press Start and then pick that input under Device. Device appears
-              when there is more than one input to choose from.
-            </p>
+        <div class="frame">
+          <!-- Scrolls on its own, newest at the bottom; it can take focus, so the keyboard scrolls it too. -->
+          <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+          <div class="box" bind:this={box} onscroll={onScroll} tabindex="0" role="region" aria-label={`Text from the signal at ${Math.round(followed.pitch)} Hz`}>
+            {#if !followed.text && !followed.pending}
+              <p class="none">Nothing has been read from this signal yet.</p>
+            {:else}
+              {#each lines as line, i (i)}
+                {#if i < lines.length - 1}
+                  <p class="line">{@render text(line)}</p>
+                {:else if line || followed.pending}
+                  <!-- The over in progress goes on from the last line; its last word is still being read. -->
+                  {@const cut = followed.pending.lastIndexOf(' ') + 1}
+                  <p class="line">{@render text(line)}{@render text(followed.pending.slice(0, cut))}<span class="pending">{@render text(followed.pending.slice(cut))}</span></p>
+                {/if}
+              {/each}
+            {/if}
+          </div>
+          {#if !stick}
+            <button type="button" class="newest" onclick={toNewest}>Show newest</button>
           {/if}
         </div>
-        {#if followed && !stick}
-          <button type="button" class="newest" onclick={toNewest}>Show newest</button>
-        {/if}
-      </div>
-    </div>
 
-    {#if listening || signals.length}
+        <!-- A compact row under the text it acts on. -->
+        <div class="tools">
+          <Button kind="quiet" onclick={copy} disabled={!hasAny}>Copy text</Button>
+          <Button kind="quiet" onclick={save} disabled={total === 0}>Save</Button>
+          <Button kind="quiet" onclick={clear} disabled={total === 0}>Clear</Button>
+          {#if devices.length > 1 && listening && !changing}
+            <Button kind="quiet" onclick={() => (changing = true)}>Change device</Button>
+          {/if}
+        </div>
+        {#if devices.length > 1 && (!listening || changing)}{@render chooser()}{/if}
+      </div>
+
       <section class="side" aria-labelledby="others-heading">
         <h2 id="others-heading">Other signals</h2>
         <p class="small muted">
-          {chosen === null
-            ? 'BeepBeep follows the signal that is sending. Choose another signal here to follow it instead.'
-            : 'BeepBeep follows the signal you chose. Follow automatically goes back to the signal that is sending.'}
-          A signal not heard for 30 seconds is marked quiet.
+          {chosen === null ? 'BeepBeep follows the signal that is sending. Choose another to follow it instead.' : 'BeepBeep follows the signal you chose.'}
+          Quiet means not heard for 30 seconds.
         </p>
+        {#if chosen !== null}<div class="back-auto"><Button kind="quiet" onclick={() => (chosen = null)}>Follow automatically</Button></div>{/if}
         {#if others.length}
           <ul class="list" role="list">
             {#each others as s (s.id)}
               <li>
-                <button type="button" class="row" class:quiet={quiet(s)} data-signal={s.id} tabindex={s.id === tabStop ? 0 : -1} onclick={() => follow(s.id)} onfocus={() => (focusId = s.id)} onkeydown={onListKey}>
-                  <span class="top">
+                <button
+                  type="button"
+                  class="row"
+                  class:quiet={quiet(s)}
+                  data-signal={s.id}
+                  tabindex={s.id === tabStop ? 0 : -1}
+                  onclick={() => follow(s.id)}
+                  onfocus={() => (focusId = s.id)}
+                  onkeydown={onListKey}
+                >
+                  <span class="row-top">
                     <span class="led" class:on={s.keying} aria-hidden="true"></span>
-                    <span><span class="visually-hidden">Follow the signal at </span>{@render facts([`${Math.round(s.pitch)} Hz`, speed(s), quiet(s) ? 'quiet' : ''])}<span
+                    <span
+                      ><span class="visually-hidden">Follow the signal at </span>{@render facts([`${Math.round(s.pitch)} Hz`, speed(s), quiet(s) ? 'quiet' : ''])}<span
                         class="visually-hidden">: </span
                       ></span
                     >
@@ -405,12 +401,20 @@
           <p class="muted">No other signals have been heard yet.</p>
         {/if}
       </section>
-    {/if}
-  </div>
+    </div>
+  {/if}
 
   <!-- New text of the followed signal, read out by screen readers. -->
   <p class="visually-hidden" aria-live="polite">{spoken}</p>
 </section>
+
+<!-- The device the microphone listens on. While listening it shows after Change device. -->
+{#snippet chooser()}
+  <div class="device">
+    <Select label="Device" options={[{ value: '', label: 'Default' }, ...devices]} value={settings.micDeviceId} onchange={changeDevice} />
+    {#if listening}<Button kind="quiet" onclick={() => (changing = false)}>Cancel</Button>{/if}
+  </div>
+{/snippet}
 
 <!-- Facts about a signal on one line, a dot between them; a screen reader hears commas. -->
 {#snippet facts(items: string[])}{#each items.filter(Boolean) as f, k (k)}{#if k}<span class="sep" aria-hidden="true">·</span><span class="visually-hidden">, </span>{/if}<span
@@ -430,24 +434,11 @@
     gap: var(--s-2);
   }
 
-  .head {
+  .top {
     display: flex;
-    flex-direction: column;
-    gap: var(--s-1);
-  }
-
-  .lead {
-    max-width: var(--reading);
-  }
-
-  .actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--s-1);
-  }
-
-  .device {
-    max-width: 320px;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s-2);
   }
 
   /* Empty, it takes no room but stays in place, so a screen reader hears what appears in it. */
@@ -459,6 +450,29 @@
     max-width: var(--reading);
     border-left: 2px solid var(--signal);
     padding-left: var(--s-1);
+  }
+
+  .intro {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-2);
+    max-width: var(--reading);
+  }
+
+  .small {
+    font-size: var(--size-s);
+  }
+
+  .device {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: var(--s-1);
+    max-width: 420px;
+  }
+
+  .device :global(.select) {
+    flex: 1 1 200px;
   }
 
   .cols {
@@ -477,18 +491,13 @@
 
   .following {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
-    gap: 0 var(--s-1);
-    min-height: var(--target-min);
+    gap: var(--s-1);
+    min-height: var(--s-3);
   }
 
   .facts {
     font-variant-numeric: tabular-nums;
-  }
-
-  .auto {
-    margin-left: auto;
   }
 
   .sep {
@@ -513,8 +522,12 @@
     position: relative;
   }
 
+  /*
+   * As tall as the window allows. Under it on a wide screen are the buttons; in one column,
+   * Other signals too, whose first row stays in view; on a phone, also the tab bar and the home bar.
+   */
   .box {
-    height: max(260px, 100dvh - 400px);
+    height: max(240px, calc(100dvh - 300px));
     overflow-y: auto;
     padding: var(--s-2);
     border: var(--hairline) solid var(--line);
@@ -533,6 +546,14 @@
 
   .line:last-child {
     margin-bottom: 0;
+  }
+
+  .none {
+    font-family: var(--font-ui);
+    font-size: var(--size-m);
+    line-height: var(--leading);
+    letter-spacing: 0;
+    color: var(--muted);
   }
 
   .pending,
@@ -556,25 +577,6 @@
     pointer-events: none;
   }
 
-  .empty {
-    font-family: var(--font-ui);
-    font-size: var(--size-l);
-    line-height: var(--leading);
-    letter-spacing: 0;
-    color: var(--muted);
-    max-width: var(--reading);
-  }
-
-  .empty + .empty {
-    margin-top: var(--s-2);
-  }
-
-  .empty.small,
-  .small {
-    font-size: var(--size-s);
-  }
-
-
   .newest {
     position: absolute;
     right: var(--s-2);
@@ -590,6 +592,21 @@
 
   .newest:hover {
     background: var(--surface-2);
+  }
+
+  .tools {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 var(--s-1);
+    margin-left: calc(-1 * var(--s-1));
+  }
+
+  .tools :global(.btn) {
+    min-height: var(--target-min);
+  }
+
+  .back-auto {
+    margin-left: calc(-1 * var(--s-1));
   }
 
   .side {
@@ -635,7 +652,7 @@
     color: var(--muted);
   }
 
-  .top {
+  .row-top {
     display: flex;
     align-items: center;
     gap: var(--s-1);
@@ -648,33 +665,41 @@
     text-overflow: ellipsis;
   }
 
+  /* One column: Other signals go under the text, and their first row stays in view. */
   @media (max-width: 860px) {
     .cols {
       grid-template-columns: minmax(0, 1fr);
+      gap: var(--s-2);
     }
 
     .side {
       border-left: 0;
       padding-left: 0;
     }
+
+    .box {
+      height: max(240px, calc(100dvh - 470px));
+    }
   }
 
-  /* Phones: smaller reading text, so a line holds a callsign and a word or two. */
-  @media (max-width: 600px) {
+  /*
+   * Phones held upright: smaller reading text, so a line holds a callsign and a word or two. The
+   * box leaves room for the header, the line above it, the buttons under it, the first of Other
+   * signals and the tab bar with the notch and the home bar: six lines on a 390 x 844 phone.
+   */
+  @media (max-width: 760px) and (min-height: 501px) {
     .box {
-      height: max(220px, 100dvh - 430px);
+      height: max(160px, calc(100dvh - var(--safe-top) - var(--tabbar) - 445px));
+      padding: var(--s-1) var(--s-2);
       font-size: var(--size-big);
-    }
-
-    .actions :global(.btn) {
-      flex: 1 1 auto;
     }
   }
 
   /* A phone on its side: little height, so the box takes what there is. */
   @media (orientation: landscape) and (max-height: 500px) {
     .box {
-      height: max(160px, 100dvh - 200px);
+      height: max(120px, calc(100dvh - 190px));
+      padding: var(--s-1) var(--s-2);
       font-size: var(--size-big);
     }
   }
