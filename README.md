@@ -6,37 +6,37 @@ BeepBeep is a CW trainer for the browser. It decodes your keying from the microp
 
 Runs in desktop and phone browsers (Safari on iOS 16.4+, current Chrome on Android). It can be installed as an app and works offline. Progress is stored in the browser.
 
-<picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/live-decoder-dark.png"><img src="docs/images/live-decoder-light.png" alt="Live decoder reading VVV CQ CQ DE K1ABC K from the microphone, with the rhythm of each mark and a timing report"></picture>
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/live-decoder-dark.png"><img src="docs/images/live-decoder-light.png" alt="The Live decoder has read VVV CQ CQ DE K1ABC K from the microphone. Under the text, the rhythm of the last 29 dits and dahs is drawn above the standard rhythm. On the right, one note says the timing is within range, and the measured gaps between words and between letters, dah length and speed (16 wpm) are listed with their aims."></picture>
 
-Live decoder: simulated hand keying with fan noise and speech mixed in, fed to the app as its microphone.
+Live decoder: a recording of simulated hand keying, with a fan and someone talking in the room, plays into the app as its microphone.
 
 <table>
 <tr>
-<td width="33%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/phone-pocket-dark.png"><img src="docs/images/phone-pocket-light.png" alt="Pocket round on a phone: the answer was I, M was typed, with both rhythms shown"></picture></td>
-<td width="33%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/phone-practice-dark.png"><img src="docs/images/phone-practice-light.png" alt="Practice screen on a phone: Koch lesson 14 and today's checklist, with minutes for each step"></picture></td>
-<td width="33%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/phone-setup-dark.png"><img src="docs/images/phone-setup-light.png" alt="Input setup on a phone: tone heard at 600 Hz, spectrum, level 28 dB over noise"></picture></td>
+<td width="33%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/phone-pocket-dark.png"><img src="docs/images/phone-pocket-light.png" alt="A Pocket round on a phone after a wrong answer. The character was I and M was typed. The rhythm of I is drawn above the rhythm of M, and a Next button is at the bottom."></picture></td>
+<td width="33%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/phone-practice-dark.png"><img src="docs/images/phone-practice-light.png" alt="The Practice screen on a phone. Koch lesson 14 adds J, 15 characters are known, and the receive speed is 20 wpm characters, 12 wpm overall. Below is the start of today's checklist, with minutes for each step: Spot the new character, the Copy drill and Time to recognise (TTR)."></picture></td>
+<td width="33%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/phone-setup-dark.png"><img src="docs/images/phone-setup-light.png" alt="Setup on a phone with the microphone on. The tone is heard at 605 Hz, with a button that makes the decoder listen at that pitch. The spectrum below has the tone's peak marked, and under it are how loud the input is and how far the tone is above the noise."></picture></td>
 </tr>
 <tr>
-<td>Pocket: quiz by ear on a phone.</td>
-<td>Practice: your lesson and today's checklist.</td>
-<td>Setup: the tone found in the room's spectrum.</td>
+<td>Pocket: quiz rounds by ear on a phone. After a miss you hear the right answer, then yours.</td>
+<td>Practice: your lesson, and today's checklist in the order to work through it.</td>
+<td>Setup: BeepBeep finds your tone among the other sounds in the room.</td>
 </tr>
 </table>
 
 <table>
 <tr>
-<td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/send-drill-dark.png"><img src="docs/images/send-drill-light.png" alt="Send drill review: SING received as sent, rhythm against standard, note that letter gaps are short at 2.2 units"></picture></td>
-<td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/qso-dark.png"><img src="docs/images/qso-light.png" alt="Contest QSO with a simulated station, the transcript, what was copied and a timing report"></picture></td>
+<td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/send-drill-dark.png"><img src="docs/images/send-drill-light.png" alt="The Send drill after the word SING was sent with the Space bar as a straight key. It was received as SING. The rhythm sent is drawn above the standard rhythm. The one note says the gaps between letters are short: 2.2 units, aim 3 (a unit is one dit long)."></picture></td>
+<td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/qso-dark.png"><img src="docs/images/qso-light.png" alt="A contest QSO (a contact between two stations) with the simulated station W4N, after it ended. You copied its serial number, 157, and it copied your callsign, serial number and report. Below are one note on your timing, the measured gaps and speed, and the whole exchange line by line."></picture></td>
 </tr>
 <tr>
-<td>Send drill: what was received, your rhythm against standard, one note on timing.</td>
-<td>QSO simulator: a contest exchange with a simulated station.</td>
+<td>Send drill: what BeepBeep received, and your rhythm drawn above the standard one. One note names the most important thing to change in your timing.</td>
+<td>QSO simulator: you make a contest contact with a simulated station, then see what each side copied.</td>
 </tr>
 </table>
 
-<picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/progress-dark.png"><img src="docs/images/progress-light.png" alt="Progress: sessions, speeds over time, TTR delay, recovery after misses and accuracy by character"></picture>
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/progress-dark.png"><img src="docs/images/progress-light.png" alt="Progress after a few weeks of practice. Along the top are sessions and minutes in the last 7 days, the share of time spent sending, QSOs, the lesson and the comfort and stretch speeds. Charts show the speed you practised copying at, your sending speed as decoded, time to recognise (TTR) and characters missed in a row in Sound surfing. Below, each character known at lesson 40 is shaded by how accurately you copied it."></picture>
 
-Progress: speeds over time and accuracy by character.
+Progress: your speeds over time, and how accurately you copy each character.
 
 ## Features
 
@@ -78,7 +78,7 @@ On laptop microphone recordings (`src/lib/decoder/samples.test.ts`), V's and CQs
 
 1. Dit and dah lengths come from k-means on recent mark durations. Until the marks show both lengths, a mark goes to the nearer of the expected dit and dah, with the boundary two thirds of the way to the dah: beginners key slower than their speed setting far more often than faster, so EE keyed at 8 wpm with the setting at 15 reads as EE, not T T. A mark longer than 5 dahs, and at least 1.2 s, is a key held down: it is ignored and does not change the speed estimate. Gap classes are learned separately: the deepest valleys in the density of recent gaps (log time) separate gaps inside a letter, between letters and between words. Hand keying needs this because its gaps do not scale with its marks; a touch key, for example, gives short taps with long pauses.
 2. A pattern that is not a valid character is split at its most prominent internal gap.
-3. The whole over is decoded again by a search (`settle.ts`). Each reading is scored on timing, with a tempo per letter drawn from a tempo curve across the over and an allowance for hesitations that only lengthens gaps, plus a light language model: character trigrams over operating text, callsigns and English, and word-level terms for real words, callsign shapes, numbers and repeats such as CQ CQ. A beam search keeps the best readings; the fist is re-estimated from the best one and the over is decoded again. The language model only decides between readings the timing scores about equally, so clearly sent wrong text decodes as sent. The search runs in a worker, and key events carry their own timestamps, so neither affects the timing measurement.
+3. The whole over is decoded again by a search (`settle.ts`). Each reading is scored on timing, with a tempo per letter drawn from a tempo curve across the over and an allowance for hesitations that only lengthens gaps, plus a light language model: character trigrams over operating text, callsigns and English, and word-level terms for real words, callsign shapes, numbers and repeats such as CQ CQ. A beam search keeps the best readings; the fist is re-estimated from the best one and the over is decoded again. The language model only decides between readings the timing scores about equally, so clearly sent wrong text decodes as sent. Practice groups of a lesson's few characters (KKKMM MKMK KKMM) are text no language model expects, so a reading can also be scored as groups: few characters, about five to a group. When a fist's gaps all sit within about 10% of their class, the search trusts them from its first reading, so a letter gap is not taken for a word gap or a pause inside a letter. The search runs in a worker, and key events carry their own timestamps, so neither affects the timing measurement.
 4. While you key, the over is read again after every letter. A word is written once about 20 marks (five or six letters) follow it, using the full search, and does not change after that (`stable.ts`); later readings must start with it. A change of speed later in the over does not rewrite words already shown. On the beginner scorecard this costs about 0.6 points of character error against reading the whole over again.
 
 Tests run the same code on synthetic audio with noise, fading, interference, static, chirp, drift, room echo and hand-sent timing (`src/lib/decoder/accuracy.test.ts`), on synthetic room sounds (`src/lib/dsp/room.test.ts`), on a tone with a third harmonic under talking and with the harmonic ringing on after key-up (`src/lib/dsp/ear.test.ts`), and on simulated beginner keying with short dahs, rushed letters, hesitations, speeding up and touch-key pauses (`src/lib/decoder/newbie.test.ts`, which prints a scorecard for the end of the over and for what is shown while keying).

@@ -29,8 +29,8 @@ Decoder results recorded in the decoder commits (fists.ts beginner fists and you
 Known and left as they are:
 
 - **Joined short texts against words of one letter.** Whole-over benchmark (fists.ts beginner fists, read as shown, 8 seeds): before the V V V fix 438 of 512 joined texts exact (14.5% letter error), now 425 (13.4%); V V V 0 to 111 of 192, R R and E E 43 to 209 of 384. The lost readings are joined texts read as words of one letter (VVV as V V V, RR as R R, EE as E E or I). Moving the gap thresholds in `breaks.ts` trades them straight back, so there is no cheap win.
-- **Groups of K and M (Koch lesson 1) split into words of one letter.** "KKKMM MKMK KKMM" keyed with textbook timing at 15 to 20 wpm reads "K K K MM MK MK K K MM", and "TTMT MMT" reads "OM TMM". Before the V V V fix they read "K K KMMMKMK KKMM" and "MO MO", so this is old, not new; it showed when Send drill callsigns at lesson 1 started falling back to groups of the lesson's characters. Being worked on.
-- **II reads as H at the end of the over** (textbook timing at 8, 10, 15 and 20 wpm, the speed setting the same), though the live reading is II: with only dits, the end-of-over search takes the letter gap for a gap inside a letter. EEE and SS read right.
+- **All-dah practice groups from beginner fists** (T, M and O only) still read badly: about half their letters wrong (53% for groups of T, M and O, 8 beginner fists, 112 sends), against 8% for groups of K and M and 20% for K, M and R. With no dits in the over, only the gaps tell dits from dahs, and a touch key's gaps inside letters (0.6 to 0.75 of a dah) look like heavy weighting's gaps after dits. With textbook timing they read right.
+- **II reads as H at the end of the over** (textbook timing at 8, 10, 15 and 20 wpm, the speed setting the same), though the live reading is II; SII reads SH and EEII reads HI. Over four marks there are too few gaps to call the fist regular, and the search pays less for one pause inside a letter than for a second letter. EEE and SS read right.
 - **The second ear is placed once, from the pitch of the first marks.** With nothing pinned, the first marks under a radio put the tone 7 Hz off (163935), and the second ear sat 21 Hz from the harmonic and kept none of its marks for the rest of the over; under talking (154331) it sat 6 Hz off and kept none either. Starting it again where later marks put the tone made the radio take read worse (78% to 89%), and moving the learned offset with the lock as it follows drift added stray letters on a talking take (6 to 11), so neither was kept. Pinned, it sits within 3 Hz on every take.
 - **The quieter-sidetone take (154117, no label)** has marks at the harmonic about 11 dB over its floor where the fundamental hears almost nothing. The second ear ignores them, since the fundamental hears silence. Whether they are the keying is not known.
 
@@ -46,7 +46,6 @@ Known and left as they are:
 
 ### Small
 
-14. **README images** (`docs/images/`) show a few old labels (Level 14, older layout). Regenerate: `docker compose run --rm -T -e README_SHOTS=1 -e GITHUB_SHA=$(git rev-parse HEAD) e2e npx playwright test --project=readme`, then look at every image before committing.
 
 ## Not checked
 

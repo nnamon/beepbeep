@@ -2,6 +2,16 @@
 
 What changed in each version of BeepBeep. The version shows at the top of the app, beside the build.
 
+## 0.2.3 (12 October 2026)
+
+- The decoder reads practice groups made from a lesson's few characters, such as KKKMM MKMK KKMM at Koch lesson 1, the way you sent them. Before, the reading at the end of your sending cut them into short words (K K K MM) or ran letters into digits. With textbook timing every test group now reads right (60 of 60, up from 23); from beginner hand keying, wrong letters fell from 56% to 35%.
+- Still hard: groups made only of dahs (T, M, O) from beginner hand keying, where about half the letters still read wrong, and II, which still reads as H. Both are noted for later work.
+
+## 0.2.2 (12 October 2026)
+
+- The timing panel beside the Send drill and Live decoder puts each aim on its own line under its name ("Gap between words", then "aim 7 units"), so a narrow panel no longer breaks a label in two.
+- The README's preview images show the app as it is now, with captions in plain words.
+
 ## 0.2.1 (12 October 2026)
 
 A way to get the latest version on a phone, and fixes from a second, independent check of the layout and accessibility work.
