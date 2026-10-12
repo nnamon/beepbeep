@@ -29,7 +29,6 @@ Decoder results recorded in the decoder commits (fists.ts beginner fists and you
 4. **Stray letters from talking are halved, not gone.** `samples.test.ts` take `154427-noise-t4` (talking, no keying, pinned) reads 4 stray letters where `samples/best.json` has 3; the decoder agent left it as a known difference.
 5. **One small step back from the V V V fix:** on joined texts (VVV, VVV VVV, EE, TEST, PARIS, RR, TU, 5NN) exact readings went from 431 to 421 of 512, while letter error improved from 17.1% to 15.5%. Check whether it can be won back.
 6. **Unfinished change:** the decoder agent was trying a rule in `settle.ts` that reads TEST correctly and was "neutral to slightly positive" on the benchmark. It is not on `main`. The diff is saved locally at `.claude/decoder-wip-settle.patch` (not in git). Apply it, test it, keep it or drop it.
-7. **The audio clock stalls under heavy load.** Key events are mapped to audio time through `engine.now` (`eventTime` in `src/lib/audio/live.ts`), so when the clock stalls, dits shorten or vanish (K read as M). This shows in the keyed e2e tests on a busy machine and may hit slow phones. A test with a stalled audio clock and steady event times would show it.
 
 ### Timing notes beside the Send drill and Live decoder
 
