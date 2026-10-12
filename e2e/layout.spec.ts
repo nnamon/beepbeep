@@ -2,7 +2,7 @@
 // (the answer keyboard) sits fully on screen above the tab bar, without
 // scrolling. Browsers under test report safe areas of zero, so the test sets
 // the app's safe-area tokens to each phone's.
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Locator, type Page } from '@playwright/test';
 
 const SCREENS: { name: string; route: string; start: (p: Page) => Promise<void> }[] = [
   { name: 'Pocket round', route: 'pocket/round/characters', start: (p) => p.getByRole('button', { name: 'Start the round' }).click() },
@@ -223,6 +223,82 @@ test('360 px: the version and build are shown in full', async ({ page }) => {
   expect(m.text).toMatch(/local|[0-9a-f]{7}/);
   expect(m.scroll, 'nothing cut off').toBeLessThanOrEqual(m.client);
 });
+
+/** How far a tap still lands on the element, measured across its centre (px). */
+async function hitArea(page: Page, loc: Locator) {
+  await loc.scrollIntoViewIfNeeded();
+  return loc.evaluate((el) => {
+    el.scrollIntoView({ block: 'center', inline: 'nearest' });
+    const r = el.getBoundingClientRect();
+    const cx = r.left + r.width / 2;
+    const cy = r.top + r.height / 2;
+    const hits = (x: number, y: number) => {
+      const h = document.elementFromPoint(x, y);
+      return !!h && (h === el || el.contains(h));
+    };
+    // Sub-pixel search for the edge in one direction.
+    const reach = (dx: number, dy: number) => {
+      let lo = 0;
+      let hi = 40;
+      if (!hits(cx, cy)) return -cx;
+      if (hits(cx + dx * hi, cy + dy * hi)) return hi;
+      while (hi - lo > 0.1) {
+        const mid = (lo + hi) / 2;
+        if (hits(cx + dx * mid, cy + dy * mid)) lo = mid;
+        else hi = mid;
+      }
+      return lo;
+    };
+    // Hit testing rounds to whole pixels, so the measured reach can be up to 1 px long: take 1 off.
+    // The box itself counts in full.
+    const w = Math.max(r.width, reach(-1, 0) + reach(1, 0) - 1);
+    const h = Math.max(r.height, reach(0, -1) + reach(0, 1) - 1);
+    return { w: Math.round(w * 10) / 10, h: Math.round(h * 10) / 10 };
+  });
+}
+
+// Tap targets are at least 44 x 44 px, counting any invisible extra hit area.
+const TARGETS: { route: string; settings?: Record<string, unknown>; targets: (p: Page) => Locator[] }[] = [
+  {
+    route: 'practice',
+    settings: { guideSeen: false, level: { koch: 'koch-14', licw: 'licw-bc1-REA' } },
+    targets: (p) => [
+      p.locator('header a.mark'),
+      p.locator('header').getByRole('link', { name: 'Settings' }),
+      p.locator('header').getByRole('link', { name: 'Guide' }),
+      p.locator('.signal-strip a'),
+      p.getByRole('button', { name: 'Turn sound on' }),
+      p.getByRole('radio', { name: 'Koch' }),
+      p.getByRole('button', { name: 'Dismiss' }),
+      p.getByRole('button', { name: 'Previous lesson' }),
+      p.getByRole('button', { name: 'Next lesson' }),
+      p.getByRole('link', { name: 'Character reference' }),
+      p.getByRole('checkbox').first(),
+      p.getByRole('checkbox').last(),
+    ],
+  },
+  { route: 'practice/copy', targets: (p) => [p.getByRole('link', { name: 'Back' }), p.getByRole('radio', { name: 'Words' })] },
+  { route: 'practice/live', settings: { input: 'mic' }, targets: (p) => [p.getByRole('button', { name: 'Use the touch key' })] },
+  { route: 'pocket', targets: (p) => [p.getByRole('button', { name: 'Next lesson' })] },
+  { route: 'pocket/round/characters', targets: (p) => [p.getByRole('link', { name: 'Back to Pocket' })] },
+  { route: 'settings', targets: (p) => [p.getByRole('slider').first(), p.getByRole('radiogroup', { name: 'Theme' }).getByRole('radio', { name: 'Light' })] },
+];
+
+for (const width of [390, 360]) for (const t of TARGETS) {
+  test(`${width} px, ${t.route}: tap targets are at least 44 px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 740 });
+    await page.addInitScript((s) => localStorage.setItem('beepbeep.settings.v1', JSON.stringify({ voice: 'off', guideSeen: true, ...s })), t.settings ?? {});
+    await page.goto(`./#/${t.route}`);
+    await page.waitForTimeout(300);
+    const small: string[] = [];
+    for (const loc of t.targets(page)) {
+      await expect(loc).toBeVisible();
+      const a = await hitArea(page, loc);
+      if (a.w < 43.95 || a.h < 43.95) small.push(`${await loc.evaluate((e) => (e as HTMLElement).innerText.trim().slice(0, 30) || e.getAttribute('aria-label') || e.tagName)}: ${a.w} x ${a.h}`);
+    }
+    expect(small).toEqual([]);
+  });
+}
 
 // iOS Safari zooms into any text box under 16 px and stays zoomed, cutting the page off.
 for (const route of ['qso/learn', 'settings', 'qso', 'pocket/custom', 'setup']) {

@@ -351,21 +351,29 @@
   .first {
     border-left: 2px solid var(--signal);
     padding-left: var(--s-1);
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--s-half) var(--s-2);
-    align-items: baseline;
     max-width: var(--reading);
   }
 
+  /* Follows the sentence on its line; its tap target is full height without pushing the lines apart. */
   .dismiss {
+    position: relative;
+    margin-left: var(--s-1);
     border: 0;
     background: none;
     padding: 0;
     color: var(--muted);
     text-decoration: underline;
     font-size: var(--size-s);
-    min-height: 32px;
+  }
+
+  .dismiss::after {
+    content: '';
+    position: absolute;
+    left: calc(-1 * var(--s-1));
+    right: calc(-1 * var(--s-1));
+    top: 50%;
+    height: var(--target);
+    transform: translateY(-50%);
   }
 
   .ask {
@@ -419,6 +427,9 @@
     margin-left: auto;
     color: var(--muted);
     font-size: var(--size-s);
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--target);
   }
 
   .today {
@@ -457,6 +468,7 @@
   }
 
   .tick {
+    position: relative;
     width: 28px;
     height: 28px;
     border: 1.5px solid var(--muted);
@@ -467,6 +479,17 @@
     align-items: center;
     justify-content: center;
     padding: 0;
+  }
+
+  /* The circle stays small; the area you can tap is a full-size square around it. */
+  .tick::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: var(--target);
+    height: var(--target);
+    transform: translate(-50%, -50%);
   }
 
   .done .tick {

@@ -160,6 +160,7 @@
   }
 
   .tbtn {
+    position: relative;
     margin-left: auto;
     border: 0;
     background: none;
@@ -167,6 +168,17 @@
     font-size: var(--size-s);
     text-decoration: underline;
     min-height: 32px;
+  }
+
+  /* A full-size tap target without making the caption row taller. */
+  .tbtn::after {
+    content: '';
+    position: absolute;
+    left: calc(-1 * var(--s-half));
+    right: calc(-1 * var(--s-half));
+    top: 50%;
+    height: var(--target);
+    transform: translateY(-50%);
   }
 
   .plot {

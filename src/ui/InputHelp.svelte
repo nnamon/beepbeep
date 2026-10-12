@@ -31,6 +31,7 @@
   }
 
   .switch {
+    position: relative;
     border: 0;
     background: none;
     padding: 0;
@@ -39,5 +40,16 @@
     text-decoration-color: var(--signal);
     text-underline-offset: 3px;
     font-size: inherit;
+  }
+
+  /* A full-height tap target in a line of small text, without spacing the lines apart. */
+  .switch::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: var(--target);
+    transform: translateY(-50%);
   }
 </style>

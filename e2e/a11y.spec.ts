@@ -32,6 +32,38 @@ async function open(page: Page, route: string, settings: Record<string, unknown>
   await page.waitForTimeout(300);
 }
 
+test('choice buttons work like radio buttons from the keyboard', async ({ page }) => {
+  await open(page, 'practice/copy');
+  const group = page.getByRole('radiogroup', { name: 'Material' });
+  const radios = group.getByRole('radio');
+  const checked = group.getByRole('radio', { checked: true });
+  // One stop in the tab order: the chosen option.
+  expect(await radios.evaluateAll((rs) => rs.map((r) => (r as HTMLElement).tabIndex))).toEqual([-1, 0, -1, -1]);
+  await expect(checked).toHaveAccessibleName('Groups');
+  await checked.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(group.getByRole('radio', { name: 'Words' })).toBeFocused();
+  await expect(group.getByRole('radio', { name: 'Words' })).toBeChecked();
+  await page.keyboard.press('ArrowDown');
+  await expect(group.getByRole('radio', { name: 'Context' })).toBeChecked();
+  // Wraps round at the ends.
+  await page.keyboard.press('ArrowRight');
+  await expect(group.getByRole('radio', { name: 'Characters' })).toBeChecked();
+  await expect(group.getByRole('radio', { name: 'Characters' })).toBeFocused();
+  await page.keyboard.press('ArrowLeft');
+  await expect(group.getByRole('radio', { name: 'Context' })).toBeChecked();
+  await page.keyboard.press('Home');
+  await expect(group.getByRole('radio', { name: 'Characters' })).toBeChecked();
+  await page.keyboard.press('End');
+  await expect(group.getByRole('radio', { name: 'Context' })).toBeChecked();
+  expect(await radios.evaluateAll((rs) => rs.map((r) => (r as HTMLElement).tabIndex))).toEqual([-1, -1, -1, 0]);
+  await page.keyboard.press('ArrowUp');
+  await expect(group.getByRole('radio', { name: 'Words' })).toBeChecked();
+  // Tab leaves the group instead of walking through each option.
+  await page.keyboard.press('Tab');
+  await expect(page.locator('main [role="radio"]:focus')).toHaveCount(0);
+});
+
 test('each screen has its own title, and focus moves to its heading', async ({ page }) => {
   await open(page, 'practice');
   await expect(page).toHaveTitle('Practice · BeepBeep');
@@ -82,6 +114,14 @@ test('a skip link is the first stop and moves to the content', async ({ page }) 
   expect((await skip.boundingBox())?.y ?? -1).toBeLessThan(0);
 });
 
+test('shortcut hints are shown but are not part of the button name', async ({ page }) => {
+  await open(page, 'practice/copy');
+  await expect(page.getByRole('button', { name: 'Start', exact: true })).toBeVisible();
+  await expect(page.locator('main .footer').getByText('Enter', { exact: true })).toBeVisible();
+  await open(page, 'practice/ttr');
+  await expect(page.getByRole('button', { name: 'Start', exact: true })).toBeVisible();
+});
+
 test('the signal bar is named by what it shows', async ({ page }) => {
   await open(page, 'practice', { input: 'mic' });
   const bar = page.locator('header .signal a');
@@ -117,6 +157,34 @@ test('Pocket: the answer after a miss is announced', async ({ page }) => {
   await expect(page.getByText(/^You typed Q/)).toBeVisible();
   const texts = await Promise.all(live.map((h) => h.evaluate((e) => e.isConnected && (e as HTMLElement).innerText)));
   expect(texts.some((t) => t && /It was/.test(t) && /You typed Q/.test(t))).toBe(true);
+});
+
+test('Practice: the pointer to the guide reads as one line of text', async ({ page }) => {
+  await open(page, 'practice', { guideSeen: false });
+  const p = page.getByText(/shows where to start/);
+  await expect(p).toBeVisible();
+  const parts = await p.evaluate((el) => {
+    const range = document.createRange();
+    return [...el.childNodes]
+      .filter((n) => n.textContent!.trim())
+      .map((n) => {
+        let r: DOMRect;
+        if (n.nodeType === Node.TEXT_NODE) {
+          range.selectNodeContents(n);
+          r = range.getBoundingClientRect();
+        } else r = (n as Element).getBoundingClientRect();
+        return { text: n.textContent!.trim(), top: Math.round(r.top), bottom: Math.round(r.bottom), left: r.left, right: r.right };
+      });
+  });
+  // "The", "guide", "shows where to start…", Dismiss: one line, a space apart.
+  expect(parts.map((x) => x.text)).toEqual(['The', 'guide', expect.stringMatching(/^shows where to start/), 'Dismiss']);
+  for (let i = 1; i < 3; i++) {
+    expect(Math.abs(parts[i].top - parts[0].top), `"${parts[i].text}" on the first line`).toBeLessThanOrEqual(2);
+    expect(parts[i].left - parts[i - 1].right, `space before "${parts[i].text}"`).toBeLessThan(9);
+  }
+  // Dismiss follows the sentence on the same line.
+  expect(parts[3].top).toBeLessThan(parts[2].bottom);
+  expect(parts[3].left).toBeGreaterThan(parts[2].right);
 });
 
 test('a prosign overline sits just above its letters', async ({ page }) => {
