@@ -112,7 +112,10 @@
 <div class="shell" class:keying={showPad}>
   <header class="head">
     <a class="mark" href={href('practice')}><Logo /><span class="word">BeepBeep</span></a>
-    <span class="ver num" title="Version and build"><span>v{__APP_VERSION__}</span><span class="sep">{' · '}</span><span>{__APP_BUILD__}</span></span>
+    <!-- The version opens its history: what changed in each version. -->
+    <a class="ver num" href={href('changes')} title="Version history"
+      ><span>v{__APP_VERSION__}</span><span class="sep">{' · '}</span><span>{__APP_BUILD__}</span><span class="visually-hidden">, version history</span></a
+    >
     <nav class="nav" aria-label="Main">
       {#each tabs as t (t.id)}
         <a href={href(t.id)} class:on={top === t.id} aria-current={top === t.id ? 'page' : undefined}>{t.label}</a>
@@ -225,6 +228,20 @@
     color: var(--muted);
     margin-left: calc(-1 * var(--s-3));
     white-space: nowrap;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--target-min);
+  }
+
+  /* Only with a real pointer: on a touch screen a hover state sticks after the tap. */
+  @media (hover: hover) {
+    .ver:hover {
+      color: var(--ink);
+      text-decoration: underline;
+      text-decoration-color: var(--signal);
+      text-underline-offset: 3px;
+    }
   }
 
   .nav {
@@ -348,6 +365,7 @@
       margin-left: 0;
       display: flex;
       flex-direction: column;
+      justify-content: center;
       line-height: 1.25;
     }
 
@@ -396,6 +414,7 @@
       margin-left: 0;
       display: flex;
       flex-direction: column;
+      justify-content: center;
       line-height: 1.25;
     }
 

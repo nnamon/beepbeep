@@ -4,7 +4,7 @@ Where the work stands and what is left. Read [AGENTS.md](../AGENTS.md) first: it
 
 ## What happened
 
-In October 2026 a skeptical audit of the whole app found 3 critical, 16 high and about 60 medium and low problems, plus a list of wording problems. Two later independent checks (layout and accessibility; drills and storage) and a check of the QSO screens found more. All of those are fixed, each with a test that failed on the old code. What changed in each version is in [CHANGELOG.md](../CHANGELOG.md) (0.2.0 to 0.2.5) and in the app under Settings, What's new.
+In October 2026 a skeptical audit of the whole app found 3 critical, 16 high and about 60 medium and low problems, plus a list of wording problems. Two later independent checks (layout and accessibility; drills and storage) and a check of the QSO screens found more. All of those are fixed, each with a test that failed on the old code. What changed in each version is in [CHANGELOG.md](../CHANGELOG.md) (0.2.0 to 0.2.5) and in the app: tap the version number at the top of any screen.
 
 ## What is left
 

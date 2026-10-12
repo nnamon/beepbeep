@@ -24,7 +24,7 @@ The Playwright projects pick their specs by file name (`testMatch` in `playwrigh
 - Every bug fix comes with a test that fails on the old code and passes on the new. Check that it fails first.
 - Run all the checks above before you commit. Say what you ran and what you did not.
 - Commit to `main` and push. No pull requests during the initial build.
-- Every push that changes the app bumps the version in `package.json` (the last number for fixes, the middle one for a batch of changes or new features) and adds an entry at the top of `CHANGELOG.md`: what changed for the person using the app, in the plain style below. Tag the release `v<version>` and publish it on GitHub with the same notes. The app shows the changelog under Settings, What's new.
+- Every push that changes the app bumps the version in `package.json` (the last number for fixes, the middle one for a batch of changes or new features) and adds an entry at the top of `CHANGELOG.md`: what changed for the person using the app, in the plain style below. Tag the release `v<version>` and publish it on GitHub with the same notes. The app shows the changelog as Version history: tap the version number at the top of any screen, or open it from Settings.
 - `samples/` holds the owner's own recordings. It is gitignored and must never be committed or pushed.
 - Ship none of LICW's class texts. Exercises play material we generate or text the user loads. LICW is a trademark: ask them before naming a public feature after them.
 - The decoder's job is to read beginner hand keying the way an experienced operator would. Never trade accuracy on beginner keying for accuracy on textbook timing without saying so.

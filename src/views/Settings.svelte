@@ -353,7 +353,7 @@
   <div class="group">
     <h2>Version</h2>
     <p class="small">
-      This is BeepBeep {__APP_VERSION__} ({__APP_BUILD__}). <a href={href('changes')}>What's new</a> lists the changes in each version.
+      This is BeepBeep {__APP_VERSION__} ({__APP_BUILD__}). <a href={href('changes')}>Version history</a> lists what changed in each version; the version number at the top of every screen opens it too.
     </p>
     <div><Button onclick={freshReload}>Reload the latest version</Button></div>
     <p class="muted small">

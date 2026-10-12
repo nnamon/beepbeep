@@ -262,11 +262,16 @@ test('the Send drill says when your lesson cannot make the chosen material yet',
   await expect(page.getByText("Your lesson can't make callsigns yet, so you get groups of its characters instead.")).toBeVisible();
 });
 
-test("What's new shows the changelog, linked from Settings", async ({ page }) => {
+test('the version number opens the version history, and Back returns', async ({ page }) => {
   await settings(page, BASE);
+  await page.goto('./#/progress');
+  await page.locator('header a.ver').click();
+  await expect(page.getByRole('heading', { name: 'Version history', level: 1 })).toBeVisible();
+  await page.getByRole('link', { name: 'Back', exact: true }).click();
+  await expect(page).toHaveURL(/#\/progress$/);
   await page.goto('./#/settings');
-  await page.getByRole('link', { name: "What's new" }).click();
-  await expect(page.getByRole('heading', { name: "What's new", level: 1 })).toBeVisible();
-  await expect(page.getByRole('heading', { name: /^0\.2\.5/, level: 2 })).toBeVisible();
+  await page.getByRole('link', { name: 'Version history' }).first().click();
+  await expect(page.getByRole('heading', { name: 'Version history', level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /^0\.2\.6/, level: 2 })).toBeVisible();
   await expect(page.getByText('One-letter words keep their spaces: V V V no longer reads as VVV.')).toBeVisible();
 });

@@ -2,6 +2,10 @@
 
 What changed in each version of BeepBeep. The version shows at the top of the app, beside the build.
 
+## 0.2.6 (13 October 2026)
+
+- Tap the version number at the top of any screen to see the version history: what changed in each version, newest first. Back returns you to where you were. Settings links to it too.
+
 ## 0.2.5 (13 October 2026)
 
 Fixes from an independent check of the drills and storage.

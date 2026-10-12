@@ -1,9 +1,12 @@
 <script lang="ts">
-  // What's new: CHANGELOG.md from the repo, shown as a page. Only the few
+  // Version history: CHANGELOG.md from the repo, shown as a page, newest first. Only the few
   // shapes the changelog uses: version headings, section headings, bullets,
   // paragraphs and links. Links to repo files go to GitHub.
   import changelog from '../../CHANGELOG.md?raw';
-  import { href } from '../lib/state/router.svelte';
+  import { href, route } from '../lib/state/router.svelte';
+
+  // Back to wherever you came from (the version number is on every screen).
+  const back = $derived(route.prev && route.prev[0] !== 'changes' ? route.prev : ['settings']);
 
   type Part = { text: string; url?: string };
   type Block = { kind: 'h2' | 'h3' | 'p'; parts: Part[] } | { kind: 'ul'; items: Part[][] };
@@ -44,17 +47,18 @@
     return blocks;
   }
 
-  const blocks = parse(changelog);
+  // From the first version on: the file's own title and intro repeat what this page says.
+  const blocks = parse(changelog.slice(Math.max(0, changelog.indexOf('\n## ') + 1)));
 </script>
 
 {#snippet text(parts: Part[])}{#each parts as p, i (i)}{#if p.url}<a href={p.url} target="_blank" rel="noopener">{p.text}</a>{:else}{p.text}{/if}{/each}{/snippet}
 
 <section class="changes">
   <div class="title">
-    <h1>What's new</h1>
-    <a class="back" href={href('settings')}>Back to Settings</a>
+    <h1>Version history</h1>
+    <a class="back" href={href(...back)}>Back</a>
   </div>
-  <p class="muted">You are using version {__APP_VERSION__} ({__APP_BUILD__}).</p>
+  <p class="muted">What changed in each version, newest first. You are using version {__APP_VERSION__} ({__APP_BUILD__}).</p>
   {#each blocks as b, i (i)}
     {#if b.kind === 'h2'}
       <h2>{@render text(b.parts)}</h2>
