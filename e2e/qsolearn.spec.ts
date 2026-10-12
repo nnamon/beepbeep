@@ -146,6 +146,18 @@ test('leaving a lesson stops its sound', async ({ page }) => {
   expect(await playing(page)).toBe(0);
 });
 
+test('Next on the last step while it plays: the sound stops at the end of the lesson', async ({ page }) => {
+  await underway(page, 'answer-cq', 2);
+  await open(page, 'qso/learn/answer-cq', { qsoInput: 'type', qsoHelp: 'text' });
+  await expect(page.getByText('Step 3 of 3 · You have a contact')).toBeVisible();
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await expect.poll(() => playing(page)).toBeGreaterThan(0);
+  await page.getByRole('button', { name: 'Next' }).click();
+  await expect(page.getByText('You finished this lesson.')).toBeVisible();
+  await page.waitForTimeout(500);
+  expect(await playing(page)).toBe(0);
+});
+
 test('Play, Slower and Play again play one at a time', async ({ page }) => {
   await open(page, 'qso/learn/answer-cq', { qsoInput: 'type', qsoHelp: 'text' });
   await page.getByRole('button', { name: /Start/ }).click();

@@ -164,6 +164,7 @@
   async function finish() {
     finished = true;
     clearRun();
+    silence();
     stopListening();
     void keepAwake(false);
     if (lesson) {
