@@ -138,8 +138,8 @@
     </div>
     <p class="muted small">
       These are used in QSOs and in the Send drill's My station practice. QTH is where you are, as you would send it. Your
-      region is your state, province or country; it is sent in SST, POTA, SOTA, SKCC and pileup exchanges. Leave it blank
-      if it would repeat your QTH, as in Singapore. SKCC is the Straight Key Century Club.
+      region is your state, province or country. It is sent after your QTH, and in SKCC, SST, POTA and SOTA exchanges.
+      Leave it blank if it would repeat your QTH, as in Singapore. SKCC is the Straight Key Century Club.
     </p>
     <div class="field">
       <span class="label">Stations you hear</span>

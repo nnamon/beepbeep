@@ -1,7 +1,7 @@
 // Guided QSO lessons: a standard contact taken apart into small steps. Each
 // step explains one part, plays what the other station sends or shows what
-// you send, and is checked, so you can get it wrong and try again. Every run
-// meets a new station.
+// you send, and is checked, so you can try it again until it is right. Every
+// run meets a new station.
 
 import { makeIdentity, type BotIdentity } from './bot';
 import type { FieldKind, Slot } from './check';
@@ -41,27 +41,38 @@ export interface Lesson {
 export interface Ctx {
   me: Me;
   them: BotIdentity;
+  /** Show prosigns drawn as dits and dahs. Off in LICW strict mode, which teaches by sound only. */
+  glyphs?: boolean;
 }
 
 const up = (s: string) => s.trim().toUpperCase().replace(/\s+/g, ' ');
 const first = (s: string) => up(s).split(' ')[0];
 /** What you send after QTH: the place, and the region only when it adds something (not SINGAPORE SINGAPORE). */
 const where = (me: Me) => (me.state.trim() && up(me.state) !== up(me.qth) ? `${up(me.qth)} ${up(me.state)}` : up(me.qth));
-/** Your state, province or country for exchanges; your QTH when you left it blank. */
+/** Your region (state, province or country) for exchanges; your QTH when you left it blank, as in a city-state. */
 const region = (me: Me) => up(me.state) || up(me.qth);
+/** A prosign drawn as dits and dahs, in brackets, unless the lesson teaches by sound only. */
+const drawn = (c: Ctx, glyph: string) => (c.glyphs === false ? '' : ` (${glyph})`);
+const BT = '– · · · –';
+const SK = '· · · – · –';
 
 // ---- Slots: the parts of an over ----
 
 const theirCall = (c: Ctx, max = 1): Slot => ({ role: 'their call', accept: [c.them.call], max, missing: `Send their call, ${c.them.call}.` });
 const de: Slot = { role: 'DE', accept: ['DE'], missing: "Put DE between the calls. It means 'from'." };
-const myCall = (c: Ctx, min = 1, max = 2): Slot => ({
+/** `afterDe`: the step sends DE before your call, so the note says where it goes. */
+const myCall = (c: Ctx, min = 1, max = 2, afterDe = true): Slot => ({
   role: 'your call',
   accept: [up(c.me.call)],
   min,
   max,
-  missing: `Send your call, ${up(c.me.call)}, after DE.`,
+  missing: afterDe ? `Send your call, ${up(c.me.call)}, after DE.` : `Send your call, ${up(c.me.call)}.`,
 });
 const k: Slot = { role: 'K', accept: ['K', 'KN', 'BK'], missing: "End with K. It means 'over to you'." };
+/** R ('received'), often sent twice. */
+const r: Slot = { role: 'R', accept: ['R', 'RR'], max: 2, optional: true, missing: '' };
+/** HW? ('how do you copy?'), also sent as HW ? or HW. */
+const hw: Slot = { role: 'HW?', accept: ['HW?', 'HW', '?'], max: 2, optional: true, missing: '' };
 
 // ---- What the other station sends ----
 
@@ -86,7 +97,7 @@ function hearCq(c: Ctx): Step {
     title: 'Hear the CQ',
     explain: [
       'A station sending CQ is asking for a contact with anyone who hears it.',
-      'Its call sign comes after DE, usually twice. Copy it.',
+      'Its callsign comes after DE, usually twice. Copy it.',
     ],
     play: cq(c),
     fields: [{ key: 'call', label: 'Their call', answer: c.them.call, kind: 'call' }],
@@ -112,8 +123,8 @@ function copyOver(c: Ctx): Step {
     kind: 'listen',
     title: 'Copy their first over',
     explain: [
-      'They come back with your call and theirs, a greeting, then three things you will hear in almost every contact: a signal report, their name and where they are.',
-      'BT (– · · · –) separates the parts. Names and places are usually sent twice, so you get a second chance.',
+      "An over is one station's turn to send. In their first over they come back with your call and theirs, a greeting, then three things you will hear in almost every contact: a signal report, their name and where they are.",
+      `BT${drawn(c, BT)} separates the parts. Names and places are usually sent twice, so you get a second chance.`,
     ],
     play: theirOver(c),
     fields: overFields(c),
@@ -124,7 +135,7 @@ const exchangeSlots = (c: Ctx): Slot[] => [
   theirCall(c),
   de,
   myCall(c, 1, 1),
-  { role: 'R', accept: ['R', 'RR'], optional: true, missing: '' },
+  r,
   { role: 'thanks', accept: ['TNX', 'THANKS', 'TU', 'TKS'], missing: 'Thank them: TNX.' },
   { role: 'their name', accept: [first(c.them.name)], optional: true, missing: '' },
   { role: 'UR', accept: ['UR'], optional: true, missing: '' },
@@ -134,7 +145,7 @@ const exchangeSlots = (c: Ctx): Slot[] => [
   { role: 'your name', accept: [first(c.me.name)], max: 2, missing: `Send your name, ${first(c.me.name)}.` },
   { role: 'QTH', accept: ['QTH'], missing: 'Say QTH before where you are.' },
   { role: 'where you are', accept: [first(c.me.qth)], max: 2, missing: `Send where you are, ${up(c.me.qth)}.` },
-  { role: 'HW?', accept: ['HW?', 'HW'], optional: true, missing: '' },
+  hw,
   theirCall(c),
   de,
   myCall(c, 1, 1),
@@ -148,7 +159,7 @@ function sendWholeOver(c: Ctx): Step {
     title: 'Send your first over',
     explain: [
       'All of it in one go: who it is to and from, thanks, a report, your name and where you are, then hand it back.',
-      'Take it slowly. A clean over at a slow speed is better than a fast one with mistakes.',
+      'Send it slowly. A clean over at a slow speed is better than a fast one with mistakes.',
     ],
     model: `${c.them.call} DE ${up(me.call)} R TNX ${first(c.them.name)} <BT> UR RST 579 579 <BT> NAME ${first(me.name)} ${first(me.name)} <BT> QTH ${where(me)} <BT> HW? ${c.them.call} DE ${up(me.call)} K`,
     outline: 'their call · DE · your call · R TNX and their name · UR RST and a report twice · NAME and yours twice · QTH and where you are · HW? · their call DE your call · K',
@@ -161,8 +172,8 @@ function hearSignoff(c: Ctx): Step {
     kind: 'listen',
     title: 'They sign off',
     explain: [
-      "R R means they received everything. TNX FER FB QSO: thanks for the fine contact. 73 is 'best regards'. ES GL: and good luck.",
-      'SK, sent as one character (· · · – · –), says the contact is over. The two dits at the very end (EE) are a friendly last goodbye.',
+      "R R means they received everything. TNX FER FB QSO means thanks for the fine contact. 73 is 'best regards', and ES GL is 'and good luck'.",
+      `SK, sent as one character${drawn(c, SK)}, says the contact is over. The two dits at the very end (EE) are a friendly last goodbye.`,
     ],
     play: theirSignoff(c),
     fields: [{ key: 'name', label: 'The name they used for you', answer: first(c.me.name), kind: 'name' }],
@@ -174,7 +185,7 @@ function sendSignoff(c: Ctx): Step {
     kind: 'send',
     title: 'Sign off',
     explain: [
-      'Thank them, send 73, both calls with DE between, then SK as one character with no gap inside (· · · – · –). Add EE if you like.',
+      `Thank them, send 73, both calls with DE between, then SK as one character with no gap inside${drawn(c, SK)}. Add EE if you like.`,
       'No K at the end: SK already says the contact is over.',
     ],
     model: `TNX ${first(c.them.name)} 73 ${c.them.call} DE ${up(c.me.call)} <SK> EE`,
@@ -186,8 +197,9 @@ function sendSignoff(c: Ctx): Step {
       theirCall(c),
       de,
       myCall(c, 1, 1),
-      { role: 'SK', accept: ['SK'], missing: 'End with SK, one character with no gap inside (· · · – · –).' },
-      { role: 'EE', accept: ['EE'], optional: true, missing: '' },
+      { role: 'SK', accept: ['SK', 'VA'], missing: `End with SK, one character with no gap inside${drawn(c, SK)}.` },
+      // Two dits, sent as EE or E E, or a few more: it is only a friendly goodbye.
+      { role: 'EE', accept: ['EE', 'E', 'EEE', 'EEEE'], max: 2, optional: true, missing: '' },
     ],
   };
 }
@@ -205,7 +217,7 @@ export const LESSONS: Lesson[] = [
       {
         kind: 'note',
         title: 'You have a contact',
-        explain: [`That's ${c.them.call} coming back to you: your call, DE, theirs, then a greeting and thanks for the call. The next lesson copies the rest of their over.`],
+        explain: [`That's ${c.them.call} coming back to you: your call, DE, theirs, then a greeting and thanks for the call. The next lesson, Copy their first over, copies the rest of what they send in this turn.`],
         play: `${up(c.me.call)} DE ${c.them.call} GM TNX FER CALL`,
       },
     ],
@@ -213,14 +225,14 @@ export const LESSONS: Lesson[] = [
   {
     id: 'copy-over',
     name: 'Copy their first over',
-    summary: 'A signal report, a name and a town, one part at a time, then the whole over.',
+    summary: 'A signal report, a name and a town, one part at a time, then their whole turn.',
     steps: (c) => [
       {
         kind: 'listen',
         title: 'The report',
         explain: [
           'UR RST 579 is their report on your signal: readability from 1 to 5, strength from 1 to 9, and tone from 1 to 9.',
-          '5NN is short for 599, the best report. It is sent twice.',
+          'They send the report twice, so you get a second chance to copy it. 5NN is short for 599, the best report: N stands for 9.',
         ],
         play: `UR RST ${c.them.rst} ${c.them.rst}`,
         fields: [overFields(c)[0]],
@@ -235,7 +247,7 @@ export const LESSONS: Lesson[] = [
       {
         kind: 'listen',
         title: 'The QTH',
-        explain: ['QTH is where they are: a town, then the state, province or country, sent twice.'],
+        explain: ['QTH is where they are: a town, then their region (state, province or country). They send both twice.'],
         play: `QTH ${c.them.qth} ${c.them.state} ${c.them.qth} ${c.them.state}`,
         fields: [overFields(c)[2]],
       },
@@ -245,12 +257,12 @@ export const LESSONS: Lesson[] = [
   {
     id: 'send-over',
     name: 'Send your first over',
-    summary: 'Your report, name and town, a piece at a time, then the whole over.',
+    summary: 'Your report, name and town, a piece at a time, then your whole turn.',
     steps: (c) => [
       {
         kind: 'send',
         title: 'Who it is to and from',
-        explain: ['Start with their call, DE, and your call. They know at once the over is for them.'],
+        explain: ['Start with their call, DE, and your call. They know at once that what follows is for them.'],
         model: `${c.them.call} DE ${up(c.me.call)}`,
         outline: 'their call · DE · your call',
         slots: [theirCall(c), de, myCall(c, 1, 1)],
@@ -258,11 +270,11 @@ export const LESSONS: Lesson[] = [
       {
         kind: 'send',
         title: 'Thanks',
-        explain: ["R means 'received': you got their over. Then TNX (thanks) and their name."],
+        explain: ["R means 'received': you got what they sent. Then TNX (thanks) and their name."],
         model: `R TNX ${first(c.them.name)}`,
         outline: 'R · TNX · their name',
         slots: [
-          { role: 'R', accept: ['R', 'RR'], optional: true, missing: '' },
+          r,
           { role: 'thanks', accept: ['TNX', 'THANKS', 'TU', 'TKS'], missing: 'Send TNX for thanks.' },
           { role: 'their name', accept: [first(c.them.name)], missing: `Add their name, ${first(c.them.name)}.` },
         ],
@@ -271,8 +283,8 @@ export const LESSONS: Lesson[] = [
         kind: 'send',
         title: 'Your report on them',
         explain: [
-          'UR RST, then your report twice. Readability 1 to 5, strength 1 to 9, tone 1 to 9.',
-          'If you copied them well and they were loud, 599. If you missed a little, 579 or 559.',
+          'UR RST, then your report on them, twice. It has three digits.',
+          'The first is readability, from 1 to 5: 5 if you copied them easily, 4 or 3 if some of it was hard to read. The second is strength, from 1 to 9: 9 if they were loud, lower if they were faint. The third is tone, from 1 to 9: 9 for a clean tone, which almost everyone has.',
         ],
         model: 'UR RST 579 579',
         outline: 'UR RST · a report twice',
@@ -296,7 +308,7 @@ export const LESSONS: Lesson[] = [
       {
         kind: 'send',
         title: 'Where you are',
-        explain: ['QTH, then where you are: your town, and your state, province or country if it adds something.'],
+        explain: ['QTH, then where you are: your town, and your region (state, province or country) if it adds something.'],
         model: `QTH ${where(c.me)}`,
         outline: 'QTH · where you are',
         slots: [
@@ -310,7 +322,7 @@ export const LESSONS: Lesson[] = [
         explain: ["HW? asks how they copy you. Then their call, DE, your call and K: 'over to you'."],
         model: `HW? ${c.them.call} DE ${up(c.me.call)} K`,
         outline: 'HW? · their call · DE · your call · K',
-        slots: [{ role: 'HW?', accept: ['HW?', 'HW'], optional: true, missing: '' }, theirCall(c), de, myCall(c, 1, 1), k],
+        slots: [hw, theirCall(c), de, myCall(c, 1, 1), k],
       },
       sendWholeOver(c),
     ],
@@ -353,8 +365,8 @@ export const LESSONS: Lesson[] = [
         kind: 'send',
         title: 'Welcome them',
         explain: [
-          'Their call, DE, your call, then a greeting and thanks for the call. GM is good morning; GA good afternoon; GE good evening.',
-          'Your report, name and QTH follow, as in Send your first over.',
+          'Their call, DE, your call, then a greeting and thanks for the call. GM is good morning, GA good afternoon and GE good evening.',
+          'Your report, name and QTH follow, as in the lesson Send your first over.',
         ],
         model: `${c.them.call} DE ${up(c.me.call)} GM TNX FER CALL`,
         outline: 'their call · DE · your call · GM · TNX FER CALL',
@@ -377,13 +389,13 @@ export const LESSONS: Lesson[] = [
   {
     id: 'pota',
     name: 'Quick exchanges: POTA',
-    summary: 'Parks on the Air: your call, a 5NN report and your state, and done.',
+    summary: 'Parks on the Air (POTA): you call a station operating from a park, and you swap a 5NN report and your region.',
     steps: (c) => [
       {
         kind: 'listen',
         title: 'A park activator calls',
         explain: [
-          'Activators operate from parks and make many short contacts. CQ POTA means they are in a park.',
+          'A station operating from a park is called the activator. Activators make many short contacts, and CQ POTA tells you they are in a park.',
           'Copy their call.',
         ],
         play: `CQ POTA CQ POTA DE ${c.them.call} ${c.them.call} K`,
@@ -392,32 +404,44 @@ export const LESSONS: Lesson[] = [
       {
         kind: 'send',
         title: 'Send your call',
-        explain: ['As a hunter you send only your call, once. Nothing else: they are busy.'],
+        explain: [
+          'The stations calling a park are called hunters, and you are one. Send only your call, once. The activator is answering many stations, so they need nothing else yet.',
+        ],
         model: up(c.me.call),
         outline: 'your call',
-        slots: [myCall(c, 1, 2)],
+        slots: [myCall(c, 1, 2, false)],
       },
       {
         kind: 'listen',
-        title: 'Their report and state',
-        explain: ['They send your call, 5NN (599) and their state, then BK to hand it back.'],
+        title: 'Their report and region',
+        explain: ['They send your call, 5NN (short for 599, the best report) and their region, then BK to hand it back. Their region is their state, province or country.'],
         play: `${up(c.me.call)} 5NN ${c.them.state} ${c.them.state} BK`,
-        fields: [{ key: 'state', label: 'Their state or region', answer: c.them.state, kind: 'text' }],
+        fields: [{ key: 'state', label: 'Their region', answer: c.them.state, kind: 'text' }],
       },
       {
         kind: 'send',
-        title: 'Your report and state',
-        explain: ['BK, then TU (thank you), 5NN and your state, province or country twice, then BK.'],
+        title: 'Your report and region',
+        explain: [
+          'You may start with BK. Then send TU (thank you), 5NN and your region twice, and end with BK to hand it back.',
+          'Your region is your state, province or country. In a city-state such as Singapore, send the country.',
+        ],
         model: `BK TU 5NN ${region(c.me)} ${region(c.me)} BK`,
-        outline: 'BK · TU · 5NN · your state, province or country twice · BK',
+        outline: 'BK if you like · TU · 5NN · your region twice · BK',
         slots: [
           { role: 'BK', accept: ['BK'], optional: true, missing: '' },
+          r,
           { role: 'TU', accept: ['TU', 'TNX'], optional: true, missing: '' },
           { role: 'report', accept: [], kind: 'rst', missing: 'Send a report: 5NN.' },
-          { role: 'your state, province or country', accept: [first(region(c.me))], max: 2, missing: `Send ${region(c.me)}.` },
+          { role: 'your region', accept: [first(region(c.me))], max: 2, missing: `Send your region, ${region(c.me)}.` },
+          { role: 'BK', accept: ['BK', 'K', 'KN'], missing: 'End with BK. It hands the contact back to them.' },
         ],
       },
-      { kind: 'note', title: 'Done', explain: ['They finish with TU 73 and go on to the next hunter. A whole POTA contact takes about twenty seconds.'], play: 'TU 73 EE' },
+      {
+        kind: 'note',
+        title: 'Done',
+        explain: ['They finish with TU 73 and go on to the next hunter. A whole POTA contact takes about twenty seconds.'],
+        play: 'TU 73 EE',
+      },
     ],
   },
 ];

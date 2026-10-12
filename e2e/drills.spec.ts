@@ -175,7 +175,7 @@ test('Spot the new character: leaving just after Play plays nothing on the next 
   await page.goto('./#/practice/familiarity');
   await page.getByRole('button', { name: /Play/ }).click();
   await nextAudio(page, 0);
-  await page.getByRole('link', { name: 'Back' }).click();
+  await page.getByRole('link', { name: 'Back', exact: true }).click();
   await expect(page).toHaveURL(/#\/practice$/);
   await page.waitForTimeout(4000);
   expect(await cwOn(page, /familiarity/)).toEqual([]);
@@ -276,7 +276,7 @@ test('Enter on a link or radio reached with Tab is for that control, not the dri
   await page.waitForTimeout(800);
   expect((await played(page)).filter((p) => p.kind === 'cw')).toEqual([]);
   // Enter on the Back link follows it.
-  await page.getByRole('link', { name: 'Back' }).focus();
+  await page.getByRole('link', { name: 'Back', exact: true }).focus();
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/#\/practice$/);
   expect((await played(page)).filter((p) => p.kind === 'cw')).toEqual([]);

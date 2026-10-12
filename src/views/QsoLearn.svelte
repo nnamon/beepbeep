@@ -1,7 +1,7 @@
 <script lang="ts">
   // Learn QSOs: guided lessons that take a standard contact apart. Each step
   // explains one part, plays what the other station sends or shows what you
-  // send, and checks it, so you can get it wrong and try again. Every run
+  // send, and checks it, so you can try again until it is right. Every run
   // meets a new station.
   import { onDestroy, untrack } from 'svelte';
   import DrillFrame from '../ui/DrillFrame.svelte';
@@ -10,7 +10,7 @@
   import TokenText, { type Tok } from '../ui/TokenText.svelte';
   import InputHelp from '../ui/InputHelp.svelte';
   import { LiveDecoder } from '../lib/audio/live';
-  import { engine } from '../lib/audio/engine';
+  import { engine, type Playback } from '../lib/audio/engine';
   import { href, route } from '../lib/state/router.svelte';
   import { effectiveMix, settings, strict } from '../lib/state/settings.svelte';
   import { signal, startMic, touchKeyArea } from '../lib/state/signal.svelte';
@@ -19,8 +19,9 @@
   import type { BotIdentity } from '../lib/qso/bot';
   import { checkField, checkSend, type FieldCheck, type Verdict } from '../lib/qso/check';
   import { words } from '../lib/qso/parse';
-  import { followInput, playCw, receiveSpeeds, saveSession, sendInput } from '../lib/train/session';
+  import { followInput, playCw, receiveSpeeds, saveSession, sendInput, type PlayOpts } from '../lib/train/session';
   import { textTokens } from '../lib/util/text';
+  import type { DecoderOutput } from '../lib/decoder/decoder';
   import { mulberry32, randomSeed } from '../lib/util/random';
   import { keepAwake } from '../lib/util/wakelock';
 
@@ -32,7 +33,12 @@
   const ready = $derived(!!(me.call.trim() && me.name.trim() && me.qth.trim()));
 
   let done = $state<Record<string, number>>({});
-  void getKv<Record<string, number>>('qsoLessons', {}).then((d) => (done = d));
+  void getKv<Record<string, number>>('qsoLessons', {})
+    .then((d) => (done = d))
+    .catch(() => undefined);
+
+  /** The screen was left: sound and async work still running stop. */
+  let gone = false;
 
   // ---- A run of one lesson ----
   let them = $state.raw<BotIdentity | null>(null);
@@ -43,6 +49,10 @@
   let startedAt = 0;
   let finished = $state(false);
   const step = $derived(steps[idx] ?? null);
+  /** Steps where you copy or send something; notes aren't checked. */
+  const checked = $derived(steps.filter((s) => s.kind !== 'note').length);
+  /** The lesson's steps for this station; prosigns aren't drawn as dits and dahs in LICW strict mode. */
+  const stepsFor = (l: (typeof LESSONS)[number], them: BotIdentity) => l.steps({ me, them, glyphs: !strict() });
 
   // Listen steps: what you copied, and the verdict on each field.
   let copied = $state<Record<string, string>>({});
@@ -100,8 +110,9 @@
     untrack(() => {
       const l = LESSONS.find((x) => x.id === id);
       const s = l ? savedRun(id) : null;
+      silence();
       them = s?.them ?? null;
-      steps = s && l ? l.steps({ me, them: s.them }) : [];
+      steps = s && l ? stepsFor(l, s.them) : [];
       idx = s?.idx ?? 0;
       firstTry = s?.firstTry ?? 0;
       finished = false;
@@ -113,8 +124,9 @@
 
   function begin() {
     if (!lesson) return;
+    silence();
     them = newStation(mulberry32(randomSeed()), effectiveMix());
-    steps = lesson.steps({ me, them });
+    steps = stepsFor(lesson, them);
     idx = 0;
     firstTry = 0;
     finished = false;
@@ -125,6 +137,7 @@
   }
 
   function enter() {
+    silence();
     copied = {};
     fieldResults = null;
     revealed = false;
@@ -140,7 +153,7 @@
   }
 
   function next() {
-    if (!retried) firstTry++;
+    if (!retried && step?.kind !== 'note') firstTry++;
     if (idx < steps.length - 1) {
       idx++;
       saveRun();
@@ -157,22 +170,44 @@
       done = { ...done, [lesson.id]: (done[lesson.id] ?? 0) + 1 };
       void setKv('qsoLessons', { ...done });
     }
+    // Each lesson under its own name: Today ticks its QSO step on the whole contact.
     void saveSession({
-      mode: 'qso-learn',
+      mode: `qso-learn:${lesson?.id ?? ''}`,
       seconds: Math.round((Date.now() - startedAt) / 1000),
       sending: true,
-      items: steps.length,
-      accuracy: steps.length ? firstTry / steps.length : null,
+      items: checked,
+      accuracy: checked ? firstTry / checked : null,
       wpm: receiveSpeeds().charWpm,
     });
   }
 
-  // ---- Hearing the other station ----
-  async function play(text: string, slow = false) {
-    const sp = receiveSpeeds();
-    const pb = await playCw(text, { charWpm: sp.charWpm, effectiveWpm: slow ? Math.max(5, sp.effectiveWpm - 3) : sp.effectiveWpm, plain: true });
-    played = true;
+  // ---- Sound: one stream at a time, stopped when you leave or move on ----
+  let sound: Playback | null = null;
+  let soundReq = 0;
+
+  async function hear(text: string, o: PlayOpts) {
+    const n = ++soundReq;
+    sound?.stop();
+    sound = null;
+    const pb = await playCw(text, o);
+    // Pressed again, moved on or left while it was starting.
+    if (n !== soundReq || gone) return pb.stop();
+    sound = pb;
     await pb.done;
+    if (sound === pb) sound = null;
+  }
+
+  function silence() {
+    soundReq++;
+    sound?.stop();
+    sound = null;
+  }
+
+  // ---- Hearing the other station ----
+  function play(text: string, slow = false) {
+    const sp = receiveSpeeds();
+    played = true;
+    void hear(text, { charWpm: sp.charWpm, effectiveWpm: slow ? Math.max(5, sp.effectiveWpm - 3) : sp.effectiveWpm, plain: true });
   }
 
   function checkCopy() {
@@ -190,9 +225,10 @@
   let watch: ReturnType<typeof setInterval> | null = null;
   let req = 0;
 
-  // The touch key stays available for the whole lesson, whatever input you start on.
+  // When you key your part, the touch key stays in place for the whole lesson,
+  // so the page doesn't jump between steps. When you type it, there is no pad.
   $effect(() => {
-    if (steps.length && !finished) return touchKeyArea();
+    if (steps.length && !finished && settings.qsoInput === 'key') return touchKeyArea();
   });
   // Switching input mid-step (Use the touch key, Key with) moves the decoder
   // over at once, or starts one if the microphone never did; typing stops it.
@@ -207,29 +243,43 @@
     });
   });
 
-  async function listen() {
+  const keyingStep = () => step?.kind === 'send' && settings.qsoInput === 'key' && !verdict;
+  const toTokens = (outs: DecoderOutput[]): Tok[] =>
+    outs.map((x) => (x.kind === 'space' ? { t: ' ' } : { t: x.char.token ?? '⁇', state: x.char.token ? 'ok' : 'unknown' }));
+
+  /** One start at a time: entering a step and switching input may both ask. */
+  let listening: Promise<void> | null = null;
+  function listen(): Promise<void> {
+    listening ??= startListening().finally(() => (listening = null));
+    return listening;
+  }
+
+  async function startListening() {
     if (settings.input === 'mic' && !signal.micOn && !(await startMic())) return;
     await engine.ensure();
-    if (!live) {
-      live = new LiveDecoder({
-        source: sendInput(),
-        charWpm: settings.sendWpm,
-        pitch: settings.pitch,
-        onOutput: () => {
-          const n = ++req;
-          void live?.settled().then((outs) => {
-            if (n !== req || verdict) return;
-            keyed = outs.map((x) => (x.kind === 'space' ? { t: ' ' } : { t: x.char.token ?? '⁇', state: x.char.token ? 'ok' : 'unknown' }));
-          });
-        },
-        onKey: () => (lastKey = performance.now()),
-      });
-      await live.start();
-      watch = setInterval(() => {
-        if (step?.kind === 'send' && !verdict && keyed.length && lastKey && performance.now() - lastKey > settings.overTimeout * 1000) void doneKeying();
-      }, 200);
-    }
-    live.resetOver();
+    if (gone || !keyingStep()) return;
+    if (live) return live.resetOver();
+    const l = new LiveDecoder({
+      source: sendInput(),
+      charWpm: settings.sendWpm,
+      pitch: settings.pitch,
+      onOutput: () => {
+        const n = ++req;
+        void l.settled().then((outs) => {
+          if (n !== req || verdict || gone || live !== l) return;
+          keyed = toTokens(outs);
+        });
+      },
+      onKey: () => (lastKey = performance.now()),
+    });
+    await l.start();
+    if (gone || !keyingStep() || live) return l.stop();
+    live = l;
+    l.resetOver();
+    passOnEarlyPress(l);
+    watch = setInterval(() => {
+      if (step?.kind === 'send' && !verdict && keyed.length && lastKey && performance.now() - lastKey > settings.overTimeout * 1000) void doneKeying();
+    }, 200);
   }
 
   function stopListening() {
@@ -237,13 +287,57 @@
     watch = null;
     live?.stop();
     live = null;
+    early = null;
+    holding = false;
+  }
+
+  // After a reload the browser keeps sound off until a tap or a key press, and
+  // the decoder can't listen without it. The first press on a keyed step starts
+  // the sound, and it counts as keying: it is passed on once the decoder listens.
+  let early: { down: number; up: number | null } | null = null;
+  /** The early press was passed on while the key was still held. */
+  let holding = false;
+  const straightKeyed = () => sendInput() === 'straight' || sendInput() === 'touch';
+  /** An input event's time on the audio clock, as the decoder reads its own events. */
+  const audioTime = (timeStamp: number) => engine.now - (performance.now() - timeStamp) / 1000;
+
+  function press(e: KeyboardEvent | PointerEvent, down: boolean) {
+    if (gone || !keyingStep()) return;
+    const keyPress = e instanceof KeyboardEvent ? e.code === 'Space' && !e.repeat && !inField(e.target) : down ? !!(e.target as Element | null)?.closest?.('.pad') : true;
+    if (!keyPress) return;
+    if (!live) {
+      if (engine.ctx?.state !== 'running') void engine.ensure().catch(() => undefined);
+      if (!straightKeyed()) return;
+      if (down && !early) early = { down: e.timeStamp, up: null };
+      else if (!down && early && early.up === null) early.up = e.timeStamp;
+    } else if (!down && holding) {
+      // The touch pad didn't see the press begin, so it won't pass on the release.
+      holding = false;
+      live.pressStraight(false, audioTime(e.timeStamp));
+    }
+  }
+
+  function passOnEarlyPress(l: LiveDecoder) {
+    const p = early;
+    early = null;
+    if (!p) return;
+    // Kept after the clock's start, so the decoder sees a real key press.
+    const shift = Math.max(0, 0.005 - audioTime(p.down));
+    l.pressStraight(true, audioTime(p.down) + shift);
+    if (p.up !== null) l.pressStraight(false, audioTime(p.up) + shift);
+    else holding = true;
+  }
+
+  function inField(t: EventTarget | null) {
+    return t instanceof HTMLElement && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
   }
 
   async function doneKeying() {
     if (!live || verdict) return;
     live.flush();
     req++;
-    keyed = (await live.settle()).map((x) => (x.kind === 'space' ? { t: ' ' } : { t: x.char.token ?? '⁇', state: x.char.token ? 'ok' : 'unknown' }));
+    keyed = toTokens(await live.settle());
+    if (gone) return;
     judge(keyed.map((t) => t.t).join('').trim());
   }
 
@@ -271,11 +365,15 @@
   });
 
   onDestroy(() => {
+    gone = true;
+    silence();
+    engine.stopAll();
     stopListening();
     void keepAwake(false);
   });
 
   function onkey(e: KeyboardEvent) {
+    press(e, true);
     const t = e.target as HTMLElement | null;
     if (e.key !== 'Enter' || (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'BUTTON' || t.tagName === 'A'))) return;
     if (lesson && ready && (!steps.length || finished)) {
@@ -287,13 +385,15 @@
   const KEY_WITH = $derived([
     { value: 'mic' as const, label: 'Microphone' },
     { value: 'touch' as const, label: 'Touch key' },
-    { value: settings.input === 'iambicA' || settings.input === 'iambicB' ? settings.input : ('straight' as const), label: 'Keyboard' },
+    settings.input === 'iambicA' || settings.input === 'iambicB'
+      ? { value: settings.input, label: settings.input === 'iambicA' ? 'Paddles A' : 'Paddles B' }
+      : { value: 'straight' as const, label: 'Straight key' },
   ]);
 
   const headline = (v: Verdict) => (v.result === 'pass' ? 'Right.' : v.result === 'almost' ? 'Almost.' : 'Not yet.');
 </script>
 
-<svelte:window onkeydown={onkey} />
+<svelte:window onkeydown={onkey} onkeyup={(e) => press(e, false)} onpointerdown={(e) => press(e, true)} onpointerup={(e) => press(e, false)} />
 
 {#if !lesson}
   <section class="list">
@@ -302,21 +402,23 @@
       <a href={href('qso')}>On the air: the QSO simulator</a>
     </div>
     <p class="lead">
-      A standard contact, one part at a time. Each part is explained; you hear what the other station sends and copy it, or
-      send your part and BeepBeep checks it. Get it wrong as often as you like. Each run meets a new station.
+      A QSO is a contact between two stations. They take turns to send, and one station's turn is called an over. These
+      lessons take a standard QSO apart: each step explains one part, then you copy what the other station sends, or send
+      your own part and BeepBeep checks it. You can repeat a step until it is right, and each run meets a new station.
     </p>
 
     <div class="you">
       <h2>Your station</h2>
       <div class="fields">
-        <label><span class="label">Call</span><input bind:value={settings.you.call} autocapitalize="characters" autocomplete="off" spellcheck="false" /></label>
+        <label><span class="label">Callsign</span><input bind:value={settings.you.call} autocapitalize="characters" autocomplete="off" spellcheck="false" /></label>
         <label><span class="label">Name</span><input bind:value={settings.you.name} autocapitalize="characters" autocomplete="off" spellcheck="false" /></label>
         <label><span class="label">QTH, where you are</span><input bind:value={settings.you.qth} autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="SALEM, LONDON, SINGAPORE" /></label>
-        <label><span class="label">State, province or country (optional)</span><input bind:value={settings.you.state} autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="MA, ON, JAPAN" /></label>
+        <label><span class="label">Region: state, province or country (optional)</span><input bind:value={settings.you.state} autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="NSW, ON, JAPAN" /></label>
       </div>
       <p class="muted small">
-        Used in what you send. If you aren't licensed yet, use any practice call, such as N0CALL. The state, province or
-        country goes in contest and POTA exchanges; leave it blank if it would repeat your QTH.
+        The lessons put these in what you send. If you aren't licensed yet, use any practice callsign, such as N0CALL. Your
+        region is sent after your QTH when it adds something, and in the POTA lesson. Leave it blank if it would repeat your
+        QTH, as in Singapore.
       </p>
     </div>
 
@@ -330,7 +432,7 @@
         <Segmented label="Your part" bind:value={settings.qsoInput} options={[{ value: 'key', label: 'Key it' }, { value: 'type', label: 'Type it' }]} />
       </div>
     </div>
-    <p class="muted small">Typing lets you learn the order first; keying is the real thing. Start with the text shown, then try an outline, then nothing.</p>
+    <p class="muted small">Typing lets you learn the order first. Then key it. Start with the text shown, then try an outline, then nothing.</p>
 
     <ol class="lessons">
       {#each LESSONS as l, i (l.id)}
@@ -355,11 +457,11 @@
       <p class="warn">Fill in your station first. <a href={href('qso', 'learn')}>Back to the lessons</a></p>
     {:else if !steps.length}
       <p class="lead">{lesson.summary}</p>
-      <p class="muted">You will meet a new station. Take your time; you can repeat any step.</p>
+      <p class="muted">You will meet a new station. You can repeat any step.</p>
     {:else if finished}
-      <p class="big">Lesson done.</p>
-      <p>{firstTry} of {steps.length} steps right the first time.</p>
-      <p class="muted">Run it again: you will meet a different station.</p>
+      <p class="big">You finished this lesson.</p>
+      <p>Of the {checked} {checked === 1 ? 'step' : 'steps'} where you copied or sent something, {firstTry} {firstTry === 1 ? 'was' : 'were'} right the first time.</p>
+      <p class="muted">Run it again to meet a different station.</p>
     {:else if step}
       <div class="explain">
         {#each step.explain as p (p)}<p>{p}</p>{/each}
@@ -401,7 +503,7 @@
           <div class="model"><span class="label">Outline</span><p class="outline">{step.outline}</p></div>
         {/if}
         <div class="row">
-          <Button onclick={() => playCw(step.model, { charWpm: settings.sendWpm, effectiveWpm: settings.sendWpm, plain: true })}>Hear it</Button>
+          <Button onclick={() => hear(step.model, { charWpm: settings.sendWpm, effectiveWpm: settings.sendWpm, plain: true })}>Hear it</Button>
           {#if settings.qsoHelp !== 'text' && !showModel}<Button kind="quiet" onclick={() => (showModel = true)}>Show me</Button>{/if}
         </div>
 
@@ -461,7 +563,7 @@
         <Button kind="primary" onclick={begin} hint="Enter">{finished ? 'Again, new station' : 'Start'}</Button>
         {#if finished}
           {@const at = LESSONS.findIndex((l) => l.id === lesson.id)}
-          {#if LESSONS[at + 1]}<Button href={href('qso', 'learn', LESSONS[at + 1].id)}>Next lesson</Button>{/if}
+          {#if LESSONS[at + 1]}<Button href={href('qso', 'learn', LESSONS[at + 1].id)}>Next: {LESSONS[at + 1].name}</Button>{/if}
           <Button kind="quiet" href={href('qso', 'learn')}>All lessons</Button>
         {/if}
       {:else if step?.kind === 'note'}

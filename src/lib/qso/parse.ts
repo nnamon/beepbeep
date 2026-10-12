@@ -84,6 +84,7 @@ export function parse(text: string, regions: ReadonlySet<string> = REGION_SET): 
     asks: [],
     topics: {},
   };
+  let hw = false;
   for (let i = 0; i < w.length; i++) {
     const x = w[i];
     const next = (n = 1) => w[i + n];
@@ -128,7 +129,7 @@ export function parse(text: string, regions: ReadonlySet<string> = REGION_SET): 
         }
       }
     } else if (x === 'HW' || x === 'HW?') {
-      if (x.endsWith('?') || next() === '?' || next() === 'CPY?') p.asks.push('rst');
+      if (x.endsWith('?') || next() === '?' || next() === 'CPY?') hw = true;
     } else if (x === 'NR' && next() && /^\d{1,6}[CTS]?$/.test(next()!)) {
       p.skcc = next()!;
     } else if (/^\d{1,4}$/.test(x) && (w[i - 1] === '5NN' || /^[1-5][9N][9N]$/.test(w[i - 1] ?? ''))) {
@@ -157,7 +158,32 @@ export function parse(text: string, regions: ReadonlySet<string> = REGION_SET): 
   const tail = w.slice(-4);
   p.handover = ['K', 'KN', 'BK', 'AR'].includes(last ?? '') || (last ?? '').endsWith('?');
   p.signoff = tail.includes('SK') || (tail.includes('73') && (tail.includes('TU') || last === '73' || last === 'SK' || last === 'EE'));
+  // HW? ('how do you copy me?') closing a full over is only the usual way to
+  // hand it back. Asked on its own, it wants a report.
+  if (hw && !p.rst && !p.name && !p.qth && !p.state && !p.signoff && !Object.keys(p.topics).length) p.asks.push('rst');
   return p;
+}
+
+/** Prosigns that end your turn when they are the last thing you send. */
+const ENDINGS = new Set(['K', 'KN', 'SK', 'VA', 'AR']);
+/** What may follow SK in a sign-off: a last goodbye. */
+const AFTER_SK = new Set(['EE', 'E', 'EEE', 'TU', '73', 'GL']);
+
+/**
+ * True when what you have sent so far ends your turn: K, KN, AR or SK at the
+ * end, or BK at the end of an over that does not start with it. HW?, 73 or a
+ * leading BK in the middle of an over do not end it.
+ */
+export function endsTurn(text: string): boolean {
+  const w = words(text);
+  const last = w[w.length - 1];
+  if (!last) return false;
+  if (last === 'BK') return w.length > 1;
+  // QTH REGINA SK is Saskatchewan (and VA Virginia, AR Arkansas), not the end of the contact.
+  if (REGION_SET.has(last) && w.slice(-4, -1).includes('QTH')) return false;
+  if (ENDINGS.has(last)) return true;
+  const sk = Math.max(w.lastIndexOf('SK'), w.lastIndexOf('VA'));
+  return sk >= 0 && sk < w.length - 1 && w.slice(sk + 1).every((x) => AFTER_SK.has(x));
 }
 
 function norm(rst: string): string {

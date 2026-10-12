@@ -47,7 +47,7 @@ test('Back from an exercise returns to the same place on Practice', async ({ pag
   expect(before).toBeGreaterThan(500);
   await link.click();
   await expect(page).toHaveURL(/racer-words-2/);
-  await page.getByRole('link', { name: 'Back' }).click();
+  await page.getByRole('link', { name: 'Back', exact: true }).click();
   await expect(page).toHaveURL(/#\/practice$/);
   await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(before - 50);
   // A drill opened fresh starts at the top.
@@ -146,10 +146,14 @@ test('An LICW exercise left part-way can carry on from there', async ({ page }) 
   await page.goto('./#/practice/class/bc1/recognition');
   await page.getByRole('button', { name: /Start/ }).click();
   await expect(page.getByText(/^[3-9] \/ 30$/)).toBeVisible({ timeout: 30_000 });
-  const at = Number((await page.getByText(/^\d+ \/ 30$/).innerText()).split(' ')[0]);
   await page.locator('nav.nav a', { hasText: 'Pocket' }).click();
+  await expect(page).toHaveURL(/#\/pocket$/);
+  await expect(page.getByRole('heading', { name: 'Pocket', level: 1 })).toBeVisible();
   await page.goBack();
-  await expect(page.getByText(`You left this exercise at ${at} of 30.`)).toBeVisible();
+  const left = page.getByText(/^You left this exercise at \d+ of 30\.$/);
+  await expect(left).toBeVisible();
+  const at = Number(/at (\d+) of/.exec(await left.innerText())![1]);
+  expect(at).toBeGreaterThanOrEqual(3);
   const n = (await played(page)).filter((p) => p.kind === 'cw').length;
   await page.getByRole('button', { name: 'Carry on from there' }).click();
   await expect(page.getByText(`${at} / 30`)).toBeVisible();

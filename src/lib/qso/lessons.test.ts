@@ -83,7 +83,7 @@ describe('where you are', () => {
     expect(qth(SG2)).toBe('QTH SINGAPORE');
     expect(qth(ME)).toBe('QTH SALEM MA');
     // In a POTA exchange the region is your QTH when you left it blank.
-    const pota = LESSONS.find((l) => l.id === 'pota')!.steps({ me: SG, them }).find((x) => x.title === 'Your report and state')!;
+    const pota = LESSONS.find((l) => l.id === 'pota')!.steps({ me: SG, them }).find((x) => x.title === 'Your report and region')!;
     expect(pota.kind === 'send' && pota.model).toBe('BK TU 5NN SINGAPORE SINGAPORE BK');
   });
 });
