@@ -8,6 +8,14 @@ In October 2026 a skeptical audit of the whole app found 3 critical, 16 high and
 
 ## What is left
 
+### The Radio tab (in progress)
+
+The owner asked for a tab that decodes CW straight off a radio, left running. They chose: decode every signal in the audio at once (each station its own decoder, so both sides of a QSO show), follow one in large text with the others listed under it, a fifth tab named Radio, shown in LICW strict mode with no notes about LICW rules.
+
+- Done (on main): test material in `src/lib/radio/`. `band.ts` renders stations with their truth, `scenarios.ts` has 26 seeded scenarios, `score.ts` scores per station, and `radio.test.ts` prints today's single-signal pipeline on them (settled CER 32.6%, 16 of 32 stations under 10%, 0 false characters).
+- In progress, each on its own branch: the screen (`src/views/Radio.svelte`, `src/lib/radio/source.ts` with the `RadioSource` interface, `single.ts` as a one-signal stand-in); the multi-signal detector (`src/lib/radio/detector.ts`, events `signal`, `key` and `gone` per channel); continuous per-channel decoding (`src/lib/radio/channel.ts`, `ChannelDecoder`).
+- Then: a worklet for the detector and a `RadioSource` that joins the detector and the channel decoders, replacing the stand-in; release as 0.3.0. Ask the owner for recordings off their radio (the debug sample recorder in Setup works for this).
+
 ### Decoder (`src/lib/dsp`, `src/lib/decoder`)
 
 Known and left as they are:
