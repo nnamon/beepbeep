@@ -201,14 +201,27 @@ export const steadyTuning = { lag: 4, smooth: 4, coherence: 0.4, tol: 10, wide: 
 export const timbreTuning = { learn: 3, strong: -15, minRise: 12, rise: 6, slack: 10, markSlack: 8 };
 /**
  * Two ears: once the sender's tone is known to carry a strong third harmonic,
- * a second detector listens at three times its pitch. Speech and radio voices
- * crowd the fundamental far more than the harmonic, so when something covers
- * the fundamental the harmonic often still hears the key. Its marks count
- * only where the fundamental hears something that is not the tone: not
- * silence (level within `silence` dB of its floor, the room quiet), and not
- * a tone it is itself deciding on.
+ * a second detector listens at three times its pitch (the tone's pitch, where
+ * its marks sit, not the lock's). Speech and radio voices crowd the
+ * fundamental far more than the harmonic, so when something covers the
+ * fundamental the harmonic often still hears the key. Its marks count only
+ * where the fundamental hears something that is not the tone: not silence
+ * (its level, averaged over `quiet` seconds, within `silence` dB of its floor),
+ * and not a tone it is itself deciding on. A sound beside the tone that leaves
+ * the fundamental at its floor does not cover it; and in a 50 Hz band the
+ * floor's own noise swings about 8 dB, so one moment's level says little.
+ * When the fundamental decides on a mark and then
+ * withdraws it (a voice pulled its pitch or level off) while the second ear
+ * heard the same mark as the sender's tone, the second ear's mark stands.
+ *
+ * In a quiet room the harmonic's band is quieter than the fundamental's, and
+ * the harmonic can ring on after key-up, 10 to 14 dB under the mark for 50 to
+ * 90 ms (the owner's oscillator on a laptop). The second ear ends its mark
+ * there (10 dB under the mark's level), and would start a new one on the
+ * ringing: until it falls below the key-up level, a new mark in the second
+ * ear must come within `tail` dB of the last mark's level.
  */
-export const earTuning = { overtone: true, silence: 6 };
+export const earTuning = { overtone: true, silence: 6, quiet: 0.01, tail: 6 };
 /**
  * The pitch search scores a bin, in each frame where it is a local peak, by
  * how far it stands above the median power of the bins `near` to `far` away
@@ -314,6 +327,8 @@ export class Detector {
   private markLevel = 0;
   /** When the last mark ended. */
   private lastOff = -1;
+  /** Second ear: while its last mark's ringing stays above the key-up level, the level a new mark must reach. */
+  private tailLevel: number | null = null;
   /** The second ear, at the third harmonic, and how the two are joined. */
   private readonly isOvertone: boolean;
   private inner: Detector | null = null;
@@ -325,9 +340,10 @@ export class Detector {
   private fusedDown = false;
   private fusedStart = 0;
   private fusedEnd = -1;
-  /** The fundamental's last rise over its floor and the room's, for trusting the second ear. */
+  /** A mark the second ear heard while the fundamental was deciding on its own, kept in case the fundamental withdraws it. */
+  private standby: { start: number; end: number | null } | null = null;
+  /** The fundamental's rise over its floor, averaged over `earTuning.quiet`, for trusting the second ear. */
   private lastRise = 0;
-  private lastRoom = 0;
   private lastEnv = -180;
   private lastToneLike = false;
   private lastVoiced = true;
@@ -474,9 +490,11 @@ export class Detector {
   process(input: Float32Array): DetectorEvent[] {
     const out = this.processOwn(input);
     if (this.isOvertone || !earTuning.overtone) return out;
-    // The second ear starts once the tone is known to carry its third harmonic.
-    if (!this.inner && this.lockedHz !== null && this.hasHarmonic() && 3 * (this.lockedHz + this.toneOffset) < this.fs / 2 - 500) {
-      this.inner = new Detector(this.fs, { pinnedHz: 3 * (this.lockedHz + this.toneOffset), dit: this.dit, minSnrDb: this.minSnrDb, overtone: true });
+    // The second ear starts once the tone is known to carry its third harmonic,
+    // at three times the tone's pitch: the lock less the offset of its marks.
+    const harmonic = this.lockedHz === null ? 0 : 3 * (this.lockedHz - this.toneOffset);
+    if (!this.inner && harmonic > 0 && this.hasHarmonic() && harmonic < this.fs / 2 - 500) {
+      this.inner = new Detector(this.fs, { pinnedHz: harmonic, dit: this.dit, minSnrDb: this.minSnrDb, overtone: true });
       this.inner.setMuted(this.muted);
       // Its clock starts now; its times are shifted onto ours.
       this.innerT0 = this.time;
@@ -516,6 +534,7 @@ export class Detector {
     this.lastFusedUp = this.lastMarkUp;
     this.fusedDown = false;
     this.ears = { a: Detector.ear(), b: Detector.ear() };
+    this.standby = null;
     return this.lastMarkUp;
   }
 
@@ -541,12 +560,15 @@ export class Detector {
       // The second ear steps in only where the fundamental hears something but
       // not the tone: covered by a voice or a radio. Hearing silence, or the
       // tone itself, the fundamental decides.
-      const silent = !this.keyDown && this.lastRise < earTuning.silence && this.lastRoom < gateTuning.quiet;
+      const silent = !this.keyDown && this.lastRise < earTuning.silence;
       const deciding = this.keyDown || this.pendingState === true || this.lastToneLike;
       if (ear === 'b' && (silent || deciding)) {
         me.ignored = true;
+        // Deciding, the fundamental may yet withdraw the mark: keep the second ear's in reserve.
+        this.standby = silent ? null : { start: t, end: null };
         return;
       }
+      if (ear === 'b') this.standby = null;
       // A key-down from before a joined mark already closed continues from there.
       const at = Math.max(t, this.lastFusedUp + 1e-3);
       if (me.upAt !== null) me.upAt = null;
@@ -572,14 +594,41 @@ export class Detector {
     }
     if (me.ignored) {
       me.ignored = false;
+      // The reserve mark has ended; the second ear's own check may have withdrawn it.
+      if (this.standby) this.standby = t > this.standby.start + 1e-9 ? { start: this.standby.start, end: t } : null;
       return;
     }
     if (!me.down) return;
     // An up at the mark's own start withdraws it.
     if (t > me.start + 1e-9) this.fusedEnd = Math.max(this.fusedEnd, t);
+    else if (ear === 'a' && this.standby && (this.standby.end === null || this.standby.end > me.start)) this.rescue(this.standby, out);
     me.down = false;
     me.upAt = this.time;
     this.releaseUps(out);
+  }
+
+  /**
+   * The fundamental withdrew a mark (its pitch or timbre was off: a voice over
+   * it) that the second ear heard at the same time as the sender's tone. The
+   * second ear's mark stands, from where it started: still going, it carries
+   * the joined mark on; ended, the joined mark ends with it.
+   */
+  private rescue(sb: { start: number; end: number | null }, out: DetectorEvent[]) {
+    this.standby = null;
+    let start = this.fusedStart;
+    if (this.fusedEnd < 0 && sb.start > this.fusedStart + 1e-3) {
+      // The joined mark has nothing of its own yet: withdraw it and start again where the harmonic's mark did.
+      out.push({ type: 'key', down: false, t: this.fusedStart });
+      out.push({ type: 'key', down: true, t: sb.start });
+      this.lastFusedUp = this.fusedStart;
+      this.fusedStart = start = sb.start;
+    }
+    if (sb.end === null) {
+      const b = this.ears.b;
+      b.down = true;
+      b.ignored = false;
+      b.start = start;
+    } else if (sb.end > this.fusedStart) this.fusedEnd = Math.max(this.fusedEnd, sb.end);
   }
 
   /** Closes the joined mark once neither ear is down and neither is still deciding (150 ms at most). */
@@ -816,6 +865,7 @@ export class Detector {
     this.strays = [];
     this.keyDown = false;
     this.pendingState = null;
+    this.tailLevel = null;
     this.decimCount = 0;
     out.push({ type: 'lock', hz, t: this.time });
     if (replayHistory && this.historyCount > 1) {
@@ -1024,8 +1074,7 @@ export class Detector {
     const lo = Math.min(r0, r1);
     const hi = Math.max(r0, r1);
     const room = Math.max(0, lo + gateTuning.weight * (hi - lo));
-    this.lastRise = env - this.noise;
-    this.lastRoom = room;
+    this.lastRise += (env - this.noise - this.lastRise) * (1 - Math.exp(-dt / earTuning.quiet));
     // In a quiet room there is nothing to tell apart: any rise counts.
     const clear = room < gateTuning.quiet || env - this.noise - room >= this.contrastDb;
     // And it must be the sender's tone: steady, at the pitch of their marks so far.
@@ -1059,6 +1108,7 @@ export class Detector {
     const onThr = this.peak - used + Math.max(least, 0.5 * used);
     const offThr = this.peak - used + Math.max(least - 3, 0.4 * used);
     this.lastOffThr = offThr;
+    if (this.tailLevel !== null && !this.keyDown && env < offThr) this.tailLevel = null;
 
     this.histEnv[this.histPos] = env;
     this.histT[this.histPos] = t;
@@ -1093,7 +1143,7 @@ export class Detector {
     let crossT = t;
     if (span < this.minSnrDb) {
       raw = false;
-    } else if (!this.keyDown && env > onThr && toneLike) {
+    } else if (!this.keyDown && env > onThr && toneLike && (this.tailLevel === null || env > this.tailLevel)) {
       raw = true;
     } else if (this.keyDown && (env < offThr || env < this.markLevel - 10)) {
       // Off below the threshold, or well below this mark's own level (an echo's tail).
@@ -1129,6 +1179,8 @@ export class Detector {
           out.push({ type: 'key', down: true, t: this.markStartT });
         } else if (this.verifyMark()) {
           this.lastOff = this.pendingT;
+          // The second ear: the harmonic may ring on after the key is up; it is not a new mark.
+          if (this.isOvertone) this.tailLevel = this.markLevel - earTuning.tail;
           out.push({ type: 'key', down: false, t: this.pendingT });
         } else {
           // Not the sender's tone: withdrawn. A mark of no length is dropped downstream.
