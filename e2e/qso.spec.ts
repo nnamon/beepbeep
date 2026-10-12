@@ -298,7 +298,8 @@ for (const sz of ON_ITS_SIDE)
     test.skip(test.info().project.name !== 'phone', 'phone layout');
     test.setTimeout(120_000);
     await page.setViewportSize({ width: sz.width, height: sz.height });
-    await open(page, { input: 'touch', sendWpm: 30, overTimeout: 20 });
+    // The longest wait Settings allows (6 s), so the long over isn't handed over while it is measured.
+    await open(page, { input: 'touch', sendWpm: 30, overTimeout: 6 });
     await page.addStyleTag({ content: `:root { --safe-top: ${sz.top}px !important; --safe-bottom: ${sz.bottom}px !important; --safe-left: ${sz.left}px !important; --safe-right: ${sz.right}px !important; }` });
     const measure = () =>
       page.evaluate(() => {

@@ -23,7 +23,8 @@ export function forControl(e: KeyboardEvent): boolean {
   if (inField(e)) return true;
   if (e.key !== 'Enter' && e.key !== ' ' && e.code !== 'Space') return false;
   const t = e.target as HTMLElement | null;
-  if (!t || t === document.body || t === document.documentElement) return false;
+  // Not an element (the window itself): nothing has focus.
+  if (!t || typeof t.getAttribute !== 'function' || t === document.body || t === document.documentElement) return false;
   const role = t.getAttribute('role');
   if (!PRESSABLE.has(t.tagName) && !(role && ROLES.has(role))) return false;
   return t !== clicked;

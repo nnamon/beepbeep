@@ -37,8 +37,8 @@ export function newStat(key: string): ItemStat {
  * item (e.g. 1500 ms for a character, longer for words).
  */
 export function recordAnswer(s: ItemStat, right: boolean, ms: number, slowMs: number, now = Date.now()): ItemStat {
-  const next = { ...s, recent: [...s.recent, right ? 1 : 0].slice(-10) };
-  next.log = [...(s.log ?? []), [now, right ? 1 : 0, Math.round(ms)] as [number, number, number]].slice(-LOG_SIZE);
+  const next = { ...s, recent: [...(Array.isArray(s.recent) ? s.recent : []), right ? 1 : 0].slice(-10) };
+  next.log = [...logOf(s.log), [now, right ? 1 : 0, Math.round(ms)] as [number, number, number]].slice(-LOG_SIZE);
   next.seen += 1;
   next.lastSeen = now;
   if (right) {
@@ -58,12 +58,19 @@ export function accuracy(s: ItemStat): number | null {
   return s.recent.reduce((a, b) => a + b, 0) / s.recent.length;
 }
 
+/** The answers in a stored log that have its shape, [time, 1 or 0, value]; anything else is left out. */
+export function logOf(log: unknown): [number, number, number][] {
+  if (!Array.isArray(log)) return [];
+  return log.filter((r): r is [number, number, number] => Array.isArray(r) && r.length === 3 && r.every((x) => typeof x === 'number' && Number.isFinite(x)));
+}
+
 /**
  * Accuracy and mean value (answer time, or timing error) over answers since
  * `since`; the value averages right answers only. Null when there are none.
+ * A damaged stored log counts as no answers.
  */
 export function windowStats(s: ItemStat | undefined, since: number): { n: number; accuracy: number; value: number | null } | null {
-  const rows = (s?.log ?? []).filter(([t]) => t >= since);
+  const rows = logOf(s?.log).filter(([t]) => t >= since);
   if (!rows.length) return null;
   const right = rows.filter(([, ok]) => ok);
   const vals = right.map(([, , v]) => v).filter((v) => v > 0);

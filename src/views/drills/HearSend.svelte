@@ -50,10 +50,18 @@
   /** Set on leaving: a start still waiting for the microphone gives up. */
   let gone = false;
 
+  /** Waiting for the microphone: another Start (or Enter) does nothing until it is on. */
+  let starting = false;
+
   async function run() {
-    if (running) return;
+    if (running || starting) return;
     if (settings.input === 'mic' && !signal.micOn) {
-      if (!(await startMic()) || gone) return;
+      starting = true;
+      try {
+        if (!(await startMic()) || gone) return;
+      } finally {
+        starting = false;
+      }
     }
     if (running || gone) return;
     running = true;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { KOCH_LEVELS, KOCH_ORDER, LICW_BC1, LICW_BC2, licwLevels, migrateLevelId } from './courses';
 import { callsign, items, fillPhrase, stationLine } from './generate';
-import { newStat, recordAnswer, pickNext, NEW_HEAT } from './srs';
+import { newStat, recordAnswer, pickNext, NEW_HEAT, type ItemStat } from './srs';
 import { compareCopy, describeIssue, recoveryLength, spacingIssues, oneNote } from './scoring';
 import { analyseFist } from './fist';
 import { Decoder, type DecoderOutput } from '../decoder/decoder';
@@ -186,5 +186,23 @@ describe('my station lines', () => {
     expect(lines).toContain('CQ CQ CQ DE 9V1AB 9V1AB K');
     expect(lines).toContain('QTH TAMPINES SINGAPORE');
     expect(stationLine(rng, { ...you, call: ' ' })).toBeNull();
+  });
+});
+
+describe('answer stats', () => {
+  // Before: the space between words was stored as a character ("rx: "), and a
+  // letter heard against it as a mix-up.
+  it('never records the space between words as a character', async () => {
+    const { answer, recordSend } = await import('./session');
+    const { getItems, confusions } = await import('../state/db');
+    const map = new Map<string, ItemStat>();
+    await answer(map, 'rx: ', false, 3000, 1500);
+    await answer(map, 'rx:K', false, 1500, 1500, { want: 'K', got: ' ' });
+    expect([...map.keys()]).toEqual(['rx:K']);
+    expect([...(await getItems('rx:')).keys()]).toEqual(['rx:K']);
+    expect(await confusions()).toEqual([]);
+    // Sending: "TO ME" received as "TOME" records T, O, M and E only.
+    await recordSend('TO ME', 'TOME', []);
+    expect([...(await getItems('tx:')).keys()].sort()).toEqual(['tx:E', 'tx:M', 'tx:O', 'tx:T']);
   });
 });

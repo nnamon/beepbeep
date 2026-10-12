@@ -2,6 +2,21 @@
 
 What changed in each version of BeepBeep. The version shows at the top of the app, beside the build.
 
+## 0.2.5 (13 October 2026)
+
+Fixes from an independent check of the drills and storage.
+
+- Space on a Stop or Done button you reached with Tab presses the button. Before, it keyed a dit. After a mouse click, Space still keys as before.
+- Pressing Start twice while the browser asks for the microphone opens one microphone stream, not two, and it is let go after you leave.
+- The Live decoder saves your session when you leave by a link, not only when you press Stop.
+- Imports are checked field by field. A file with damaged rows is refused or repaired instead of breaking Progress and Pocket, and those screens cope with a bad stored value.
+- Esc stops a running LICW exercise, as it does in the other drills with a Stop button.
+- In LICW strict mode with paddles saved, Setup and the signal bar show the straight key, which is what BC lessons use.
+- Learn QSOs says when the microphone is blocked and offers the touch key.
+- Settings keep to the allowed choices and slider ranges, so a hand-edited or old settings file can't stop the drills from playing.
+- The space between words is never counted as a missed character.
+- Learn QSOs no longer throws an error when the browser's storage is unavailable.
+
 ## 0.2.4 (13 October 2026)
 
 - The decoder's second ear works as intended. When your tone has a harmonic (a buzzer or a square-wave oscillator) and talking covers the tone itself, BeepBeep listens to the harmonic instead. It was listening at the wrong pitch and could start false letters from the echo after each mark. On your own recordings three takes now read better (wrong letters 17% to 0%, 83% to 67%, 70% to 40%) and none read worse; stray letters in a quiet room are unchanged.

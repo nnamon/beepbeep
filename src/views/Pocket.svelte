@@ -5,6 +5,7 @@
   import { currentLevel, trackLevels } from '../lib/train/session';
   import { CHUNKS, COMMON_WORDS, QSO_WORDS, wordsFromKnown } from '../lib/train/words';
   import { getKv, setKv } from '../lib/state/db';
+  import { customSetOf } from '../lib/state/records';
   import { ALL_TOKENS, displayToken, isProsign } from '../lib/morse/code';
   import Button from '../ui/Button.svelte';
   import Icon from '../ui/Icon.svelte';
@@ -25,7 +26,8 @@
   let wordsText = $state('');
 
   onMount(async () => {
-    custom = await getKv('pocket.custom', { chars: [], words: [] }).catch(() => ({ chars: [], words: [] }));
+    // A stored set of the wrong shape reads as empty lists.
+    custom = customSetOf(await getKv('pocket.custom', null).catch(() => null));
     wordsText = custom.words.join(' ');
   });
 

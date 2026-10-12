@@ -25,6 +25,7 @@
   import type { DecoderOutput } from '../lib/decoder/decoder';
   import { mulberry32, randomSeed } from '../lib/util/random';
   import { keepAwake } from '../lib/util/wakelock';
+  import { forControl } from '../lib/util/keys';
 
   const lessonId = $derived(route.path[2] ?? '');
   const lesson = $derived(LESSONS.find((l) => l.id === lessonId) ?? null);
@@ -170,7 +171,8 @@
     void keepAwake(false);
     if (lesson) {
       done = { ...done, [lesson.id]: (done[lesson.id] ?? 0) + 1 };
-      void setKv('qsoLessons', { ...done });
+      // Storage unavailable: the tally is kept on this screen only.
+      void setKv('qsoLessons', { ...done }).catch(() => undefined);
     }
     // Each lesson under its own name: Today ticks its QSO step on the whole contact.
     void saveSession({
@@ -313,7 +315,8 @@
 
   function press(e: KeyboardEvent | PointerEvent, down: boolean) {
     if (gone || !keyingStep()) return;
-    const keyPress = e instanceof KeyboardEvent ? e.code === 'Space' && !e.repeat && !inField(e.target) : down ? !!(e.target as Element | null)?.closest?.('.pad') : true;
+    // Space on a button reached with Tab (Hear it, Done) presses that button.
+    const keyPress = e instanceof KeyboardEvent ? e.code === 'Space' && !e.repeat && !forControl(e) : down ? !!(e.target as Element | null)?.closest?.('.pad') : true;
     if (!keyPress) return;
     if (!live) {
       if (engine.ctx?.state !== 'running') void engine.ensure().catch(() => undefined);
@@ -334,10 +337,6 @@
     l.pressStraight(true, keyTime(p.down));
     if (p.up !== null) l.pressStraight(false, keyTime(p.up));
     else holding = true;
-  }
-
-  function inField(t: EventTarget | null) {
-    return t instanceof HTMLElement && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
   }
 
   async function doneKeying() {
@@ -542,7 +541,8 @@
               <span class="label">Key with</span>
               <Segmented label="Key with" bind:value={settings.input} options={KEY_WITH} />
             </div>
-            {#if settings.input === 'mic'}
+            <!-- A blocked or missing microphone: InputHelp says so and offers the touch key. -->
+            {#if settings.input === 'mic' && !signal.error}
               <p class="muted small">
                 The microphone listens for your key's tone. If nothing shows when you send, key with the touch key instead, or
                 calibrate in <a href={href('setup')}>Setup</a>; you come back to this step.

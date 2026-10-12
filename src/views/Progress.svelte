@@ -11,14 +11,15 @@
   import { windowStats, type ItemStat } from '../lib/train/srs';
   import { displayToken, isProsign } from '../lib/morse/code';
   import { FORMATS } from '../lib/qso/bot';
+  import { fistOf, isNum, sendsOf, slipsOf, type RecentSend } from '../lib/state/records';
 
   let list = $state<SessionRecord[]>([]);
   let log = $state<QsoRecord[]>([]);
   let rx = $state<Map<string, ItemStat>>(new Map());
   let tx = $state<Map<string, ItemStat>>(new Map());
-  let pairs = $state<{ want: string; got: string; count: number }[]>([]);
+  let pairs = $state<{ pair: string; want: string; got: string; count: number }[]>([]);
   let slips = $state<SlipCounts | null>(null);
-  let sends = $state<{ at: number; text: string; marks: { start: number; end: number }[] }[]>([]);
+  let sends = $state<RecentSend[]>([]);
   let heatOf = $state<'rx' | 'tx'>('rx');
   let days = $state<7 | 30>(30);
   let charTable = $state(false);
@@ -27,28 +28,36 @@
   onMount(async () => {
     try {
       [list, log, rx, tx] = await Promise.all([sessions(), qsos(), getItems('rx:'), getItems('tx:')]);
-      pairs = (await confusions()).sort((a, b) => b.count - a.count).slice(0, 10);
-      slips = await getKv<SlipCounts | null>('sendSlips', null);
-      sends = await getKv('recentSends', []);
+      // Stored values of the wrong shape are left out rather than break the page.
+      pairs = (await confusions())
+        .filter((c) => typeof c.want === 'string' && typeof c.got === 'string' && c.want && c.got && isNum(c.count))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 10);
+      slips = slipsOf(await getKv('sendSlips', null));
+      sends = sendsOf(await getKv('recentSends', []));
     } catch {
       /* storage unavailable */
     }
     loaded = true;
   });
 
-  const week = $derived(list.filter((s) => s.at > Date.now() - 7 * 864e5));
-  const minutes = $derived(Math.round(week.reduce((a, s) => a + s.seconds, 0) / 60));
+  const secs = (s: SessionRecord) => (isNum(s.seconds) ? s.seconds : 0);
+  const week = $derived(list.filter((s) => isNum(s.at) && s.at > Date.now() - 7 * 864e5));
+  const minutes = $derived(Math.round(week.reduce((a, s) => a + secs(s), 0) / 60));
   const sendShare = $derived.by(() => {
-    const total = week.reduce((a, s) => a + s.seconds, 0);
-    const send = week.filter((s) => s.sending).reduce((a, s) => a + s.seconds, 0);
+    const total = week.reduce((a, s) => a + secs(s), 0);
+    const send = week.filter((s) => s.sending === true).reduce((a, s) => a + secs(s), 0);
     return total ? Math.round((send / total) * 100) : null;
   });
 
-  const receive = $derived(list.filter((s) => !s.sending && s.mode !== 'familiarity' && s.wpm).map((s) => ({ t: s.at, y: s.wpm })));
-  const sent = $derived(list.filter((s) => s.sentWpm).map((s) => ({ t: s.at, y: s.sentWpm! })));
-  const ttr = $derived(list.filter((s) => s.ttrDelay).map((s) => ({ t: s.at, y: s.ttrDelay! })));
-  const recovery = $derived(list.filter((s) => s.recovery !== undefined && s.recovery !== null).map((s) => ({ t: s.at, y: s.recovery! })));
-  const lastFist = $derived([...list].reverse().find((s) => s.fist)?.fist ?? null);
+  // Each chart takes the sessions whose figure is a number; a damaged one is left out.
+  const points = (key: 'wpm' | 'sentWpm' | 'ttrDelay' | 'recovery', keep: (s: SessionRecord) => boolean = () => true) =>
+    list.filter((s) => isNum(s.at) && isNum(s[key]) && keep(s)).map((s) => ({ t: s.at, y: s[key] as number }));
+  const receive = $derived(points('wpm', (s) => !s.sending && s.mode !== 'familiarity' && s.wpm > 0));
+  const sent = $derived(points('sentWpm', (s) => s.sentWpm! > 0));
+  const ttr = $derived(points('ttrDelay', (s) => s.ttrDelay! > 0));
+  const recovery = $derived(points('recovery'));
+  const lastFist = $derived([...list].reverse().map((s) => fistOf(s.fist)).find((f) => f) ?? null);
 
   const level = $derived(currentLevel());
   const since = $derived(Date.now() - days * 864e5);
@@ -174,7 +183,7 @@
     <div class="block">
       <h2>Mixed up most</h2>
       <ul class="pairs">
-        {#each pairs as p (p.want + p.got)}
+        {#each pairs as p (p.pair)}
           <li>
             <TokenText tokens={[{ t: p.want }]} size="m" /><span class="muted">heard as</span><TokenText tokens={[{ t: p.got }]} size="m" />
             <span class="num muted">×{p.count}</span>
@@ -222,7 +231,7 @@
       <h2>Recent sends</h2>
       {#if sends.length}
         <ul class="sends">
-          {#each sends as r (r.at)}
+          {#each sends as r, i (i)}
             <li>
               <div class="send-head">
                 <span class="mono">{r.text || 'nothing decoded'}</span>

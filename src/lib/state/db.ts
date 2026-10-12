@@ -4,6 +4,7 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import type { ItemStat } from '../train/srs';
 import type { FistReport } from '../train/fist';
+import { confusionRow, DAMAGED, itemRow, kvRow, qsoRow, sessionRow } from './records';
 
 export interface SessionRecord {
   id?: number;
@@ -163,26 +164,28 @@ export async function exportAll() {
 
 type Export = Awaited<ReturnType<typeof exportAll>>;
 
-/** The records in an export file, checked before anything is replaced; throws a plain message if it is damaged. */
+/**
+ * The records in an export file, checked field by field before anything is
+ * replaced. A bad optional field is left out or mended; a record the app
+ * couldn't use throws a plain message, and nothing is imported.
+ */
 export function readExport(data: unknown): Export {
   const d = data as Partial<Record<keyof Export, unknown>> | null;
   if (!d || typeof d !== 'object' || d.app !== 'beepbeep') throw new Error('That is not a BeepBeep export file. Nothing was changed.');
-  const list = <T>(v: unknown, key: string): T[] => {
+  const list = <T>(v: unknown, row: (r: unknown) => T): T[] => {
     if (v === undefined) return [];
-    if (!Array.isArray(v) || v.some((r) => !r || typeof r !== 'object' || !(key in r))) {
-      throw new Error('That export file is damaged. Nothing was changed.');
-    }
-    return v as T[];
+    if (!Array.isArray(v)) throw new Error(DAMAGED);
+    return v.map(row);
   };
   return {
     app: 'beepbeep',
     version: 1,
     exportedAt: typeof d.exportedAt === 'string' ? d.exportedAt : '',
-    items: list(d.items, 'key'),
-    sessions: list(d.sessions, 'at'),
-    qsos: list(d.qsos, 'at'),
-    confusions: list(d.confusions, 'pair'),
-    kv: list(d.kv, 'key'),
+    items: list(d.items, itemRow),
+    sessions: list(d.sessions, sessionRow),
+    qsos: list(d.qsos, qsoRow),
+    confusions: list(d.confusions, confusionRow),
+    kv: list(d.kv, kvRow).filter((r) => r !== null),
   };
 }
 

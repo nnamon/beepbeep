@@ -2,13 +2,16 @@
   // Always visible: input level, tone lock, key light and speed. In LICW
   // strict mode the key light and meter hide during receive drills.
   import { signal } from '../lib/state/signal.svelte';
-  import { settings, strict } from '../lib/state/settings.svelte';
+  import { strict } from '../lib/state/settings.svelte';
   import { href } from '../lib/state/router.svelte';
+  import { sendInput } from '../lib/train/session';
 
   let { compact = false }: { compact?: boolean } = $props();
 
   const bars = [-50, -40, -32, -25, -18];
-  const keyboard = $derived(settings.input !== 'mic');
+  // The input in use: on a BC lesson in strict mode, saved paddles key as the straight key.
+  const input = $derived(sendInput());
+  const keyboard = $derived(input !== 'mic');
   const NAMES: Record<string, string> = { touch: 'Touch key', straight: 'Straight key', iambicA: 'Paddles A', iambicB: 'Paddles B' };
   const hide = $derived(strict() && signal.receiving);
   // Locked, but nothing keyed for 15 s and the signal is down near the noise.
@@ -18,7 +21,7 @@
   // The same words as on screen, as one sentence for a screen reader.
   const shown = $derived(
     keyboard
-      ? (NAMES[settings.input] ?? settings.input)
+      ? (NAMES[input] ?? input)
       : !signal.micOn
         ? 'Mic off'
         : toneLost
@@ -34,7 +37,7 @@
 <!-- Named by what it shows ("Mic off", "Touch key", a notice), then where it goes. -->
 <a class="bar" class:compact href={href('setup')} aria-label={name}>
   {#if keyboard}
-    <span class="cell muted">{NAMES[settings.input] ?? settings.input}</span>
+    <span class="cell muted">{NAMES[input] ?? input}</span>
     {#if !hide}<span class="led" class:on={signal.keyDown} aria-hidden="true"></span>{/if}
   {:else if !signal.micOn}
     <span class="cell muted">Mic off</span>

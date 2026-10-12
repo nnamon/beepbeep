@@ -8,6 +8,7 @@ import { StableReading } from '../decoder/stable';
 import type { DetectorEvent } from '../dsp/detector';
 import { signal } from '../state/signal.svelte';
 import { buildSchedule } from '../morse/schedule';
+import { forControl } from '../util/keys';
 
 /** Mic, keyboard straight key (Space), keyboard paddles, or the on-screen touch key. */
 export type InputSource = 'mic' | 'straight' | 'iambicA' | 'iambicB' | 'touch';
@@ -299,10 +300,11 @@ export class LiveDecoder {
   }
 
   private attachKeyboard() {
-    const isField = (t: EventTarget | null) =>
-      t instanceof HTMLElement && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
     const down = (e: KeyboardEvent) => {
-      if (isField(e.target) || e.repeat) return;
+      // Typing in a text box, and Space on a button reached with Tab (Stop,
+      // Done), belong to that control. A button just clicked with the mouse
+      // keeps focus without showing it; Space keys the straight key there.
+      if (forControl(e) || e.repeat) return;
       if (this.straightKeyed && e.code === 'Space') {
         e.preventDefault();
         this.keyer?.straight(true, eventTime(e.timeStamp));

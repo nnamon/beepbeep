@@ -24,6 +24,7 @@
   import { mulberry32, pick, randomSeed } from '../lib/util/random';
   import { keepAwake } from '../lib/util/wakelock';
   import { getKv } from '../lib/state/db';
+  import { customSetOf } from '../lib/state/records';
   import { forControl } from '../lib/util/keys';
 
   let { stage, customSet: initialSet }: { stage: string; customSet: { chars: string[]; words: string[] } } = $props();
@@ -100,7 +101,7 @@
     phase = 'loading';
     map = await stats(prefix);
     if (stage === 'custom' && !customSet.chars.length && !customSet.words.length) {
-      customSet = await getKv('pocket.custom', { chars: [], words: [] }).catch(() => customSet);
+      customSet = customSetOf(await getKv('pocket.custom', null).catch(() => customSet));
     }
     if (me !== turn) return;
     pool = buildPool();

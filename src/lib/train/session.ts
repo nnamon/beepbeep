@@ -11,6 +11,7 @@ import { DEFAULT_CAROUSEL, KOCH_LEVELS, licwLevels, type Level, type TrackId } f
 import { classById } from './classes';
 import { addConfusion, addSession, getItems, getKv, putItem, setKv, type SessionRecord } from '../state/db';
 import { newStat, recordAnswer, type ItemStat } from './srs';
+import { sendsOf, slipsOf } from '../state/records';
 import { randomSeed } from '../util/random';
 import { align, textTokens } from '../util/text';
 import { charTimingError } from './fist';
@@ -216,11 +217,13 @@ export async function answer(
   slowMs: number,
   confusion?: { want: string; got: string },
 ) {
+  // The space between words is not a character: there is nothing to record.
+  if (/\s$/.test(key)) return map.get(key) ?? newStat(key);
   const s = recordAnswer(map.get(key) ?? newStat(key), right, ms, slowMs);
   map.set(key, s);
   try {
     await putItem(s);
-    if (!right && confusion && confusion.got) await addConfusion(confusion.want, confusion.got);
+    if (!right && confusion && confusion.got.trim()) await addConfusion(confusion.want, confusion.got);
   } catch {
     /* storage unavailable: keep in memory */
   }
@@ -282,7 +285,7 @@ export async function recordSend(
         await answer(map, `tx:${o.want}`, true, err === null ? 0 : Math.max(1, Math.round(err * 1000)), 1);
       } else if ((o.op === 'sub' || o.op === 'del') && o.want !== ' ') await answer(map, `tx:${o.want}`, false, 0, 1);
     }
-    const slips = await getKv<SlipCounts>('sendSlips', { 'merged-words': 0, 'merged-letters': 0, 'split-letter': 0, 'split-word': 0, pairs: {} });
+    const slips = slipsOf(await getKv('sendSlips', null)) ?? { 'merged-words': 0, 'merged-letters': 0, 'split-letter': 0, 'split-word': 0, pairs: {} };
     for (const i of issues) {
       if (i.kind in slips) (slips as unknown as Record<string, number>)[i.kind]++;
       if (i.kind === 'merged-letters' || i.kind === 'split-letter') slips.pairs[i.detail] = (slips.pairs[i.detail] ?? 0) + 1;
@@ -297,7 +300,7 @@ export async function recordSend(
 export async function keepSend(text: string, marks: { start: number; end: number }[]) {
   if (!settings.keepSends || !marks.length) return;
   try {
-    const list = await getKv<{ at: number; text: string; marks: { start: number; end: number }[] }[]>('recentSends', []);
+    const list = sendsOf(await getKv('recentSends', []));
     const t0 = marks[0].start;
     list.unshift({ at: Date.now(), text, marks: marks.map((m) => ({ start: m.start - t0, end: m.end - t0 })) });
     await setKv('recentSends', list.slice(0, 8));

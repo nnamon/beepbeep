@@ -332,7 +332,9 @@ test('microphone not set up: switch to the touch key on the step and carry on', 
   await open(page, 'qso/learn/answer-cq', { qsoInput: 'key', qsoHelp: 'text', input: 'mic', sendWpm: 15, overTimeout: 2 });
   await toTheAnswer(page);
   await expect(page.locator('.pad')).toHaveCount(0);
-  await expect(page.getByText(/key with the touch key instead/)).toBeVisible();
+  // The test browser has no microphone: the step says so and offers the touch key, as the other sending screens do.
+  await expect(page.getByText(/^(No microphone was found|The microphone is blocked|Another app is using the microphone|The microphone didn't start)\./)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'use the touch key' })).toBeVisible();
   await page.getByRole('radiogroup', { name: 'Key with' }).getByRole('radio', { name: 'Touch key' }).click();
   await expect(page.locator('.pad')).toBeVisible();
   const model = (await page.locator('.model .text').innerText()).replace(/\s+/g, ' ').trim();
