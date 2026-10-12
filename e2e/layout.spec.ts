@@ -43,6 +43,73 @@ for (const phone of PHONES) for (const s of SCREENS) {
   });
 }
 
+/** Sets the app's safe-area tokens: test browsers report zero for env(safe-area-inset-*). */
+async function safeAreas(page: Page, s: { top?: number; bottom?: number; left?: number; right?: number }) {
+  await page.addStyleTag({
+    content: `:root { --safe-top: ${s.top ?? 0}px !important; --safe-bottom: ${s.bottom ?? 0}px !important; --safe-left: ${s.left ?? 0}px !important; --safe-right: ${s.right ?? 0}px !important; }`,
+  });
+}
+
+// After a wrong answer in a Pocket round, what it was, what you typed and the rhythm
+// must all be in view: not under the Next button, the answer keys or the tab bar.
+const REVEAL_PHONES = [
+  ...PHONES,
+  { name: 'iPhone 13, Safari', width: 390, height: 664, top: 0, bottom: 0 },
+  { name: 'iPhone 13, installed', width: 390, height: 844, top: 47, bottom: 34 },
+  { name: 'iPhone SE, Safari', width: 375, height: 548, top: 0, bottom: 0 },
+];
+
+for (const phone of REVEAL_PHONES) for (const stage of ['characters', 'words', 'callsigns']) {
+  test(`${phone.name}, Pocket ${stage}: after a miss the answer is in view`, async ({ page }) => {
+    await page.setViewportSize({ width: phone.width, height: phone.height });
+    // Lesson 20 does not have Q yet, so Q is always wrong.
+    await page.addInitScript(() => localStorage.setItem('beepbeep.settings.v1', JSON.stringify({ voice: 'off', guideSeen: true, level: { koch: 'koch-20', licw: 'licw-bc1-REA' } })));
+    await page.goto(`./#/pocket/round/${stage}`);
+    await safeAreas(page, phone);
+    // iOS shows a sound banner until the first tap; on a phone the Start tap clears it. Clear it here
+    // first, so a slow test browser cannot leave it up and push everything down.
+    const gate = page.getByRole('button', { name: 'Turn sound on' });
+    if (await gate.isVisible()) await gate.click();
+    await expect(gate).toBeHidden({ timeout: 10_000 });
+    await page.getByRole('button', { name: 'Start the round' }).click();
+    const kb = page.getByRole('group', { name: 'Answer keyboard' });
+    await expect(kb).not.toHaveClass(/disabled/, { timeout: 20_000 });
+    await kb.getByRole('button', { name: 'Q', exact: true }).click();
+    if (stage !== 'characters') {
+      await kb.getByRole('button', { name: 'Q', exact: true }).click();
+      await kb.getByRole('button', { name: 'Done', exact: true }).click();
+    }
+    const next = page.getByRole('button', { name: /^Next/ });
+    await expect(next).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/^You typed/)).toBeVisible();
+    await expect(gate, 'sound is on, so the banner is gone').toBeHidden();
+    await page.waitForTimeout(300);
+    const m = await page.evaluate(() => {
+      const center = document.querySelector('.round .center')!;
+      const parts = [...center.children].filter((e) => e.tagName !== 'BUTTON' && (e as HTMLElement).getClientRects().length);
+      const hidden: string[] = [];
+      for (const el of parts) {
+        const r = el.getBoundingClientRect();
+        const x = r.left + r.width / 2;
+        for (const y of [r.top + 2, (r.top + r.bottom) / 2, r.bottom - 2]) {
+          const hit = y >= 0 && y < innerHeight ? document.elementFromPoint(x, y) : null;
+          if (!hit || !(hit === el || el.contains(hit))) {
+            hidden.push(`"${(el as HTMLElement).innerText.replace(/\s+/g, ' ').slice(0, 20) || el.className}" at ${Math.round(y)}: ${hit ? `${hit.tagName.toLowerCase()} "${(hit as HTMLElement).innerText?.slice(0, 12) ?? ''}"` : 'off screen'}`);
+            break;
+          }
+        }
+      }
+      const nextBtn = [...document.querySelectorAll('button')].find((b) => /^Next/.test(b.textContent!.trim()))!.getBoundingClientRect();
+      const bar = document.querySelector('.tabbar')!.getBoundingClientRect();
+      return { parts: parts.length, hidden, nextBottom: Math.round(nextBtn.bottom), barTop: Math.round(bar.top), scrollY };
+    });
+    expect(m.parts, 'It was, the answer and You typed').toBeGreaterThanOrEqual(3);
+    expect(m.hidden, 'nothing of the answer is covered or off screen').toEqual([]);
+    expect(m.nextBottom, 'Next ends above the tab bar').toBeLessThanOrEqual(m.barTop);
+    expect(m.scrollY, 'no scrolling needed').toBe(0);
+  });
+}
+
 // iOS Safari zooms into any text box under 16 px and stays zoomed, cutting the page off.
 for (const route of ['qso/learn', 'settings', 'qso', 'pocket/custom', 'setup']) {
   test(`${route}: text boxes are 16 px or more on a touch screen`, async ({ page }) => {

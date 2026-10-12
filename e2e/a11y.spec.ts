@@ -32,6 +32,19 @@ async function open(page: Page, route: string, settings: Record<string, unknown>
   await page.waitForTimeout(300);
 }
 
+test('Pocket: the answer after a miss is announced', async ({ page }) => {
+  await open(page, 'pocket/round/characters', { level: { koch: 'koch-20', licw: 'licw-bc1-REA' } });
+  await page.getByRole('button', { name: 'Start the round' }).click();
+  const kb = page.getByRole('group', { name: 'Answer keyboard' });
+  await expect(kb).not.toHaveClass(/disabled/, { timeout: 20_000 });
+  const live = await page.locator('main [aria-live="polite"]').elementHandles();
+  expect(live.length, 'a live region is there before the answer').toBeGreaterThan(0);
+  await kb.getByRole('button', { name: 'Q', exact: true }).click();
+  await expect(page.getByText(/^You typed Q/)).toBeVisible();
+  const texts = await Promise.all(live.map((h) => h.evaluate((e) => e.isConnected && (e as HTMLElement).innerText)));
+  expect(texts.some((t) => t && /It was/.test(t) && /You typed Q/.test(t))).toBe(true);
+});
+
 test('a prosign overline sits just above its letters', async ({ page }) => {
   // Koch lesson 40 adds BT.
   await open(page, 'practice', { level: { koch: 'koch-40', licw: 'licw-bc1-REA' } });
