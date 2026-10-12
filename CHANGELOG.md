@@ -2,6 +2,11 @@
 
 What changed in each version of BeepBeep. The version shows at the top of the app, beside the build.
 
+## 0.3.0 (13 October 2026)
+
+- A new tab, Radio. Leave BeepBeep listening to a radio and it writes down the Morse it hears. Connect the radio's audio to the microphone with a cable, or put the phone near the radio's speaker, and press Start. The signal that is sending shows in large text, and the other signals are listed by pitch; tap one to follow it instead. You can copy the text, or save every signal's text with times as a .txt file. The screen stays on while it listens.
+- For now Radio reads one signal at a time. When two stations send at the same moment, only the stronger one is read, and the first second or so of a new station can be missed. Reading every signal at once comes next.
+
 ## 0.2.8 (13 October 2026)
 
 - Pocket on the LICW track: a round that starts with a new character says its name, then plays it three times, as the LICW Familiarity exercise does. Before, it played the character 5 times without its name and asked you to tap each time, and nothing depended on the taps.

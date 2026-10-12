@@ -272,6 +272,6 @@ test('the version number opens the version history, and Back returns', async ({ 
   await page.goto('./#/settings');
   await page.getByRole('link', { name: 'Version history' }).first().click();
   await expect(page.getByRole('heading', { name: 'Version history', level: 1 })).toBeVisible();
-  await expect(page.getByRole('heading', { name: /^0\.2\.8/, level: 2 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /^0\.3\.0/, level: 2 })).toBeVisible();
   await expect(page.getByText('One-letter words keep their spaces: V V V no longer reads as VVV.')).toBeVisible();
 });

@@ -3,7 +3,7 @@
   // strict mode the key light and meter hide during receive drills.
   import { signal } from '../lib/state/signal.svelte';
   import { strict } from '../lib/state/settings.svelte';
-  import { href } from '../lib/state/router.svelte';
+  import { href, route } from '../lib/state/router.svelte';
   import { sendInput } from '../lib/train/session';
 
   let { compact = false }: { compact?: boolean } = $props();
@@ -11,7 +11,9 @@
   const bars = [-50, -40, -32, -25, -18];
   // The input in use: on a BC lesson in strict mode, saved paddles key as the straight key.
   const input = $derived(sendInput());
-  const keyboard = $derived(input !== 'mic');
+  // Radio always listens through the microphone, and the speed there is the station's, not yours.
+  const radio = $derived(route.path[0] === 'radio');
+  const keyboard = $derived(input !== 'mic' && !radio);
   const NAMES: Record<string, string> = { touch: 'Touch key', straight: 'Straight key', iambicA: 'Paddles A', iambicB: 'Paddles B' };
   const hide = $derived(strict() && signal.receiving);
   // Locked, but nothing keyed for 15 s and the signal is down near the noise.
@@ -30,7 +32,8 @@
             ? `${Math.round(signal.pitch)} Hz`
             : 'Listening',
   );
-  const extra = $derived(signal.notice || (signal.wpm > 0 && !hide ? `${signal.wpm.toFixed(0)} wpm` : ''));
+  const showWpm = $derived(signal.wpm > 0 && !hide && !radio);
+  const extra = $derived(signal.notice || (showWpm ? `${signal.wpm.toFixed(0)} wpm` : ''));
   const name = $derived(`${shown}${extra ? `, ${extra}` : ''}. Open input setup.`);
 </script>
 
@@ -53,7 +56,7 @@
     {#if !hide}<span class="led" class:on={signal.keyDown} aria-hidden="true"></span>{/if}
   {/if}
   {#if signal.notice}<span class="cell notice">{signal.notice}</span>
-  {:else if signal.wpm > 0 && !hide}<span class="cell num">{signal.wpm.toFixed(0)} wpm</span>{/if}
+  {:else if showWpm}<span class="cell num">{signal.wpm.toFixed(0)} wpm</span>{/if}
 </a>
 
 <style>

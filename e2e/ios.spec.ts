@@ -11,6 +11,16 @@ test('turn sound on clears the gate', async ({ page }) => {
   await expect(gate).toBeHidden();
 });
 
+// Radio plays nothing, and its Start tap starts the audio itself.
+test('no sound banner on Radio; it is still on Practice', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('beepbeep.settings.v1', JSON.stringify({ voice: 'off', guideSeen: true })));
+  await page.goto('./#/radio');
+  await expect(page.getByRole('heading', { level: 1, name: 'Radio' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Turn sound on' })).toHaveCount(0);
+  await page.locator('.tabbar').getByRole('link', { name: 'Practice' }).tap();
+  await expect(page.getByRole('button', { name: 'Turn sound on' })).toBeVisible();
+});
+
 test('quick taps on the touch key key and select nothing', async ({ page }) => {
   await page.addInitScript(() =>
     localStorage.setItem('beepbeep.settings.v1', JSON.stringify({ input: 'touch', sendWpm: 15, voice: 'off', guideSeen: true })),

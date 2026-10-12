@@ -35,6 +35,14 @@ export function notify(text: string) {
 }
 
 let unsub: (() => void) | null = null;
+/** Why the last start failed, as the browser (or the engine) said it. */
+let failure: unknown = null;
+
+/** The error behind the last failed start of the microphone; `micError` words it. */
+export function lastMicFailure(): unknown {
+  return failure;
+}
+
 /** A start still waiting (often on the browser's permission prompt). */
 let pending: Promise<MicInfo | null> | null = null;
 
@@ -51,6 +59,7 @@ export function startMic(): Promise<MicInfo | null> {
 async function openMic(): Promise<MicInfo | null> {
   signal.starting = true;
   signal.error = '';
+  failure = null;
   try {
     const info = await engine.startMic(settings.micDeviceId || undefined);
     signal.info = info;
@@ -71,6 +80,7 @@ async function openMic(): Promise<MicInfo | null> {
     });
     return info;
   } catch (err) {
+    failure = err;
     signal.error = micError(err);
     signal.micOn = false;
     return null;
@@ -89,7 +99,8 @@ export function stopMic() {
   signal.level = -90;
 }
 
-function micError(err: unknown): string {
+/** A failed start of the microphone, in a plain sentence. */
+export function micError(err: unknown): string {
   const name = (err as { name?: string })?.name;
   if (name === 'NotAllowedError') return "The microphone is blocked. Allow it in the browser's site settings, then try again.";
   if (name === 'NotFoundError') return 'No microphone was found.';
