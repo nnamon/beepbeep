@@ -69,3 +69,21 @@ describe('decoder on human fists', () => {
     expect(cer(TEXT, decodeSchedule(TEXT, 18, undefined, { wordGapScale: 0.75, jitter: 0.08 }, 18).text)).toBeLessThan(0.04);
   });
 });
+
+describe('second pass on overs with one dit or one dah', () => {
+  // The search seeds its dit/dah split away from a mark far from the rest (a
+  // blip from the room); the only dah of SET or the only dit of MOE is not one.
+  it('keeps the only dah or the only dit', () => {
+    for (const text of ['SET', 'IT', 'HIT', 'EET', 'TE', 'MOE', 'TO', 'OK']) {
+      for (const wpm of [10, 15, 20]) {
+        const marks = buildSchedule(text, { charWpm: wpm }).marks.map((m) => ({ start: m.start, end: m.end }));
+        const d = new Decoder({ initialWpm: wpm });
+        for (const m of marks) {
+          d.keyDown(m.start);
+          d.keyUp(m.end);
+        }
+        expect(outputsToText(Decoder.redecode(d.model(), marks)), `${text} at ${wpm} wpm`).toBe(text);
+      }
+    }
+  });
+});

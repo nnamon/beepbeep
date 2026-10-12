@@ -264,8 +264,21 @@ export function initialParams(model: DecoderModel, marks: Mark[]): FistParams {
   let dit = model.dit;
   let dahRatio = model.dah / model.dit;
   if (logs.length >= 4) {
-    const lo = Math.min(...logs);
-    const hi = Math.max(...logs);
+    // Seeded at the shortest and longest marks, except one far from the rest
+    // (1.6 times shorter or longer than its neighbour) when the rest still
+    // hold dits and dahs: a blip from the room, or a voice merged into a
+    // mark, must not pose as the dit or the dah. The one dah of SET stays.
+    const sorted = [...logs].sort((a, b) => a - b);
+    const last = sorted.length - 1;
+    const apart = Math.log(1.6);
+    let i = 0;
+    while (i < last - 1 && sorted[i + 1] - sorted[i] > apart) i++;
+    if (sorted[last] - sorted[i] < apart) i = 0;
+    let j = last;
+    while (j > i + 1 && sorted[j] - sorted[j - 1] > apart) j--;
+    if (sorted[j] - sorted[i] < apart) j = last;
+    const lo = sorted[i];
+    const hi = sorted[j];
     const k = kmeans2(logs, lo, hi);
     if (k.nLow >= 1 && k.nHigh >= 1 && k.high - k.low >= Math.log(1.6)) {
       dit = Math.exp(k.low);

@@ -50,6 +50,8 @@ export interface DetectorOptions {
   squelchDb?: number | null;
   /** Tests: the envelope stage's state at every step (1 kHz). */
   trace?: (s: TraceStep) => void;
+  /** Tests: each mark's pitch check when it ends. */
+  onMark?: (m: MarkCheck) => void;
   /** Internal: a second ear at the tone's third harmonic (pinned, no search, no ear of its own). */
   overtone?: boolean;
 }
@@ -73,6 +75,16 @@ export interface TraceStep {
   markLevel: number;
   keyDown: boolean;
   pending: boolean | null;
+}
+
+export interface MarkCheck {
+  /** Steps (ms) of the mark's steady middle. */
+  steps: number;
+  /** Its pitch from the lock, and how far the second half's pitch sits from the first half's, Hz. */
+  offset: number;
+  glide: number;
+  coherence: number;
+  accepted: boolean;
 }
 
 /** One lock-in channel: low-passed I and Q of the input mixed down from `hz`. */
@@ -171,7 +183,11 @@ export const steadyTuning = { lag: 4, smooth: 4, coherence: 0.4, tol: 10, wide: 
  * (`coherence`). Until `learn` marks are in, the allowance is `pinned` Hz
  * around a pinned pitch, `wide` around a found one. A mark that fails is
  * withdrawn. While a mark lasts, it ends if the pitch has left the sender's
- * for `leave` dits (40 ms at least: a click passes in less).
+ * for `leave` dits (40 ms at least: a click passes in less). Until `learn`
+ * marks are in, the pitch of the mark's second half must also sit within
+ * `glide` Hz (plus `glideShort` / its length in ms) of its first half's: a
+ * voice's harmonic glides through the tone's pitch and can average out to it
+ * (speech-only marks glide 5 to 11 Hz between halves, keyed marks under 3).
  */
 /**
  * Timbre: a buzzer or square-wave oscillator has a strong third harmonic at
@@ -205,7 +221,7 @@ export const earTuning = { overtone: true, silence: 6 };
  * lock once it scores `relock` times as much for `relockSec`.
  */
 export const searchTuning = { base: 12, tau: 4, least: 40, near: 3, far: 10, runs: 20, relock: 4, relockSec: 1 };
-export const markTuning = { lag: 10, tol: 3, wide: 8, pinned: 4, learn: 3, coherence: 0.5, leave: 0.6, short: 120 };
+export const markTuning = { lag: 10, tol: 3, wide: 8, pinned: 4, learn: 3, coherence: 0.5, leave: 0.6, short: 120, glide: 6, glideShort: 150 };
 
 export class Detector {
   readonly fs: number;
@@ -263,6 +279,7 @@ export class Detector {
   private contrastDb: number;
   private squelchDb: number | null;
   private trace: ((s: TraceStep) => void) | null;
+  private onMark: ((m: MarkCheck) => void) | null;
   private noise = 0;
   private refNoise = [0, 0];
   private peak = 0;
@@ -311,6 +328,10 @@ export class Detector {
   private mIm = 0;
   private mMag = 0;
   private mN = 0;
+  /** The current mark's phase products, step by step, to compare its two halves. */
+  private readonly mStepRe = new Float64Array(4000);
+  private readonly mStepIm = new Float64Array(4000);
+
   /** This step's phase product at `markTuning.lag`. */
   private lagRe = 0;
   private lagIm = 0;
@@ -348,6 +369,7 @@ export class Detector {
     this.squelchDb = opts.squelchDb ?? null;
     this.isOvertone = opts.overtone ?? false;
     this.trace = opts.trace ?? null;
+    this.onMark = opts.onMark ?? null;
     this.dit = opts.dit ?? 0.08;
     this.fftSize = sampleRate > 30000 ? 4096 : 2048;
     this.hop = this.fftSize / 2;
@@ -820,7 +842,32 @@ export class Detector {
     const gap = this.mGapN ? this.mGap / this.mGapN : -60;
     const rise = this.mGapN ? this.mRise / this.mGapN : 0;
     const timbre = this.hasHarmonic();
-    if (coherence >= markTuning.coherence && Math.abs(offset - this.toneOffset) <= tol && (!timbre || gap >= this.harmonicGap - timbreTuning.markSlack)) {
+    // The pitch of each half: a keyed tone holds its pitch, a voice's harmonic
+    // glides through (and can average out to the sender's pitch).
+    const n = Math.min(this.mN, this.mStepRe.length);
+    const half = n >> 1;
+    let r1 = 0;
+    let i1 = 0;
+    let r2 = 0;
+    let i2 = 0;
+    for (let i = 0; i < half; i++) {
+      r1 += this.mStepRe[i];
+      i1 += this.mStepIm[i];
+    }
+    for (let i = half; i < n; i++) {
+      r2 += this.mStepRe[i];
+      i2 += this.mStepIm[i];
+    }
+    const perRad = (2 * Math.PI * markTuning.lag * this.decim) / this.fs;
+    const glide = Math.abs(Math.atan2(i2 * r1 - r2 * i1, r2 * r1 + i2 * i1)) / perRad;
+    // Until the sender's pitch is learned, any steady-enough sound near the
+    // tone passes the pitch check; this is when a voice gets through. Later,
+    // the 3 Hz check does the work (and a real sidetone can wander a few hertz
+    // within a long mark, so the glide check would cost marks).
+    const held = this.offsetMarks >= markTuning.learn || glide <= markTuning.glide + markTuning.glideShort / this.mN;
+    const accepted = coherence >= markTuning.coherence && Math.abs(offset - this.toneOffset) <= tol && held && (!timbre || gap >= this.harmonicGap - timbreTuning.markSlack);
+    this.onMark?.({ steps: this.mN, offset, glide, coherence, accepted });
+    if (accepted) {
       this.toneOffset = this.offsetMarks ? this.toneOffset + 0.3 * (offset - this.toneOffset) : offset;
       this.offsetMarks++;
       this.harmonicGap = this.harmonicMarks ? this.harmonicGap + 0.3 * (gap - this.harmonicGap) : gap;
@@ -942,6 +989,11 @@ export class Detector {
         this.mRe += this.lagRe;
         this.mIm += this.lagIm;
         this.mMag += this.lagMag;
+        if (this.mN < this.mStepRe.length) {
+          this.mStepRe[this.mN] = this.lagRe;
+          this.mStepIm[this.mN] = this.lagIm;
+        }
+
         this.mN++;
         this.mGap += ovt - env;
         this.mRise += ovt - this.overtoneNoise;
@@ -983,6 +1035,7 @@ export class Detector {
           this.downT = t;
           this.onPitchT = t;
           this.mRe = this.mIm = this.mMag = this.mN = 0;
+
           this.mGap = this.mRise = this.mGapN = 0;
           this.peakBefore = this.peak;
           // A key-down is timed where the envelope rose through half the mark's amplitude.
