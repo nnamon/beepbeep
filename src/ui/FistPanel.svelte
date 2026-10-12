@@ -9,11 +9,11 @@
   const rows = $derived(
     report
       ? [
-          { label: 'Word gap, aim 7', value: report.wordGap === null ? '–' : report.wordGap.toFixed(1), unit: report.wordGap === null ? '' : 'units' },
-          { label: 'Letter gap, aim 3', value: report.charGap.toFixed(1), unit: 'units' },
-          { label: 'Dah to dit, aim 3', value: report.dahRatio.toFixed(1), unit: '' },
-          { label: 'Weighting, aim 1.0', value: report.weighting.toFixed(2), unit: '' },
-          { label: 'Clean characters', value: `${Math.round(report.clean * 100)}%`, unit: '' },
+          { label: 'Gap between words, aim 7', value: report.wordGap === null ? 'none sent' : report.wordGap.toFixed(1), unit: report.wordGap === null ? '' : 'units' },
+          { label: 'Gap between letters, aim 3', value: report.charGap === null ? 'none sent' : report.charGap.toFixed(1), unit: report.charGap === null ? '' : 'units' },
+          { label: 'Dah length in dits, aim 3', value: report.dahRatio === null ? 'not measured' : report.dahRatio.toFixed(1), unit: '' },
+          { label: 'Dit to gap inside letters, aim 1.0', value: report.weighting === null ? 'not measured' : report.weighting.toFixed(2), unit: '' },
+          { label: 'Characters read cleanly', value: `${Math.round(report.clean * 100)}%`, unit: '' },
         ]
       : [],
   );
@@ -26,7 +26,7 @@
   </div>
   {#if report}
     <div>
-      <h3>This over</h3>
+      <h3>Measured</h3>
       <dl>
         {#each rows as r (r.label)}
           <div class="row"><dt class="muted">{r.label}</dt><dd><Value value={r.value} unit={r.unit} /></dd></div>

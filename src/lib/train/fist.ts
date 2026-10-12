@@ -9,14 +9,14 @@ export interface FistReport {
   wpm: number;
   /** Unit length, seconds: mean of dit and element gap, so weighting cancels out. */
   unit: number;
-  /** Dah length over dit length (standard 3). */
-  dahRatio: number;
-  /** Gaps in units (standard 1, 3, 7). */
+  /** Dah length over dit length (standard 3); null without both dits and dahs to compare. */
+  dahRatio: number | null;
+  /** Gaps in units (standard 1, 3, 7); null when none of that kind was sent. */
   elemGap: number;
-  charGap: number;
+  charGap: number | null;
   wordGap: number | null;
-  /** Dit over element gap (1 = standard; >1 heavy, <1 light). */
-  weighting: number;
+  /** Dit over the gap inside a letter (1 = standard; >1 heavy, <1 light); null without both. */
+  weighting: number | null;
   /** Speed change across the sample, WPM per minute. */
   drift: number;
   /** Spread of dit lengths, as a fraction of the mean. */
@@ -101,11 +101,12 @@ export function analyseFist(outputs: DecoderOutput[]): FistReport | null {
     chars: chars.length,
     wpm: 1.2 / unit,
     unit,
-    dahRatio: dah / dit,
+    // Only what was measured: an all-dah send has no dah-to-dit ratio, E E E no gaps inside letters.
+    dahRatio: dits.length && dahs.length ? dah / dit : null,
     elemGap: eg / unit,
-    charGap: charGaps.length ? mean(charGaps) / unit : 3,
+    charGap: charGaps.length ? mean(charGaps) / unit : null,
     wordGap: wordGaps.length ? mean(wordGaps) / unit : null,
-    weighting: dit / eg,
+    weighting: dits.length && elem.length ? dit / eg : null,
     drift,
     ditSpread: dits.length > 1 ? sd(dits) / dit : 0,
     clean: chars.filter((c) => c.confidence >= 0.5).length / chars.length,

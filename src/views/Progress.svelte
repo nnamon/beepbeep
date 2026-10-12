@@ -207,10 +207,10 @@
       <h2>Your latest sending timing</h2>
       <dl class="fist">
         <div><dt class="label">Speed</dt><dd class="num">{lastFist.wpm.toFixed(0)} wpm</dd></div>
-        <div><dt class="label">Dah length, in dits</dt><dd class="num">{lastFist.dahRatio?.toFixed(1) ?? 'none sent'} <span class="muted">aim 3</span></dd></div>
-        <div><dt class="label">Gap between letters</dt><dd class="num">{lastFist.charGap.toFixed(1)} units <span class="muted">aim 3</span></dd></div>
+        <div><dt class="label">Dah length in dits</dt><dd class="num">{lastFist.dahRatio?.toFixed(1) ?? 'not measured'} <span class="muted">aim 3</span></dd></div>
+        <div><dt class="label">Gap between letters</dt><dd class="num">{lastFist.charGap === null || lastFist.charGap === undefined ? 'none sent' : `${lastFist.charGap.toFixed(1)} units`} <span class="muted">aim 3</span></dd></div>
         <div><dt class="label">Gap between words</dt><dd class="num">{lastFist.wordGap === null || lastFist.wordGap === undefined ? 'none sent' : `${lastFist.wordGap.toFixed(1)} units`} <span class="muted">aim 7</span></dd></div>
-        <div><dt class="label">Dit length against the gaps inside letters</dt><dd class="num">{lastFist.weighting.toFixed(2)} <span class="muted">aim 1.0</span></dd></div>
+        <div><dt class="label">Dit to gap inside letters</dt><dd class="num">{lastFist.weighting?.toFixed(2) ?? 'not measured'} <span class="muted">aim 1.0</span></dd></div>
       </dl>
       <p class="muted small">A unit is one dit long at your speed.</p>
     </div>

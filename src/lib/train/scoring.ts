@@ -156,12 +156,17 @@ export function oneNote(report: FistReport | null, issues: SendIssue[] = [], tol
   if (!report) return 'Not enough sending to measure.';
   const t = TOL[tolerance];
   const f = (x: number) => x.toFixed(1);
-  if (report.weighting > 1 + 0.45 * t) return `Heavy weighting: ${report.weighting.toFixed(2)}, aim 1.0.`;
-  if (report.weighting < 1 - 0.3 * t) return `Light weighting: ${report.weighting.toFixed(2)}, aim 1.0.`;
-  if (report.dahRatio < 3 - 0.5 * t) return `Dahs short: ${f(report.dahRatio)} dits, aim 3.`;
-  if (report.dahRatio > 3 + 0.8 * t) return `Dahs long: ${f(report.dahRatio)} dits, aim 3.`;
+  const w = report.weighting;
+  if (w !== null && w > 1 + 0.45 * t) return `Dits long against the gaps inside letters: ${w.toFixed(2)}, aim 1.0.`;
+  if (w !== null && w < 1 - 0.3 * t) return `Dits short against the gaps inside letters: ${w.toFixed(2)}, aim 1.0.`;
+  const d = report.dahRatio;
+  if (d !== null && d < 3 - 0.5 * t) return `Dahs short: ${f(d)} dits, aim 3.`;
+  if (d !== null && d > 3 + 0.8 * t) return `Dahs long: ${f(d)} dits, aim 3.`;
   if (report.wordGap !== null && report.wordGap < 7 - 1.5 * t) return `Word gaps short: ${f(report.wordGap)} units, aim 7.`;
-  if (report.charGap < 3 - 0.6 * t) return `Letter gaps short: ${f(report.charGap)} units, aim 3.`;
+  const c = report.charGap;
+  if (c !== null && c < 3 - 0.6 * t) return `Letter gaps short: ${f(c)} units, aim 3.`;
+  // Long letter gaps are shown against their aim too, so a note must not call them fine.
+  if (c !== null && c > 3 + 1.5 * t) return `Letter gaps long: ${f(c)} units, aim 3.`;
   if (report.ditSpread > 0.25 * t) return `Dit length varies by ${Math.round(report.ditSpread * 100)}%.`;
   if (Math.abs(report.drift) > 3 * t)
     return `Speed ${report.drift > 0 ? 'rose' : 'fell'} ${Math.abs(report.drift).toFixed(0)} wpm per minute.`;

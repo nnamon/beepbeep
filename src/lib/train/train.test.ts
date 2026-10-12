@@ -129,8 +129,23 @@ describe('fist analysis', () => {
     expect(oneNote(f)).toBe('Timing within range.');
   });
   it('spots heavy weighting and short dahs', () => {
-    expect(oneNote(analyseFist(decodeOutputs(TEXT, 18, { weight: 0.35 }))!)).toMatch(/Heavy weighting/);
+    expect(oneNote(analyseFist(decodeOutputs(TEXT, 18, { weight: 0.35 }))!)).toMatch(/Dits long against the gaps inside letters/);
     expect(oneNote(analyseFist(decodeOutputs(TEXT, 18, { dahRatio: 2.3 }))!)).toMatch(/Dahs short/);
+  });
+  it('reports only what was measured: no ratio without both dits and dahs', () => {
+    const dahs = analyseFist(decodeOutputs('TTT MMM OOO', 15))!;
+    expect(dahs.dahRatio).toBeNull();
+    expect(dahs.weighting).toBeNull();
+    const dits = analyseFist(decodeOutputs('E E E', 15))!;
+    expect(dits.dahRatio).toBeNull();
+    expect(dits.weighting).toBeNull();
+    expect(dits.charGap).toBeNull();
+    expect(oneNote(dahs)).not.toMatch(/Dahs|Dits/);
+  });
+  it('never calls long letter gaps fine', () => {
+    const f = analyseFist(decodeOutputs(TEXT, 18, { charGapScale: 2 }))!;
+    expect(f.charGap!).toBeGreaterThan(5);
+    expect(oneNote(f)).toMatch(/^Letter gaps long: \d\.\d units, aim 3\.$/);
   });
 });
 
