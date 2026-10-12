@@ -314,6 +314,14 @@ describe('radio detector', () => {
     expect(heard.events.filter((e) => e.type === 'signal')).toEqual([]);
   });
 
+  it('gives a steady carrier no channel, and still finds a station beside it', () => {
+    // Someone tuning up: an unkeyed carrier at 600 Hz for 20 seconds, as loud as the station at 900 Hz.
+    const { samples } = renderBand({ stations: [{ name: 'A', pitch: 900, wpm: 20, sends: [{ text: 'CQ CQ DE 9V1XX K', at: 4 }] }], seconds: 22, noise: { snrDb: 15 }, passband: [300, 2700], seed: 44 }, FS);
+    for (let i = 0; i < 20 * FS; i++) samples[i] += 0.03 * Math.sin((2 * Math.PI * 600 * i) / FS);
+    const heard = listen(samples, FS);
+    expect(heard.channels.map((c) => [Math.round(c.hz / 10) * 10, c.settled])).toEqual([[900, 'CQ CQ DE 9V1XX K']]);
+  });
+
   it('drops a channel that has been silent long enough, and only then', () => {
     const was = lifeTuning.gone;
     lifeTuning.gone = 6;

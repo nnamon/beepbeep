@@ -45,8 +45,10 @@ export type RadioEvent =
   | { type: 'gone'; ch: number; t: number };
 
 export interface RadioOptions {
+  /** The pitches searched, Hz (default 200 to 3000: a receiver's passband). */
   minHz?: number;
   maxHz?: number;
+  /** The most channels at once, new and passed on (default 8). */
   maxChannels?: number;
   /** Tests: each mark as it ends, with what decided it. */
   onMark?: (m: MarkCheck) => void;
@@ -178,9 +180,11 @@ export const leakTuning = { hz: 300, db: 6, keep: 8 };
 
 /**
  * Lifetime. A new channel is passed on once `agree` of its last `confirm`
- * measured marks have settled pitches within `spread` Hz of their median,
- * with a mark level `strong` dB over the noise's median, or dropped unheard
- * after `tentative` seconds. A channel without a mark for `gone` seconds is
+ * measured marks, all within `span` seconds, have settled pitches within
+ * `spread` Hz of their median, and `agree` have levels within `levelSpread`
+ * dB of theirs, and glides (second half's pitch from the first's) within
+ * `glideSpread` Hz of theirs, with a mark level `strong` dB over the noise's
+ * median, or dropped unheard after `tentative` seconds. A channel without a mark for `gone` seconds is
  * dropped. `history` seconds of audio are kept to hear again, `replay`
  * decimated samples of it in each call to `process` (all new channels
  * together): in an AudioWorklet each call must be quick, and a new channel
@@ -188,7 +192,7 @@ export const leakTuning = { hz: 300, db: 6, keep: 8 };
  * `maxTentative` new channels at a time; a pitch whose new channel was
  * dropped unheard waits `cooldown` seconds.
  */
-export const lifeTuning = { confirm: 6, agree: 5, spread: 3, strong: 12, tentative: 8, gone: 45, history: 6, replay: 1024, maxTentative: 6, cooldown: 4 };
+export const lifeTuning = { confirm: 6, agree: 5, spread: 3, levelSpread: 6, glideSpread: 2, span: 6, strong: 12, tentative: 8, gone: 45, history: 6, replay: 1024, maxTentative: 6, cooldown: 4 };
 
 /** An amplitude in dB. */
 const dbOf = (amp: number) => (20 / Math.LN10) * Math.log(amp + 1e-9);
@@ -358,8 +362,11 @@ class Channel {
   private downSent = false;
   private floorFrom = 0;
   private accepted = 0;
-  /** Settled pitches (Hz) of the last measured marks, for passing a new channel on. */
+  /** Settled pitches (Hz) and levels (dB) of the last measured marks, for passing a new channel on. */
   private settled: number[] = [];
+  private levels: number[] = [];
+  private glides: number[] = [];
+  private ends: number[] = [];
   /** Pitches this channel's marks sit at: `n` marks each. */
   private pitches: Pitch[] = [];
   /** Steady marks at no known pitch: a second station on nearly the same pitch, if they agree. */
@@ -891,7 +898,15 @@ class Channel {
       const hz = this.hz + m.settled;
       if (m.steps >= P.steps) {
         this.settled.push(hz);
-        if (this.settled.length > lifeTuning.confirm) this.settled.shift();
+        this.levels.push(m.level);
+        this.glides.push(2 * (m.settled - m.offset));
+        this.ends.push(m.end);
+        if (this.settled.length > lifeTuning.confirm) {
+          this.settled.shift();
+          this.levels.shift();
+          this.glides.shift();
+          this.ends.shift();
+        }
         // Its pitch: the nearest known one moves to it a little, or it starts one. Only
         // from a mark long enough to fill the filter: a station off the tuning measures
         // short of its pitch until it has (half way at the start).
@@ -926,9 +941,16 @@ class Channel {
   get confirmed(): boolean {
     const L = lifeTuning;
     if (this.settled.length < L.confirm || this.snr < L.strong) return false;
-    const v = [...this.settled].sort((a, b) => a - b);
-    const med = v[v.length >> 1];
-    return v.filter((x) => Math.abs(x - med) <= L.spread).length >= L.agree;
+    // A station sends its marks close together; a voice's steadier moments come now and then.
+    if (this.ends[this.ends.length - 1] - this.ends[0] > L.span) return false;
+    const agree = (v: number[], within: number) => {
+      const s = [...v].sort((a, b) => a - b);
+      const med = s[s.length >> 1];
+      return v.filter((x) => Math.abs(x - med) <= within).length >= L.agree;
+    };
+    // A keyed tone holds its pitch and its level, and glides the same way every
+    // mark if at all (a chirp); a voice's harmonics wander in all three.
+    return agree(this.settled, L.spread) && agree(this.levels, L.levelSpread) && agree(this.glides, L.glideSpread);
   }
 
   /** How much of a tone `df` Hz away this channel's filter lets through at most, dB (with `leakTuning.db` for key clicks). */
@@ -1312,7 +1334,8 @@ export class RadioDetector {
     for (let k = lo + 1; k < hi; k++) {
       const s = S(k);
       if (s < F.least) continue;
-      if (!(s >= S(k - 1) && s > S(k + 1) && s >= S(k - 2) && s > S(k + 2))) continue;
+      // A peak of its own bin's score: a station two bins from a stronger one still counts.
+      if (!(this.score[k] >= this.score[k - 1] && this.score[k] > this.score[k + 1])) continue;
       if (this.onsets[k - 1] + this.onsets[k] + this.onsets[k + 1] < F.onsets) continue;
       const sc = this.score;
       const hz = (k + (sc[k + 1] - sc[k - 1]) / (sc[k - 1] + sc[k] + sc[k + 1])) * this.binHz;
