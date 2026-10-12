@@ -4,7 +4,9 @@
 //   docker compose run --rm -T -e README_SHOTS=1 -e GITHUB_SHA=$(git rev-parse HEAD) e2e \
 //     npx playwright test --project=readme
 //
-// Math.random is seeded, so both themes show the same prompts and stations.
+// Math.random is seeded, so both themes show the same prompts and stations,
+// and keying on the Space bar carries its planned times, so both themes show
+// the same timing figures however late the page's timers run.
 // The project's fake microphone plays e2e/.fixtures/room-cq.wav: a hand-keyed
 // CQ at 600 Hz with a fan and someone talking (written by global-setup.ts).
 import { test, expect, type Page } from '@playwright/test';
@@ -66,9 +68,12 @@ async function key(page: Page, text: string, wpm: number, letterGap = 3) {
   await page.evaluate(async (evs) => {
     const t0 = performance.now();
     for (const [at, down] of evs) {
-      const wait = t0 + at - performance.now();
-      if (wait > 0) await new Promise((res) => setTimeout(res, wait));
-      document.body.dispatchEvent(new KeyboardEvent(down ? 'keydown' : 'keyup', { code: 'Space', key: ' ', bubbles: true }));
+      // Not before the planned moment: the app takes a timestamp from the future as "now".
+      while (performance.now() < t0 + at) await new Promise((res) => setTimeout(res, Math.max(1, t0 + at - performance.now())));
+      const e = new KeyboardEvent(down ? 'keydown' : 'keyup', { code: 'Space', key: ' ', bubbles: true });
+      // The key is timed by the event's timestamp: give it the planned moment, not the moment the timer fired.
+      Object.defineProperty(e, 'timeStamp', { value: t0 + at });
+      document.body.dispatchEvent(e);
     }
   }, events);
 }
@@ -79,13 +84,23 @@ test.describe('desktop', () => {
   test.use(DESKTOP);
   for (const theme of THEMES) {
     test(`${theme} live decoder`, async ({ page }) => {
-      test.setTimeout(90_000);
+      test.setTimeout(150_000);
       // Pinned at the tone, as after calibration.
       await open(page, 'practice/live', theme, { input: 'mic', sendWpm: 16, pinnedHz: 600 });
       await page.getByRole('button', { name: /Start/ }).click();
-      await expect(page.getByLabel('Decoded sending')).toContainText('K1ABC K', { timeout: 60_000 });
-      await page.getByRole('button', { name: 'Done sending' }).click();
-      await page.waitForTimeout(1500);
+      // The recording repeats, with 5.5 seconds of room noise between passes. When the
+      // machine is busy the audio can stutter and a pass reads with a slip: clear it
+      // and read the next pass, so the image shows the CQ as keyed.
+      const decoded = page.getByLabel('Decoded sending');
+      for (let pass = 1; ; pass++) {
+        await expect(decoded).toHaveText(/ABC K\s*$/, { timeout: 60_000 });
+        await page.getByRole('button', { name: 'Done sending' }).click();
+        await page.waitForTimeout(1500);
+        const text = ((await decoded.textContent()) ?? '').replace(/\s+/g, ' ').trim();
+        if (text === 'VVV CQ CQ DE K1ABC K') break;
+        expect(pass, `pass ${pass} read as "${text}"`).toBeLessThan(4);
+        await page.getByRole('button', { name: 'Clear' }).click();
+      }
       await shot(page, 'live-decoder', theme);
     });
 
@@ -126,7 +141,14 @@ test.describe('desktop', () => {
       await open(page, 'progress', theme, { keepSends: true, level: { koch: 'koch-40' } });
       await seed(page);
       await page.reload();
-      await page.setViewportSize({ width: 1280, height: 1080 });
+      // Down to the end of Accuracy by character, stopping short of the next heading.
+      const heat = page.locator('ul.heat');
+      await expect(heat).toBeVisible();
+      const bottom = await heat.evaluate((el) => {
+        const below = el.closest('.block')?.nextElementSibling?.getBoundingClientRect().top ?? el.getBoundingClientRect().bottom + 40;
+        return below + window.scrollY - 6;
+      });
+      await page.setViewportSize({ width: 1280, height: Math.floor(bottom) });
       await page.waitForTimeout(800);
       await shot(page, 'progress', theme);
     });
@@ -145,22 +167,27 @@ test.describe('phone', () => {
       test.setTimeout(90_000);
       await open(page, 'pocket/round/characters', theme, { level: { koch: 'koch-14' } });
       await page.getByRole('button', { name: 'Start the round' }).click();
-      // Answer until one is wrong: the reveal shows both rhythms.
+      // Answer M until it is wrong: the reveal shows both rhythms. A right answer
+      // moves on to the next question by itself; a wrong one waits for Next.
       const kb = page.getByRole('group', { name: 'Answer keyboard' });
-      for (let i = 0; i < 8; i++) {
-        await expect(page.getByRole('button', { name: 'Play again' })).toBeEnabled({ timeout: 20_000 });
+      const playAgain = page.getByRole('button', { name: 'Play again' });
+      const youTyped = page.getByText(/^You typed /);
+      for (let i = 0; i < 12; i++) {
+        await expect(playAgain).toBeEnabled({ timeout: 20_000 });
         await page.waitForTimeout(600);
         await kb.getByRole('button', { name: 'M', exact: true }).click();
-        if (await page.getByText('You typed').isVisible({ timeout: 2000 }).catch(() => false)) break;
+        await expect(playAgain).toBeDisabled();
+        await expect(youTyped.or(page.locator('button[aria-label="Play again"]:enabled'))).toBeVisible({ timeout: 10_000 });
+        if (await youTyped.isVisible()) break;
       }
-      await expect(page.getByText('You typed')).toBeVisible();
+      await expect(youTyped).toBeVisible();
       await page.waitForTimeout(600);
       await shot(page, 'phone-pocket', theme);
     });
   }
 });
 
-// The project feeds e2e/.fixtures/paris.wav in as the microphone.
+// The project feeds e2e/.fixtures/room-cq.wav in as the microphone.
 test.describe('phone, microphone', () => {
   test.use(PHONE);
   for (const theme of THEMES) {
