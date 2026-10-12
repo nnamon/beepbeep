@@ -11,6 +11,7 @@ interface Pending {
   until?: number;
   keep?: Kept[];
   full?: boolean;
+  prefer?: Kept[];
   resolve: (o: DecoderOutput[]) => void;
 }
 
@@ -22,7 +23,7 @@ function fallBack() {
   worker = null;
   for (const [id, p] of pending) {
     pending.delete(id);
-    p.resolve(Decoder.redecode(p.model, p.marks, p.until, p.keep, p.full));
+    p.resolve(Decoder.redecode(p.model, p.marks, p.until, p.keep, p.full, p.prefer));
   }
 }
 
@@ -44,12 +45,12 @@ function getWorker(): Worker | null {
 }
 
 /** Decoder.redecode, off the main thread when possible. */
-export function redecodeAsync(model: DecoderModel, marks: { start: number; end: number }[], until?: number, keep?: Kept[], full?: boolean): Promise<DecoderOutput[]> {
+export function redecodeAsync(model: DecoderModel, marks: { start: number; end: number }[], until?: number, keep?: Kept[], full?: boolean, prefer?: Kept[]): Promise<DecoderOutput[]> {
   const w = getWorker();
-  if (!w) return Promise.resolve(Decoder.redecode(model, marks, until, keep, full));
+  if (!w) return Promise.resolve(Decoder.redecode(model, marks, until, keep, full, prefer));
   return new Promise((resolve) => {
     const id = ++seq;
-    pending.set(id, { model, marks, until, keep, full, resolve });
-    w.postMessage({ id, model, marks, until, keep, full });
+    pending.set(id, { model, marks, until, keep, full, prefer, resolve });
+    w.postMessage({ id, model, marks, until, keep, full, prefer });
   });
 }

@@ -41,7 +41,7 @@ export interface FistParams {
 }
 
 /** Search settings; tests sweep them. */
-export const tuning = { lmWeight: 1, unknown: -12, beam: 600, fitBeam: 80, rounds: 2, sdTempo: 0.15, sdMark: 0.22, wordBonus: 1.2, repeatBonus: 0.9, outlier: 0.05, markOutlier: 0.03, minWord: 1, drift: true, sdInter: 0.35, sdGap: 0.3 };
+export const tuning = { rewrite: 3, lmWeight: 1, unknown: -12, beam: 600, fitBeam: 80, rounds: 2, sdTempo: 0.15, sdMark: 0.22, wordBonus: 1.2, repeatBonus: 0.9, outlier: 0.05, markOutlier: 0.03, minWord: 1, drift: true, sdInter: 0.35, sdGap: 0.3 };
 const MAX_PATTERN = 9;
 /** Where timing cannot tell letter gaps from word gaps, both classes sit this factor either side of the gaps. */
 const OPEN = 1.35;
@@ -149,7 +149,8 @@ export interface Fixed {
   gap: string;
 }
 
-export function decodeOnce(marks: Mark[], p: FistParams, beam = tuning.beam, fixed: Fixed = { sym: '', gap: '' }): Item[] {
+/** The best reading and its score (log probability, up to a constant). */
+export function decodeOnce(marks: Mark[], p: FistParams, beam = tuning.beam, fixed: Fixed = { sym: '', gap: '' }): { items: Item[]; score: number } {
   const lm = languageModel();
   // Many readings share a letter (same marks, same pattern): score it once.
   const letters = new Map<string, { score: number; tempo: number }>();
@@ -241,7 +242,7 @@ export function decodeOnce(marks: Mark[], p: FistParams, beam = tuning.beam, fix
   }
   const items: Item[] = [];
   for (let c = hyps[0]?.chain ?? null; c; c = c.prev) items.unshift(c.item);
-  return items;
+  return { items, score: hyps[0]?.score ?? -Infinity };
 }
 
 const median = (xs: number[]) => {
@@ -381,6 +382,38 @@ export interface SettleOptions {
   beam?: number;
   /** Letters already written down, from the start of the over: the reading begins with them. */
   keep?: Kept[];
+  /** Letters on screen: kept when a reading that changes them scores less than `tuning.rewrite` better and has fewer letters in known words. */
+  prefer?: Kept[];
+}
+
+/** Letters of a reading in real words, callsigns, numbers or repeats of an earlier word, and whether that is all of them. */
+function known(items: Item[]): { letters: number; all: boolean } {
+  let letters = 0;
+  let all = true;
+  let word = '';
+  const recent: string[] = [];
+  items.forEach((it, i) => {
+    word += it.token ?? '?';
+    if (it.space || i === items.length - 1) {
+      const ev = wordEvidence(word, recent);
+      if (ev.known || ev.repeat) letters += word.length;
+      else all = false;
+      recent.push(word);
+      word = '';
+    }
+  });
+  return { letters, all };
+}
+
+/** The search's constraint for letters given from the start of the over (as far as the marks reach). */
+function fixedFrom(letters: Kept[], marks: number): Fixed {
+  const fixed: Fixed = { sym: '', gap: '' };
+  for (const k of letters) {
+    if (fixed.sym.length + k.pattern.length > marks) break;
+    fixed.sym += k.pattern;
+    fixed.gap += 'e'.repeat(Math.max(0, k.pattern.length - 1)) + (k.space ? 'w' : 'c');
+  }
+  return fixed;
 }
 
 /** A letter already written down: its dits and dahs, and whether a word space follows. */
@@ -398,15 +431,26 @@ export function settleOver(marks: Mark[], model: DecoderModel, until?: number, o
   let p = initialParams(model, ms);
   // Fitting rounds use a narrower search; the final reading the full one.
   const rounds = opts.rounds ?? tuning.rounds;
-  const fixed: Fixed = { sym: '', gap: '' };
-  for (const k of opts.keep ?? []) {
-    fixed.sym += k.pattern;
-    fixed.gap += 'e'.repeat(Math.max(0, k.pattern.length - 1)) + (k.space ? 'w' : 'c');
-  }
-  let items = decodeOnce(ms, p, tuning.fitBeam, fixed);
+  const fixed = fixedFrom(opts.keep ?? [], ms.length);
+  let items = decodeOnce(ms, p, tuning.fitBeam, fixed).items;
+  let best = { items, score: -Infinity };
   for (let round = 0; round < rounds; round++) {
     p = refit(ms, items, p);
-    items = decodeOnce(ms, p, round === rounds - 1 ? (opts.beam ?? tuning.beam) : tuning.fitBeam, fixed);
+    best = decodeOnce(ms, p, round === rounds - 1 ? (opts.beam ?? tuning.beam) : tuning.fitBeam, fixed);
+    items = best.items;
+  }
+  // The reading already on screen stands unless another is clearly better:
+  // reading the whole over again must not turn a right reading wrong.
+  const shown = opts.prefer ?? [];
+  if (shown.length > (opts.keep ?? []).length && rounds > 0) {
+    const kept = decodeOnce(ms, p, opts.beam ?? tuning.beam, fixedFrom(shown, ms.length));
+    // In a near tie the full search is usually right (QRL to QRP, G3XKP to
+    // G3YKP, TU V V to V V V), but not when what is on screen is all real
+    // words, callsigns, numbers or repeats and it would turn some of them
+    // into something else (PARIS to EGAENIS, VVV to EUVEU, TU to Q).
+    const close = best.score - kept.score < tuning.rewrite;
+    const onScreen = known(kept.items);
+    if (kept.items.length && close && onScreen.all && onScreen.letters > known(items).letters) items = kept.items;
   }
   // A letter is still open while the silence after it is shorter than a letter gap.
   if (until !== undefined && items.length) {

@@ -14,7 +14,7 @@ type Marks = { start: number; end: number }[];
 /** Live decoding with 20 ms ticks, then the end-of-over read, as the screens run it. */
 async function shown(marks: Marks, initialWpm: number): Promise<string> {
   const d = new Decoder({ initialWpm });
-  const reading = new StableReading((m, mk, until, keep, full) => Promise.resolve(Decoder.redecode(m, mk, until, keep, full)));
+  const reading = new StableReading((m, mk, until, keep, full, prefer) => Promise.resolve(Decoder.redecode(m, mk, until, keep, full, prefer)));
   const read = async (out: DecoderOutput[], t: number, n: number) => {
     if (out.length) await reading.update(d.model(), marks.slice(0, n), t);
   };

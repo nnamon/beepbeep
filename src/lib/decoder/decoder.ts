@@ -150,13 +150,14 @@ export class Decoder {
    * Decodes marks again from a learned model: the second pass at the end of an
    * over, so characters keyed before the fist was learned come out right too.
    */
-  static redecode(model: DecoderModel, marks: { start: number; end: number }[], until?: number, keep?: Kept[], full = false): DecoderOutput[] {
+  static redecode(model: DecoderModel, marks: { start: number; end: number }[], until?: number, keep?: Kept[], full = false, prefer?: Kept[]): DecoderOutput[] {
     // The whole-over search (settle.ts): per-letter tempo, the fist refitted
     // from the reading, and a light language model for what timing leaves open.
     // While an over is still open (`until`), a quicker search: it runs on every
     // letter (`full` asks for the full one anyway). `keep`: letters already
-    // written down, which the reading must begin with.
-    const settled = settleOver(marks, model, until, { ...(until === undefined || full ? {} : LIVE), keep });
+    // written down, which the reading must begin with. `prefer`: letters on
+    // screen, kept unless a clearly better reading changes them.
+    const settled = settleOver(marks, model, until, { ...(until === undefined || full ? {} : LIVE), keep, prefer });
     if (settled.length || !marks.length) return settled;
     // Should the search ever come back empty, the live reading stands.
     return Decoder.greedy(model, marks, until);

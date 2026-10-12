@@ -32,7 +32,7 @@ function settle(marks: { start: number; end: number }[], initialWpm: number): st
  */
 async function shown(marks: { start: number; end: number }[], initialWpm: number): Promise<string> {
   const d = new Decoder({ initialWpm });
-  const reading = new StableReading((m, mk, until, keep, full) => Promise.resolve(Decoder.redecode(m, mk, until, keep, full)));
+  const reading = new StableReading((m, mk, until, keep, full, prefer) => Promise.resolve(Decoder.redecode(m, mk, until, keep, full, prefer)));
   // Words shown with WRITE_AFTER marks after them, which must never change.
   let kept = '';
   const check = (outs: DecoderOutput[]) => {
