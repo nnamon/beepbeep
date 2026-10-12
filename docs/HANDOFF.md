@@ -26,9 +26,11 @@ Decoder results recorded in the decoder commits (fists.ts beginner fists and you
 
 ### Decoder (`src/lib/dsp`, `src/lib/decoder`)
 
-4. **Stray letters from talking are halved, not gone.** `samples.test.ts` take `154427-noise-t4` (talking, no keying, pinned) reads 4 stray letters where `samples/best.json` has 3; the decoder agent left it as a known difference.
-5. **One small step back from the V V V fix:** on joined texts (VVV, VVV VVV, EE, TEST, PARIS, RR, TU, 5NN) exact readings went from 431 to 421 of 512, while letter error improved from 17.1% to 15.5%. Check whether it can be won back.
-6. **Unfinished change:** the decoder agent was trying a rule in `settle.ts` that reads TEST correctly and was "neutral to slightly positive" on the benchmark. It is not on `main`. The diff is saved locally at `.claude/decoder-wip-settle.patch` (not in git). Apply it, test it, keep it or drop it.
+Known and left as they are:
+
+- **Joined short texts against words of one letter.** Whole-over benchmark (fists.ts beginner fists, read as shown, 8 seeds): before the V V V fix 438 of 512 joined texts exact (14.5% letter error), now 425 (13.4%); V V V 0 to 111 of 192, R R and E E 43 to 209 of 384. The lost readings are joined texts read as words of one letter (VVV as V V V, RR as R R, EE as E E or I). Moving the gap thresholds in `breaks.ts` trades them straight back, so there is no cheap win.
+- **The second ear listens off the third harmonic.** `detector.ts` starts it at `3 * (lockedHz + toneOffset)`, but the tone is at `lockedHz - toneOffset` (the offset is the lock minus the tone), so it sits 6 times the offset from the harmonic. With the sign corrected, three recorded takes read worse (154311 17% to 33%, 154331 83% to 100%, 194638 70% to 80%), so the ear needs another look before it is fixed.
+- **II reads as H at the end of the over** (textbook timing at 8, 10, 15 and 20 wpm, the speed setting the same), though the live reading is II: with only dits, the end-of-over search takes the letter gap for a gap inside a letter. EEE and SS read right.
 
 ### Timing notes beside the Send drill and Live decoder
 
@@ -42,7 +44,6 @@ Decoder results recorded in the decoder commits (fists.ts beginner fists and you
 
 ### Small
 
-13. **README latency:** "81 ms at 30 wpm" in "How decoding works"; it measured 84 ms. Re-run `src/lib/decoder/latency.test.ts` after the decoder merge and write what it prints.
 14. **README images** (`docs/images/`) show a few old labels (Level 14, older layout). Regenerate: `docker compose run --rm -T -e README_SHOTS=1 -e GITHUB_SHA=$(git rev-parse HEAD) e2e npx playwright test --project=readme`, then look at every image before committing.
 
 ## Not checked
@@ -57,7 +58,7 @@ The tests that key in the browser with timers (Learn QSOs on the touch key and s
 
 ## Housekeeping
 
-- The agent worktrees and branches are merged and removed. Item 6's unfinished change is kept only in `.claude/decoder-wip-settle.patch` on the owner's machine.
+- The agent worktrees and branches are merged and removed. The unfinished `settle.ts` change in `.claude/decoder-wip-settle.patch` was measured and dropped (commit "Handoff: the last decoder items"); the file can be deleted.
 - The audit's own files (specs, logs, screenshots) were in a temporary scratch folder and may be gone. The findings that matter are written out above.
 
 ## How to resume
