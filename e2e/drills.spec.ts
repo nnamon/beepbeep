@@ -1,7 +1,7 @@
 // Drill behaviour found broken in the audit: the Copy drill's lesson, replays
 // and stray key presses, and the Today checklist after a drill.
 import { test, expect, type Page } from '@playwright/test';
-import { BASE, instrument, played, sessions, settings } from './probe';
+import { BASE, instrument, played, sessions, settings, tones } from './probe';
 
 async function nextAudio(page: Page, n: number): Promise<string> {
   await expect.poll(async () => (await played(page)).filter((p) => p.kind === 'cw').length, { timeout: 10_000 }).toBeGreaterThan(n);
@@ -311,4 +311,109 @@ test('Pocket words: Enter after a miss goes on without answering the next one', 
   await expect(page.getByText('2 / 20')).toBeVisible();
   await page.waitForTimeout(600);
   await expect(page.getByText(/^You typed/)).toHaveCount(0);
+});
+
+// ---- Space on a button reached with Tab, on the screens where Space is the straight key ----
+
+/** Presses Tab until a button whose text matches has focus. */
+async function tabToButton(page: Page, name: RegExp) {
+  for (let i = 0; i < 40; i++) {
+    await page.keyboard.press('Tab');
+    const hit = await page.evaluate((src) => {
+      const el = document.activeElement;
+      return !!el && el.tagName === 'BUTTON' && new RegExp(src).test(el.textContent?.trim() ?? '');
+    }, name.source);
+    if (hit) return;
+  }
+  throw new Error(`Tab never reached a button named ${name}`);
+}
+
+async function tapSpace(page: Page) {
+  await page.keyboard.down(' ');
+  await page.waitForTimeout(120);
+  await page.keyboard.up(' ');
+}
+
+const YOU = { call: '9V1NE', name: 'AMON', qth: 'SINGAPORE', state: '', skcc: '' };
+
+for (const c of [
+  { name: 'Live decoder', path: 'practice/live', button: /^Stop/ },
+  { name: 'Send drill', path: 'practice/send', button: /^Done/ },
+  { name: 'Hear it, send it', path: 'practice/hear-send', button: /^Stop/ },
+  { name: 'QSO', path: 'qso', button: /^Stop/ },
+]) {
+  test(`${c.name}: Space on ${c.button.source.slice(1)} reached with Tab presses it and keys nothing`, async ({ page }) => {
+    await instrument(page);
+    await settings(page, { ...BASE, input: 'straight', track: 'koch', level: { koch: 'koch-5', licw: 'licw-bc1-REA' }, you: YOU });
+    await page.goto(`./#/${c.path}`);
+    if (c.path === 'qso') {
+      await page.getByRole('radio', { name: 'You', exact: true }).click();
+      await page.getByRole('button', { name: 'Start QSO' }).click();
+      await expect(page.getByRole('button', { name: /^End my turn/ })).toBeEnabled({ timeout: 10_000 });
+    } else {
+      await page.getByRole('button', { name: /^Start/ }).click();
+      // Hear it, send it listens for your sending after it has played the character.
+      if (c.path === 'practice/hear-send') await expect(page.getByText('Send', { exact: true })).toBeVisible({ timeout: 10_000 });
+      else await page.waitForTimeout(500);
+    }
+    await tabToButton(page, c.button);
+    const before = (await tones(page)).length;
+    await tapSpace(page);
+    await page.waitForTimeout(800);
+    expect((await tones(page)).length - before, 'Space keyed the straight key').toBe(0);
+    await expect(page.getByRole('button', { name: c.button })).toHaveCount(0);
+  });
+}
+
+test('Live decoder: after Start or Done sending is clicked with the mouse, Space still keys', async ({ page }) => {
+  await instrument(page);
+  await settings(page, { ...BASE, input: 'straight' });
+  await page.goto('./#/practice/live');
+  await page.getByRole('button', { name: /^Start/ }).click();
+  await page.waitForTimeout(300);
+  let before = (await tones(page)).length;
+  await tapSpace(page);
+  await page.waitForTimeout(300);
+  expect((await tones(page)).length - before).toBe(1);
+  await page.getByRole('button', { name: 'Done sending' }).click();
+  before = (await tones(page)).length;
+  await tapSpace(page);
+  await page.waitForTimeout(300);
+  expect((await tones(page)).length - before).toBe(1);
+  await expect(page.getByRole('button', { name: /^Stop/ })).toBeVisible();
+});
+
+test('Learn QSOs: Space on Hear it reached with Tab plays it and keys nothing', async ({ page }) => {
+  await instrument(page);
+  await settings(page, { ...BASE, input: 'straight', qsoInput: 'key', qsoHelp: 'text', charWpm: 40, effectiveWpm: 40, you: YOU });
+  await page.goto('./#/qso/learn/answer-cq');
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await page.getByRole('button', { name: 'Check' }).click();
+  await page.getByRole('button', { name: 'Show what they sent' }).click();
+  await page.getByRole('button', { name: 'Next' }).click();
+  await expect(page.getByRole('button', { name: 'Hear it' })).toBeVisible();
+  await page.waitForTimeout(800);
+  await tabToButton(page, /^Hear it$/);
+  const keyed = (await tones(page)).length;
+  const heard = (await played(page)).filter((p) => p.kind === 'cw').length;
+  await tapSpace(page);
+  await page.waitForTimeout(1000);
+  expect((await tones(page)).length - keyed, 'Space keyed the straight key').toBe(0);
+  expect((await played(page)).filter((p) => p.kind === 'cw').length - heard, 'Hear it played').toBe(1);
+});
+
+test('LICW exercise: Esc stops it and stays on the exercise, as Stop does', async ({ page }) => {
+  await instrument(page);
+  await settings(page, { ...BASE, track: 'licw', level: { koch: 'koch-5', licw: 'licw-bc1-TIN' } });
+  await page.goto('./#/practice/class/bc1/recognition');
+  await page.getByRole('button', { name: /^Start/ }).click();
+  await nextAudio(page, 0);
+  await expect(page.getByRole('button', { name: 'Stop' })).toBeVisible();
+  const at = await page.evaluate(() => performance.now());
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(2000);
+  await expect(page).toHaveURL(/#\/practice\/class\/bc1\/recognition$/);
+  await expect(page.getByRole('button', { name: /^Start/ })).toBeVisible();
+  expect((await played(page)).filter((p) => p.at > at + 50)).toEqual([]);
 });

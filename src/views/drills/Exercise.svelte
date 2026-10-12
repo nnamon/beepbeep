@@ -259,6 +259,13 @@
 
   function onkey(e: KeyboardEvent) {
     if (inField(e)) return;
+    // Esc presses Stop while the exercise runs or is paused; otherwise it leaves (DrillFrame).
+    if (e.key === 'Escape' && st && st.phase !== 'ready' && !finishedRun) {
+      e.preventDefault();
+      stop();
+      st = null;
+      return;
+    }
     // Arrows move between radio buttons and sliders when one has focus.
     const role = (e.target as HTMLElement | null)?.getAttribute?.('role');
     if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && (role === 'radio' || role === 'slider')) return;
@@ -400,7 +407,7 @@
         {/if}
         <Button onclick={() => player?.back()} hint="←">Previous</Button>
         <Button onclick={() => player?.next()} hint="→">Next</Button>
-        <Button kind="quiet" onclick={() => { stop(); st = null; }}>Stop</Button>
+        <Button kind="quiet" onclick={() => { stop(); st = null; }} hint="Esc">Stop</Button>
       {/if}
     {/snippet}
   </DrillFrame>

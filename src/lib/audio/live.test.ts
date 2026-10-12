@@ -143,3 +143,51 @@ describe('a key held down', () => {
     expect(await finish(live)).toBe('E E');
   });
 });
+
+describe('Space on a focused button', () => {
+  /** Space pressed or released on `target` at `ms`; returns the event. */
+  function spaceOn(target: Element, down: boolean, ms: number) {
+    perfNow = ms + 2;
+    const e = new KeyboardEvent(down ? 'keydown' : 'keyup', { code: 'Space', key: ' ', bubbles: true, cancelable: true });
+    Object.defineProperty(e, 'timeStamp', { value: ms });
+    target.dispatchEvent(e);
+    return e;
+  }
+
+  function button(): HTMLButtonElement {
+    const b = document.createElement('button');
+    b.textContent = 'Stop';
+    document.body.append(b);
+    return b;
+  }
+
+  // Before: Space on Stop or Done reached with Tab keyed the straight key, and
+  // the button never got the press.
+  it('reached with Tab presses the button and keys nothing', async () => {
+    const b = button();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab' }));
+    b.focus();
+    const live = new LiveDecoder({ source: 'straight', charWpm: 15, pitch: 600 });
+    await live.start();
+    const down = spaceOn(b, true, 1000);
+    spaceOn(b, false, 1080);
+    expect(down.defaultPrevented).toBe(false);
+    expect(live.marks).toEqual([]);
+    live.stop();
+    b.remove();
+  });
+
+  it('just clicked with the mouse still keys the straight key', async () => {
+    const b = button();
+    b.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    b.focus();
+    const live = new LiveDecoder({ source: 'straight', charWpm: 15, pitch: 600 });
+    await live.start();
+    const down = spaceOn(b, true, 1000);
+    spaceOn(b, false, 1080);
+    expect(down.defaultPrevented).toBe(true);
+    expect(live.marks.map((m) => Math.round((m.end - m.start) * 1000))).toEqual([80]);
+    live.stop();
+    b.remove();
+  });
+});
