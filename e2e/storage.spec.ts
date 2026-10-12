@@ -177,3 +177,96 @@ test('an import with old or partial settings keeps every screen working', async 
   expect(s.level.licw).toBe('licw-bc1-TIN');
   expect(errors).toEqual([]);
 });
+
+/** Opens the screens that read progress, and starts a Pocket round where there is one; returns the page errors. */
+async function visitProgressScreens(page: Page): Promise<string[]> {
+  const errors: string[] = [];
+  const on = (e: Error) => errors.push(`${page.url().split('#')[1]}: ${e.message}`);
+  page.on('pageerror', on);
+  for (const r of ['progress', 'practice', 'pocket', 'pocket/custom', 'pocket/round/characters', 'pocket/round/custom']) {
+    await page.goto(`./#/${r}`);
+    await page.waitForTimeout(700);
+    const start = page.getByRole('button', { name: 'Start the round' });
+    if (await start.isVisible().catch(() => false)) {
+      await start.click();
+      await page.waitForTimeout(1200);
+    }
+  }
+  await page.goto('./#/progress');
+  await page.waitForTimeout(700);
+  page.off('pageerror', on);
+  return errors;
+}
+
+const NOW = Date.now();
+const DAMAGED = 'That export file is damaged. Nothing was changed.';
+
+// Before: rows that only had their key field were taken whole, and the wrong
+// types broke Progress, Pocket and the Pocket round after the import.
+const ODD: [string, Record<string, unknown>, string | RegExp][] = [
+  ['items whose numbers are text', { items: [{ key: 'rx:K', heat: 'hot', seen: 'x', correct: null, avgMs: 0, recent: 'abc', log: 5, lastSeen: 'yesterday' }] }, DAMAGED],
+  ['an item whose answer log is not a list', { items: [{ key: 'rx:K', heat: 1, seen: 1, correct: 1, avgMs: 0, recent: [1], lastSeen: NOW, log: 5 }] }, /^Imported 0 sessions/],
+  [
+    'sessions with a bad timing report and speed',
+    {
+      sessions: [
+        { at: NOW, mode: 'send', seconds: 60, sending: true, items: 1, accuracy: 1, wpm: 15, sentWpm: 'quick', fist: 'bad' },
+        { at: NOW + 1, mode: 'send', seconds: 60, sending: true, items: 1, accuracy: 1, wpm: 15, fist: { chars: 'x', wpm: 'y' } },
+      ],
+    },
+    /^Imported 2 sessions/,
+  ],
+  ['a confusion with nothing heard', { confusions: [{ pair: 'H>5', want: 'H', got: null, count: 1, last: NOW }] }, DAMAGED],
+  ['a Pocket custom set that is a number', { kv: [{ key: 'pocket.custom', value: 5 }] }, /^Imported/],
+  ['a Pocket custom set without lists', { kv: [{ key: 'pocket.custom', value: { chars: 'KM', words: null } }] }, /^Imported/],
+];
+
+for (const [label, body, note] of ODD) {
+  test(`an import of ${label} is refused or mended, and the progress screens still work`, async ({ page }) => {
+    test.setTimeout(90_000);
+    await open(page, 'progress');
+    await seed(page);
+    await page.goto('./#/settings');
+    page.on('dialog', (d) => void d.accept());
+    await importFile(page, { app: 'beepbeep', ...body });
+    await expect(page.getByText(note)).toBeVisible();
+    expect(await visitProgressScreens(page)).toEqual([]);
+  });
+}
+
+function put(page: Page, rows: Record<string, Record<string, unknown>[]>): Promise<void> {
+  return page.evaluate(
+    (rows) =>
+      new Promise<void>((res, rej) => {
+        const r = indexedDB.open('beepbeep', 1);
+        r.onerror = () => rej(r.error);
+        r.onsuccess = () => {
+          const tx = r.result.transaction(Object.keys(rows), 'readwrite');
+          for (const [s, list] of Object.entries(rows)) for (const row of list) tx.objectStore(s).put(row);
+          tx.oncomplete = () => {
+            r.result.close();
+            res();
+          };
+          tx.onerror = () => rej(tx.error);
+        };
+      }),
+    rows,
+  );
+}
+
+test('bad values already stored do not break the progress screens', async ({ page }) => {
+  test.setTimeout(90_000);
+  await open(page, 'progress');
+  await page.waitForTimeout(500);
+  await put(page, {
+    items: [{ key: 'rx:K', heat: 1, seen: 1, correct: 1, avgMs: 0, recent: [1], lastSeen: NOW, log: 5 }],
+    sessions: [{ at: NOW, mode: 'send', seconds: 60, sending: true, items: 1, accuracy: 1, wpm: 15, sentWpm: 'quick', fist: 'bad' }],
+    confusions: [{ pair: 'H>5', want: 'H', got: null, count: 1, last: NOW }],
+    kv: [
+      { key: 'pocket.custom', value: { chars: 'KM', words: null } },
+      { key: 'recentSends', value: {} },
+      { key: 'sendSlips', value: 'x' },
+    ],
+  });
+  expect(await visitProgressScreens(page)).toEqual([]);
+});

@@ -2,6 +2,7 @@
 // kept in this browser with the rest of your progress.
 
 import { getKv, setKv } from './db';
+import { textsOf } from './records';
 
 export interface SavedText {
   id: string;
@@ -12,8 +13,9 @@ export interface SavedText {
 
 const KEY = 'texts';
 
-export function listTexts(): Promise<SavedText[]> {
-  return getKv<SavedText[]>(KEY, []);
+/** Your texts; a stored entry of the wrong shape is left out. */
+export async function listTexts(): Promise<SavedText[]> {
+  return textsOf(await getKv(KEY, []));
 }
 
 export async function saveText(name: string, text: string): Promise<SavedText> {
