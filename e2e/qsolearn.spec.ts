@@ -214,10 +214,10 @@ async function autoplayRule(page: Page) {
         this.allowed = activated;
         if (!activated) void super.suspend();
       }
-      get state(): AudioContextState {
+      override get state(): AudioContextState {
         return this.allowed ? super.state : 'suspended';
       }
-      resume(): Promise<void> {
+      override resume(): Promise<void> {
         if (!activated) return new Promise((res) => pend.push([this, res]));
         this.allowed = true;
         return super.resume().then(() => {
