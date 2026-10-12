@@ -35,8 +35,20 @@ export function notify(text: string) {
 }
 
 let unsub: (() => void) | null = null;
+/** A start still waiting (often on the browser's permission prompt). */
+let pending: Promise<MicInfo | null> | null = null;
 
-export async function startMic(): Promise<MicInfo | null> {
+/**
+ * Starts the microphone. A second press while the browser is still asking for
+ * it shares that start instead of opening a second stream, which would stay
+ * on after you leave.
+ */
+export function startMic(): Promise<MicInfo | null> {
+  pending ??= openMic().finally(() => (pending = null));
+  return pending;
+}
+
+async function openMic(): Promise<MicInfo | null> {
   signal.starting = true;
   signal.error = '';
   try {

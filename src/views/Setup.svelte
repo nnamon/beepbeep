@@ -33,6 +33,8 @@
   });
 
   onDestroy(() => {
+    // A calibration still waiting for the microphone gives up.
+    calRun++;
     if (poll) clearInterval(poll);
     // Left in the middle of calibrating: put back the squelch it took off.
     if (cal === 'listening' || cal === 'settling') engine.command({ type: 'squelch', db: settings.squelchDb });
@@ -76,10 +78,21 @@
     calTimer = null;
   }
 
+  /** Waiting for the microphone: Calibrate again does nothing until it is on. */
+  let calWaiting = false;
+
   async function calibrate() {
+    if (calWaiting) return;
     const run = ++calRun;
     stopCalTimer();
-    if (settings.input === 'mic' && !signal.micOn) await micOn();
+    if (settings.input === 'mic' && !signal.micOn) {
+      calWaiting = true;
+      try {
+        await micOn();
+      } finally {
+        calWaiting = false;
+      }
+    }
     if (run !== calRun) return;
     if (settings.input === 'mic' && !signal.micOn) {
       cal = 'idle';

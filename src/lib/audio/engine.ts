@@ -266,7 +266,20 @@ class AudioEngine {
     else this.unmuteTimer = setTimeout(() => this.command({ type: 'mute', muted: false }), 200);
   }
 
-  async startMic(deviceId?: string): Promise<MicInfo> {
+  /** A microphone start still waiting, often on the browser's permission prompt. */
+  private micStarting: Promise<MicInfo> | null = null;
+
+  /**
+   * Opens the microphone (again, after stopping it: e.g. another device). A
+   * call while a start is still waiting shares it: a second stream opened
+   * then would replace the first, which would never be stopped.
+   */
+  startMic(deviceId?: string): Promise<MicInfo> {
+    this.micStarting ??= this.openMic(deviceId).finally(() => (this.micStarting = null));
+    return this.micStarting;
+  }
+
+  private async openMic(deviceId?: string): Promise<MicInfo> {
     if (!this.micSupported) throw new Error('This browser only allows the microphone on a secure (https) page.');
     const ctx = await this.ensure();
     this.stopMic();
