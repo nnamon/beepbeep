@@ -2,7 +2,7 @@
 
 import { engine } from './engine';
 import { Keyer, type KeyEvent } from './keyer';
-import { Decoder, isGlitch, type DecodedChar, type DecoderOutput } from '../decoder/decoder';
+import { Decoder, isGlitch, isHeld, type DecodedChar, type DecoderOutput } from '../decoder/decoder';
 import { redecodeAsync } from '../decoder/redecode';
 import { StableReading } from '../decoder/stable';
 import type { DetectorEvent } from '../dsp/detector';
@@ -252,8 +252,9 @@ export class LiveDecoder {
       this.downAt = e.t;
       this.push(this.decoder.keyDown(e.t));
     } else {
-      // Glitches are dropped here once, so every later reading sees the same marks.
-      if (!isGlitch(e.t - this.downAt, this.decoder.ditEstimate)) this.marks.push({ start: this.downAt, end: e.t });
+      // Glitches and a key held down are dropped here once, so every later reading sees the same marks.
+      const d = e.t - this.downAt;
+      if (!isGlitch(d, this.decoder.ditEstimate) && !isHeld(d, this.decoder.dahEstimate)) this.marks.push({ start: this.downAt, end: e.t });
       this.push(this.decoder.keyUp(e.t));
     }
     if (this.opts.source !== 'mic') {

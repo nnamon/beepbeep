@@ -41,6 +41,18 @@ export function isGlitch(duration: number, dit: number): boolean {
   return duration < Math.max(0.008, 0.25 * dit);
 }
 
+/**
+ * A key held down far longer than any dah (a stuck key, a tuning carrier, a
+ * pause with the key down): not a mark. Longer than 5 dahs, and never under
+ * 1.2 s (5 dahs at 15 wpm), so a beginner's slow dah is never taken for one:
+ * the longest dahs in the beginner fists (fists.ts) are about twice their
+ * fist's dah, and the 1.2 s floor covers a dah estimate that starts too short
+ * (a setting faster than the sender).
+ */
+export function isHeld(duration: number, dah: number): boolean {
+  return duration > Math.max(1.2, 5 * dah);
+}
+
 export interface DecoderOptions {
   /** Expected character speed, to start the estimates. */
   initialWpm?: number;
@@ -190,6 +202,10 @@ export class Decoder {
     return this.dit;
   }
 
+  get dahEstimate(): number {
+    return this.dah;
+  }
+
   get wpm(): number {
     return 1.2 / this.dit;
   }
@@ -233,11 +249,9 @@ export class Decoder {
     const d = t - this.downAt;
     this.lastUp = t;
     if (isGlitch(d, this.dit)) return [];
-    // A very long mark is a tuning carrier or a stuck key, not a character.
-    if (d > Math.max(1.2, 5 * this.dah)) {
-      this.pending = [];
-      return [];
-    }
+    // Not a character, and it says nothing about the speed. A letter keyed
+    // before it ends there, as the end-of-over reading (without it) has it.
+    if (isHeld(d, this.dah)) return this.finishChar();
     this.learnMark(d);
     // Classified when the character ends, with the freshest speed estimate.
     this.pending.push({ start: this.downAt, end: t, kind: 'dit' });

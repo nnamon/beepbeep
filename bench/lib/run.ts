@@ -1,7 +1,7 @@
 // Running a detector over a scene the way the browser does (128-sample
 // blocks, the decoder's speed fed back), and scoring what comes out.
 
-import { Decoder, isGlitch } from '../../src/lib/decoder/decoder';
+import { Decoder, isGlitch, isHeld } from '../../src/lib/decoder/decoder';
 import { applyEvents, outputsToText } from '../../src/lib/decoder/pipeline';
 import { cer } from '../../src/lib/util/text';
 import type { DetectorEvent, DetectorOptions } from '../../src/lib/dsp/detector';
@@ -34,7 +34,7 @@ export function read(make: MakeDetector, samples: Float32Array, fs: number, pinn
       if (e.type !== 'key') continue;
       if (e.down) down = e.t;
       else if (down !== null) {
-        if (!isGlitch(e.t - down, dec.ditEstimate)) marks.push({ start: down, end: e.t });
+        if (!isGlitch(e.t - down, dec.ditEstimate) && !isHeld(e.t - down, dec.dahEstimate)) marks.push({ start: down, end: e.t });
         down = null;
       }
     }

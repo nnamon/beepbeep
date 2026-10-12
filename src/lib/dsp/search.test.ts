@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { Detector } from './detector';
 import { rumble } from './roomnoise';
-import { Decoder, isGlitch } from '../decoder/decoder';
+import { Decoder, isGlitch, isHeld } from '../decoder/decoder';
 import { applyEvents, outputsToText } from '../decoder/pipeline';
 import { renderText } from '../morse/render';
 import { readWav } from '../util/wav';
@@ -24,7 +24,7 @@ function decode(samples: Float32Array, fs: number, pinnedHz: number | null, wpm:
       if (e.type !== 'key') continue;
       if (e.down) down = e.t;
       else if (down !== null) {
-        if (!isGlitch(e.t - down, dec.ditEstimate)) marks.push({ start: down, end: e.t });
+        if (!isGlitch(e.t - down, dec.ditEstimate) && !isHeld(e.t - down, dec.dahEstimate)) marks.push({ start: down, end: e.t });
         down = null;
       }
     }
