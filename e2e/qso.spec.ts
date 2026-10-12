@@ -72,6 +72,7 @@ async function key(page: Page, text: string, wpm = WPM): Promise<number> {
 }
 
 const status = (page: Page) => page.locator('.run .status');
+const playing = (page: Page) => page.evaluate(() => (window as unknown as { __active: number }).__active);
 const yours = async (page: Page) => (await page.locator('.log .line.mine').allInnerTexts()).map((l) => l.replace(/^You\s*/, '').replace(/\s+/g, ' ').trim());
 const theirs = async (page: Page) => (await page.locator('.log .line:not(.mine)').allInnerTexts()).map((l) => l.replace(/\s+/g, ' ').trim());
 
@@ -230,6 +231,28 @@ test('leaving mid-QSO and coming back: it waits for you, and Carry on goes on fr
   await expect(status(page)).toHaveText(/Your turn/);
   await page.getByRole('button', { name: 'Stop' }).click();
   await expect(status(page)).toHaveText(/QSO ended/);
+});
+
+test('leaving while the station sends: Carry on plays its transmission again, then it is your turn', async ({ page }) => {
+  test.skip(!desktop(), 'one screen size is enough');
+  test.setTimeout(120_000);
+  await open(page);
+  await setup(page, 'Ragchew', 'The station', 20);
+  await page.getByRole('button', { name: 'Start QSO' }).click();
+  await expect(status(page)).toHaveText(/Station sending/);
+  await page.getByRole('link', { name: 'Progress' }).first().click();
+  await expect(page.getByRole('heading', { name: 'Progress' })).toBeVisible();
+  await page.waitForTimeout(300);
+  expect(await playing(page)).toBe(0);
+  await page.getByRole('link', { name: 'QSO', exact: true }).first().click();
+  await expect(status(page)).toHaveText(/Paused/);
+  await expect(page.getByText('after their last transmission plays again')).toBeVisible();
+  await page.getByRole('button', { name: 'Carry on' }).click();
+  await expect(status(page)).toHaveText(/Station sending/);
+  expect(await playing(page)).toBeGreaterThan(0);
+  await expect(status(page)).toHaveText(/Your turn/, { timeout: 60_000 });
+  expect((await theirs(page)).length).toBe(1);
+  expect((await theirs(page))[0]).toMatch(/CQ CQ CQ DE/);
 });
 
 test('on a phone with a notch and a home bar, your turn and its buttons show above the touch key', async ({ page }) => {
