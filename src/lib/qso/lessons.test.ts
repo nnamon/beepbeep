@@ -73,6 +73,31 @@ describe('guided QSO lessons', () => {
   });
 });
 
+describe('their QTH', () => {
+  const qthSteps = (them: ReturnType<typeof newStation>) => {
+    const steps = LESSONS.find((l) => l.id === 'copy-over')!.steps({ me: ME, them });
+    const play = (title: string) => {
+      const s = steps.find((x) => x.title === title)!;
+      return s.kind === 'listen' ? s.play : '';
+    };
+    const explain = steps.find((x) => x.title === 'The QTH')!.explain.join(' ');
+    return { part: play('The QTH'), over: play('Copy their first over'), explain };
+  };
+  it('a city-state station sends its QTH once, twice over', () => {
+    const sg = { ...newStation(mulberry32(1), 'world'), call: '9V1AB', qth: 'SINGAPORE', state: 'SINGAPORE' };
+    const q = qthSteps(sg);
+    expect(q.part).toBe('QTH SINGAPORE SINGAPORE');
+    expect(q.over).toContain('<BT> QTH SINGAPORE SINGAPORE <BT>');
+    expect(q.explain).not.toMatch(/both twice/);
+  });
+  it('a station with a region sends the town and region, twice over', () => {
+    const ct = { ...newStation(mulberry32(1), 'world'), call: 'W1AW', qth: 'NEWINGTON', state: 'CT' };
+    const q = qthSteps(ct);
+    expect(q.part).toBe('QTH NEWINGTON CT NEWINGTON CT');
+    expect(q.over).toContain('<BT> QTH NEWINGTON CT NEWINGTON CT <BT>');
+  });
+});
+
 describe('where you are', () => {
   it('sends the QTH once, with a region only when it adds something', () => {
     const them = newStation(mulberry32(8), 'world');

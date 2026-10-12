@@ -242,9 +242,10 @@
           if (n !== overReq || turn !== 'you' || gone) return;
           overTokens = toTokens(outs);
           // Only a finished word can end your turn: "K" may be the start of K1ABC.
+          // Your own region (VA, SK, AR) is a region, not a prosign.
           if (o.kind === 'space') {
             const text = overText();
-            armed = endsTurn(text) ? 'end' : bot?.turnComplete(text) ? 'exchange' : null;
+            armed = endsTurn(text, settings.you.state) ? 'end' : bot?.turnComplete(text) ? 'exchange' : null;
             armedKey = keyAt;
           }
         });

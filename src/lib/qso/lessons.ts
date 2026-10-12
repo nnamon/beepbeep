@@ -3,7 +3,7 @@
 // you send, and is checked, so you can try it again until it is right. Every
 // run meets a new station.
 
-import { makeIdentity, type BotIdentity } from './bot';
+import { makeIdentity, regionAfter, type BotIdentity } from './bot';
 import type { FieldKind, Slot } from './check';
 import type { Rng } from '../util/random';
 import type { Mix } from '../train/world';
@@ -78,9 +78,11 @@ const hw: Slot = { role: 'HW?', accept: ['HW?', 'HW', '?'], max: 2, optional: tr
 // ---- What the other station sends ----
 
 const cq = (c: Ctx) => `CQ CQ DE ${c.them.call} ${c.them.call} K`;
+/** Their town and region, or the town alone in a city-state (SINGAPORE, not SINGAPORE SINGAPORE). */
+const theirPlace = (c: Ctx) => `${c.them.qth}${regionAfter(c.them)}`;
 const theirOver = (c: Ctx) => {
   const t = c.them;
-  return `${up(c.me.call)} DE ${t.call} GM TNX FER CALL <BT> UR RST ${t.rst} ${t.rst} <BT> NAME ${t.name} ${t.name} <BT> QTH ${t.qth} ${t.state} ${t.qth} ${t.state} <BT> HW? ${up(c.me.call)} DE ${t.call} K`;
+  return `${up(c.me.call)} DE ${t.call} GM TNX FER CALL <BT> UR RST ${t.rst} ${t.rst} <BT> NAME ${t.name} ${t.name} <BT> QTH ${theirPlace(c)} ${theirPlace(c)} <BT> HW? ${up(c.me.call)} DE ${t.call} K`;
 };
 const theirSignoff = (c: Ctx) => `R R TNX ${first(c.me.name)} FER FB QSO <BT> 73 ES GL ${up(c.me.call)} DE ${c.them.call} <SK> EE`;
 
@@ -248,8 +250,12 @@ export const LESSONS: Lesson[] = [
       {
         kind: 'listen',
         title: 'The QTH',
-        explain: ['QTH is where they are: a town, then their region (state, province or country). They send both twice.'],
-        play: `QTH ${c.them.qth} ${c.them.state} ${c.them.qth} ${c.them.state}`,
+        explain: [
+          regionAfter(c.them)
+            ? 'QTH is where they are: a town, then their region (state, province or country). They send both twice.'
+            : 'QTH is where they are: usually a town, then their region (state, province or country). In a city-state such as Singapore the town is the country, so they send it alone, twice.',
+        ],
+        play: `QTH ${theirPlace(c)} ${theirPlace(c)}`,
         fields: [overFields(c)[2]],
       },
       copyOver(c),
