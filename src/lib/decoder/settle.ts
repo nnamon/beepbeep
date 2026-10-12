@@ -16,7 +16,7 @@ import { tokenOf } from '../morse/code';
 import type { DecodedChar, DecodedMark, DecoderModel, DecoderOutput } from './decoder';
 import { languageModel, wordEvidence } from './lm';
 import { kmeans2 } from './kmeans';
-import { gapClasses } from './breaks';
+import { gapClasses, settledClasses, upperRole } from './breaks';
 
 interface Mark {
   start: number;
@@ -43,6 +43,12 @@ export interface FistParams {
 /** Search settings; tests sweep them. */
 export const tuning = { lmWeight: 1, unknown: -12, beam: 600, fitBeam: 80, rounds: 2, sdTempo: 0.15, sdMark: 0.22, wordBonus: 1.2, repeatBonus: 0.9, outlier: 0.05, markOutlier: 0.03, minWord: 1, drift: true, sdInter: 0.35, sdGap: 0.3 };
 const MAX_PATTERN = 9;
+/** Where timing cannot tell letter gaps from word gaps, both classes sit this factor either side of the gaps. */
+const OPEN = 1.35;
+/** A gap longer than a word gap is still a word gap: how much of the excess counts against it. */
+const WORD_TAIL = 0.5;
+/** Gaps an over needs before a small group of quick gaps is folded into the gaps inside letters. */
+const SETTLE_CLASSES = 8;
 
 const LN2PI = Math.log(2 * Math.PI);
 
@@ -132,7 +138,9 @@ function letterScore(marks: Mark[], from: number, to: number, pattern: string, p
 
 function gapScore(gap: number, cls: 'char' | 'word', h: Hyp, t: number, p: FistParams): number {
   const local = h.lastTempo === null ? tempoAt(p, t) : 0.5 * h.lastTempo + 0.5 * tempoAt(p, t);
-  return robust(Math.log(gap) - local - (cls === 'char' ? p.char : p.word), p.sdInter, true);
+  const r = Math.log(gap) - local - (cls === 'char' ? p.char : p.word);
+  // Beginners pause between words for as long as they like.
+  return robust(cls === 'word' && r > 0 ? r * WORD_TAIL : r, p.sdInter, true);
 }
 
 /** A reading the search must follow for the first marks: dit or dah per mark, and per gap e (inside a letter), c (letter) or w (word). */
@@ -270,8 +278,24 @@ export function initialParams(model: DecoderModel, marks: Mark[]): FistParams {
   let word = Math.log((model.wordBoundaryEst * 1.4) / dit);
   const gaps = marks.slice(1).map((m, i) => Math.log(m.start - marks[i].end)).filter((g) => Number.isFinite(g));
   if (gaps.length >= 3) {
-    const c = gapClasses(gaps);
-    if (c.modes.length >= 2) {
+    const raw = gapClasses(gaps);
+    // As the live decoder reads them (a few hurried gaps are not a class),
+    // once there are enough gaps to tell.
+    const c = gaps.length >= SETTLE_CLASSES ? settledClasses(raw) : raw;
+    const role = c.modes.length === 2 && c.modes[1] - c.modes[0] >= Math.log(1.8) ? upperRole(c.modes[1], c.modes[0], Math.log(dit), c.counts[1]) : 'char';
+    if (role === 'word') {
+      // Words of one letter (V V V): the class above the gaps inside letters
+      // is word gaps, and letter gaps keep their expected length.
+      elem = c.modes[0] - Math.log(dit);
+      word = c.modes[1] - Math.log(dit);
+      char = Math.min(Math.log(3) + Math.max(elem, 0), word - Math.log(1.8));
+    } else if (role === 'open') {
+      // Letter gaps or word gaps, timing cannot tell: both fit them equally
+      // and the language model decides (VVV or V V V).
+      elem = c.modes[0] - Math.log(dit);
+      char = c.modes[1] - Math.log(dit) - Math.log(OPEN);
+      word = c.modes[1] - Math.log(dit) + Math.log(OPEN);
+    } else if (c.modes.length >= 2) {
       elem = c.modes[0] - Math.log(dit);
       char = c.modes[1] - Math.log(dit);
       if (c.modes.length >= 3) word = c.modes[2] - Math.log(dit);
@@ -286,7 +310,7 @@ export function initialParams(model: DecoderModel, marks: Mark[]): FistParams {
 }
 
 /** Re-estimates the fist from a reading. */
-function refit(marks: Mark[], items: Item[], p: FistParams): FistParams {
+export function refit(marks: Mark[], items: Item[], p: FistParams): FistParams {
   const q = { ...p };
   const dahs: number[] = [];
   const dits: number[] = [];

@@ -13,6 +13,8 @@ import { mulberry32, pick } from '../util/random';
 
 const SPACE = ' ';
 const VOCAB = [...ALL_TOKENS, SPACE];
+/** Characters keyed as sending warm-ups, one letter to a word. */
+const DRILLS = ['V'];
 
 export interface LanguageModel {
   /** log P(token | the two tokens before it); `prev` holds up to two tokens, oldest first. */
@@ -49,7 +51,8 @@ function corpus(): string[] {
         `${a} TU 5NN ${state()}`,
         `QRZ? DE ${a}`,
         `${a} UR ${rst()} ${state()} BK`,
-        `TU ${a} 73 <SK> EE`,
+        // The closing dit dit, keyed as EE or as E E.
+        `TU ${a} 73 <SK> ${i % 2 ? 'E E' : 'EE'}`,
         `PSE QRS AGN? <BK>`,
         `VVV VVV DE ${a}`,
       ]),
@@ -66,6 +69,13 @@ function corpus(): string[] {
   // A little uniform material so nothing is impossible.
   for (let i = 0; i < 120; i++) {
     lines.push(Array.from({ length: 3 + Math.floor(rng() * 4) }, () => Array.from({ length: 1 + Math.floor(rng() * 5) }, () => pick(rng, ALL_TOKENS)).join('')).join(' '));
+  }
+  // Sending warm-ups: V keyed as words of one letter (V V V), as beginners
+  // practise it. Without them a word of one letter is so unlikely that a
+  // clear word space after each V still read as VVV.
+  for (let i = 0; i < 80; i++) {
+    const c = pick(rng, DRILLS);
+    lines.push(Array.from({ length: 2 + Math.floor(rng() * 4) }, () => c).join(' '));
   }
   return lines;
 }
@@ -142,7 +152,7 @@ const NUMBER = /^\d{1,4}$|^[5][N9][N9]$/;
 /**
  * Word-level evidence an experienced listener uses: is it a word, a callsign
  * or a number they would expect, and does it repeat one just sent (CQ CQ, the
- * call twice, 579 579)? 1 or 0 each.
+ * call twice, 579 579, V V V)? 1 or 0 each.
  */
 const knownCache = new Map<string, number>();
 
@@ -164,6 +174,6 @@ export function wordEvidence(word: string, recent: readonly string[]): { known: 
     known = isWord(w) || CALLSIGN.test(w) || NUMBER.test(w) ? 1 : 0;
     knownCache.set(w, known);
   }
-  const repeat = w.length >= 2 && recent.includes(w) ? 1 : 0;
+  const repeat = recent.includes(w) ? 1 : 0;
   return { known, repeat };
 }
