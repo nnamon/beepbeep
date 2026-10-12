@@ -20,8 +20,7 @@ Known and left as they are:
 
 ## Not checked
 
-- A real iPhone, the installed app, real notch insets (only emulated with the safe-area tokens) and VoiceOver.
-- The reload into a new build after an update (`src/main.ts`, `src/lib/state/update.ts`): checked once by hand with two builds swapped under a running page (a microphone start that hits a file of the old build reloads into the new one; a QSO in progress holds the reload off), but no repo test covers it.
+- A real iPhone, the installed app, real notch insets (only emulated with the safe-area tokens) and VoiceOver. The reload into a new build after an update is tested in Chromium and Playwright's WebKit (`e2e/newbuild.spec.ts`), not in Safari on an iPhone.
 - Starting sound on the first tap after a reload in Learn QSOs is tried only in emulated WebKit. With paddles, that first press starts the sound but is not decoded.
 
 ## Tests that fail at random on a busy machine
