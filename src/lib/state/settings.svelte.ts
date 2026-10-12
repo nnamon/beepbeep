@@ -138,19 +138,47 @@ const DEFAULTS: Settings = {
 
 const KEY = 'beepbeep.settings.v1';
 
+const obj = (v: unknown) => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
+const str = (v: unknown) => (typeof v === 'string' ? v : '');
+
+/**
+ * Saved or imported settings made whole: defaults for anything missing, nested
+ * parts merged, wrong types dropped, old lesson ids moved to the new ones.
+ */
+function normalize(raw: unknown): Settings {
+  const s = obj(raw);
+  const out: Settings = { ...structuredClone(DEFAULTS) };
+  for (const k of Object.keys(DEFAULTS) as (keyof Settings)[]) {
+    const v = s[k];
+    const d = DEFAULTS[k];
+    if (v === undefined || v === null) continue;
+    if (typeof d === 'object' && d !== null) continue; // nested parts below
+    if (typeof v === typeof d || (d === null && typeof v === 'number')) (out as unknown as Record<string, unknown>)[k] = v;
+  }
+  const level = { ...DEFAULTS.level, ...obj(s.level) } as Settings['level'];
+  level.koch = str(level.koch) || DEFAULTS.level.koch;
+  level.licw = migrateLevelId(str(level.licw) || DEFAULTS.level.licw);
+  out.level = level;
+  out.carousel = { bc1: str(obj(s.carousel).bc1) || DEFAULT_CAROUSEL.bc1, bc2: str(obj(s.carousel).bc2) || DEFAULT_CAROUSEL.bc2 };
+  const you = obj(s.you);
+  out.you = { call: str(you.call), name: str(you.name), qth: str(you.qth), state: str(you.state), skcc: str(you.skcc) };
+  out.exercisePrefs = obj(s.exercisePrefs) as Settings['exercisePrefs'];
+  return out;
+}
+
 function load(): Settings {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) {
-      const s = JSON.parse(raw);
-      const level = { ...DEFAULTS.level, ...s.level };
-      level.licw = migrateLevelId(level.licw);
-      return { ...DEFAULTS, ...s, level, carousel: { ...DEFAULTS.carousel, ...s.carousel }, you: { ...DEFAULTS.you, ...s.you } };
-    }
+    if (raw) return normalize(JSON.parse(raw));
   } catch {
-    /* storage unavailable: use defaults */
+    /* storage unavailable or unreadable: use defaults */
   }
   return structuredClone(DEFAULTS);
+}
+
+/** Settings from an export file, made whole first. */
+export function applySettings(raw: unknown) {
+  Object.assign(settings, normalize(raw));
 }
 
 export const settings: Settings = $state(load());

@@ -5,7 +5,7 @@ import { engine, type Playback } from '../audio/engine';
 import { renderSchedule, type Conditions } from '../morse/render';
 import { scheduleFromMarks, type FistOptions } from '../morse/schedule';
 import { settings, strict } from '../state/settings.svelte';
-import { signal, startMic } from '../state/signal.svelte';
+import { notify, signal, startMic } from '../state/signal.svelte';
 import type { LiveDecoder } from '../audio/live';
 import { DEFAULT_CAROUSEL, KOCH_LEVELS, licwLevels, type Level, type TrackId } from './courses';
 import { addConfusion, addSession, getItems, getKv, putItem, setKv, type SessionRecord } from '../state/db';
@@ -191,11 +191,15 @@ export async function answer(
   return s;
 }
 
+let saveWarned = false;
+
 export async function saveSession(s: Omit<SessionRecord, 'at' | 'track' | 'level'>) {
   try {
     await addSession({ ...s, at: Date.now(), track: settings.track, level: settings.level[settings.track] });
-  } catch {
-    /* storage unavailable */
+  } catch (e) {
+    console.error('saveSession', e);
+    if (!saveWarned) notify("This session couldn't be saved, so it won't show in Progress. The browser's storage isn't available.");
+    saveWarned = true;
   }
 }
 

@@ -77,17 +77,25 @@ export function db(): Promise<IDBPDatabase<Schema>> {
   return dbp;
 }
 
+/**
+ * A plain copy for storage. Svelte state is a proxy, which IndexedDB cannot
+ * store (DataCloneError), so every record goes through this first.
+ */
+function plain<T>(v: T): T {
+  return v === undefined ? v : (JSON.parse(JSON.stringify(v)) as T);
+}
+
 export async function getItems(prefix: string): Promise<Map<string, ItemStat>> {
   const all = await (await db()).getAll('items', IDBKeyRange.bound(prefix, `${prefix}￿`));
   return new Map(all.map((s) => [s.key, s]));
 }
 
 export async function putItem(s: ItemStat) {
-  await (await db()).put('items', s);
+  await (await db()).put('items', plain(s));
 }
 
 export async function addSession(s: SessionRecord): Promise<number> {
-  return (await db()).add('sessions', s);
+  return (await db()).add('sessions', plain(s));
 }
 
 export async function sessions(): Promise<SessionRecord[]> {
@@ -95,7 +103,7 @@ export async function sessions(): Promise<SessionRecord[]> {
 }
 
 export async function addQso(q: QsoRecord): Promise<number> {
-  return (await db()).add('qsos', q);
+  return (await db()).add('qsos', plain(q));
 }
 
 export async function qsos(): Promise<QsoRecord[]> {
@@ -119,7 +127,7 @@ export async function getKv<T>(key: string, fallback: T): Promise<T> {
 }
 
 export async function setKv(key: string, value: unknown) {
-  await (await db()).put('kv', { key, value });
+  await (await db()).put('kv', { key, value: plain(value) });
 }
 
 export async function voiceClip(token: string): Promise<Blob | null> {
@@ -153,17 +161,53 @@ export async function exportAll() {
   };
 }
 
-export async function importAll(data: Awaited<ReturnType<typeof exportAll>>) {
-  if (data?.app !== 'beepbeep') throw new Error('Not a BeepBeep export file.');
+type Export = Awaited<ReturnType<typeof exportAll>>;
+
+/** The records in an export file, checked before anything is replaced; throws a plain message if it is damaged. */
+export function readExport(data: unknown): Export {
+  const d = data as Partial<Record<keyof Export, unknown>> | null;
+  if (!d || typeof d !== 'object' || d.app !== 'beepbeep') throw new Error('That is not a BeepBeep export file. Nothing was changed.');
+  const list = <T>(v: unknown, key: string): T[] => {
+    if (v === undefined) return [];
+    if (!Array.isArray(v) || v.some((r) => !r || typeof r !== 'object' || !(key in r))) {
+      throw new Error('That export file is damaged. Nothing was changed.');
+    }
+    return v as T[];
+  };
+  return {
+    app: 'beepbeep',
+    version: 1,
+    exportedAt: typeof d.exportedAt === 'string' ? d.exportedAt : '',
+    items: list(d.items, 'key'),
+    sessions: list(d.sessions, 'at'),
+    qsos: list(d.qsos, 'at'),
+    confusions: list(d.confusions, 'pair'),
+    kv: list(d.kv, 'key'),
+  };
+}
+
+/** Replaces all progress with an export's. All or nothing: a failure part-way leaves everything as it was. */
+export async function importAll(data: unknown) {
+  const v = readExport(data);
   const d = await db();
   const tx = d.transaction(['items', 'sessions', 'qsos', 'confusions', 'kv'], 'readwrite');
-  for (const s of ['items', 'sessions', 'qsos', 'confusions', 'kv'] as const) await tx.objectStore(s).clear();
-  for (const v of data.items ?? []) await tx.objectStore('items').put(v);
-  for (const v of data.sessions ?? []) await tx.objectStore('sessions').put(v);
-  for (const v of data.qsos ?? []) await tx.objectStore('qsos').put(v);
-  for (const v of data.confusions ?? []) await tx.objectStore('confusions').put(v);
-  for (const v of data.kv ?? []) await tx.objectStore('kv').put(v);
-  await tx.done;
+  tx.done.catch(() => undefined);
+  try {
+    for (const s of ['items', 'sessions', 'qsos', 'confusions', 'kv'] as const) await tx.objectStore(s).clear();
+    for (const r of v.items) await tx.objectStore('items').put(plain(r));
+    for (const r of v.sessions) await tx.objectStore('sessions').put(plain(r));
+    for (const r of v.qsos) await tx.objectStore('qsos').put(plain(r));
+    for (const r of v.confusions) await tx.objectStore('confusions').put(plain(r));
+    for (const r of v.kv) await tx.objectStore('kv').put(plain(r));
+    await tx.done;
+  } catch {
+    try {
+      tx.abort();
+    } catch {
+      /* already finished */
+    }
+    throw new Error('That export file could not be read. Nothing was changed.');
+  }
 }
 
 export async function clearAll() {

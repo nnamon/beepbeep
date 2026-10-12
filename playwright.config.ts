@@ -34,7 +34,7 @@ export default defineConfig({
     reuseExistingServer: true,
   },
   projects: [
-    { name: 'desktop', use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 860 } }, testMatch: /(screens|visual|a11y|classes|qsolearn)\.spec/ },
+    { name: 'desktop', use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 860 } }, testMatch: /(screens|visual|a11y|classes|qsolearn|storage)\.spec/ },
     { name: 'phone', use: { ...devices['iPhone 13'] }, testMatch: /(screens|touch|ios|calibrate|classes|layout|qsolearn)\.spec/ },
     { name: 'pixel', use: { ...devices['Pixel 7'] }, testMatch: /screens\.spec/ },
     // Small Android phones: 360 px is the narrowest common width.

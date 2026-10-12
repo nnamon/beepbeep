@@ -5,12 +5,12 @@
   import Slider from '../ui/Slider.svelte';
   import Toggle from '../ui/Toggle.svelte';
   import VoiceRecorder from '../ui/VoiceRecorder.svelte';
-  import { effectiveMix, settings, resetSettings } from '../lib/state/settings.svelte';
+  import { applySettings, effectiveMix, settings, resetSettings } from '../lib/state/settings.svelte';
   import { areaOf } from '../lib/train/world';
   import { href } from '../lib/state/router.svelte';
   import { engine } from '../lib/audio/engine';
   import { voices } from '../lib/audio/speech';
-  import { clearAll, exportAll, importAll } from '../lib/state/db';
+  import { clearAll, exportAll, importAll, readExport } from '../lib/state/db';
   import type { TrackId } from '../lib/train/courses';
 
   let voiceList = $state<SpeechSynthesisVoice[]>([]);
@@ -35,13 +35,28 @@
   }
 
   async function importData(e: Event) {
-    const file = (e.currentTarget as HTMLInputElement).files?.[0];
+    const input = e.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
     if (!file) return;
+    let data: unknown;
     try {
-      const data = JSON.parse(await file.text());
+      data = JSON.parse(await file.text());
+    } catch {
+      dataNote = 'That file is not a BeepBeep export. Nothing was changed.';
+      return;
+    }
+    try {
+      const v = readExport(data);
+      const what = `${v.sessions.length} ${v.sessions.length === 1 ? 'session' : 'sessions'} and ${v.qsos.length} ${v.qsos.length === 1 ? 'QSO' : 'QSOs'}`;
+      if (!confirm(`Replace the progress on this device with the file's ${what}? What is here now will be gone.`)) {
+        dataNote = 'Nothing was changed.';
+        return;
+      }
       await importAll(data);
-      if (data.settings) Object.assign(settings, data.settings);
-      dataNote = `Imported ${data.sessions?.length ?? 0} sessions and ${data.qsos?.length ?? 0} QSOs.`;
+      const s = (data as { settings?: unknown }).settings;
+      if (s) applySettings(s);
+      dataNote = `Imported ${what}.`;
     } catch (err) {
       dataNote = (err as Error).message;
     }

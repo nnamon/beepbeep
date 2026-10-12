@@ -97,7 +97,7 @@ export function checkSend(text: string, slots: Slot[]): Verdict {
     i = k;
   }
   extras.push(...w.slice(i));
-  return { result: missing ? 'try' : close ? 'almost' : 'pass', notes, extras };
+  return { result: missing ? 'try' : close ? 'almost' : 'pass', notes: [...new Set(notes)], extras };
 }
 
 export type FieldKind = 'call' | 'rst' | 'name' | 'qth' | 'text';

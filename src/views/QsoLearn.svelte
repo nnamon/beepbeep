@@ -446,7 +446,7 @@
         {#if verdict}
           <div class="result {verdict.result}">
             <p class="big">{headline(verdict)}</p>
-            {#if verdict.notes.length}<ul>{#each verdict.notes as n (n)}<li>{n}</li>{/each}</ul>{/if}
+            {#if verdict.notes.length}<ul>{#each verdict.notes as n, i (i)}<li>{n}</li>{/each}</ul>{/if}
             {#if extras.length}<p class="muted">Not needed here: {extras.join(' ')}.</p>{/if}
             {#if verdict.result !== 'pass' && settings.qsoHelp !== 'text' && !showModel}<p class="muted">Show me puts the text on screen.</p>{/if}
           </div>

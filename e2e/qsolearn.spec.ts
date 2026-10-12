@@ -167,3 +167,16 @@ test('go to Setup mid-lesson and come back to the same step', async ({ page }) =
   await tap(page, model);
   await expect(page.getByText('Right.')).toBeVisible({ timeout: 15_000 });
 });
+
+test('the same slip twice gives feedback, not a frozen page', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await open(page, 'qso/learn/answer-cq', { qsoInput: 'type', qsoHelp: 'text' });
+  await toTheAnswer(page);
+  const call = (await page.locator('.model .text').innerText()).replace(/\s+/g, ' ').trim().split(' ')[0];
+  await page.getByLabel('Type what you would send').fill(`${call} DE K1XYA K1XYA K`);
+  await page.getByRole('button', { name: 'Check' }).click();
+  await expect(page.getByText('Almost.')).toBeVisible();
+  await expect(page.getByText('Your call: you sent K1XYA; it is K1XYZ.')).toHaveCount(1);
+  expect(errors).toEqual([]);
+});
