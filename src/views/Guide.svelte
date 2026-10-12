@@ -15,6 +15,7 @@
     { when: 'At a computer, no key', go: 'Setup', to: ['setup'], what: 'Use the keyboard: hold Space as a straight key, or use [ and ] (or Z and X) as paddles.' },
     { when: 'New to QSOs (contacts with other stations)', go: 'Learn QSOs', to: ['qso', 'learn'], what: 'Guided lessons: answer a CQ, swap reports, sign off. Each step is checked, and you can try it again.' },
     { when: 'Ready for whole QSOs', go: 'QSO', to: ['qso'], what: 'Pick a kind of contact. A simulated station answers each time you finish sending.' },
+    { when: 'A radio with Morse on it', go: 'Radio', to: ['radio'], what: "Connect the radio's audio to the microphone, or put the phone or computer near its speaker, and press Start. BeepBeep writes down what it hears." },
   ];
 
   const AREAS = [
@@ -22,6 +23,11 @@
     { name: 'Pocket', to: ['pocket'], what: 'Quiz yourself by ear on characters, chunks, words, callsigns, phrases, or your own set.' },
     { name: 'QSO', to: ['qso'], what: 'Learn QSOs, with guided lessons on each part of a contact, and a simulated station for several kinds of contact, from a chat to a contest.' },
     { name: 'Progress', to: ['progress'], what: 'Your speeds over time, accuracy for each character, spacing slips, recent sends and your QSO log.' },
+    {
+      name: 'Radio',
+      to: ['radio'],
+      what: "BeepBeep writes down the Morse your radio receives. The signal that is sending shows in large text, and other signals are listed by pitch (how high the tone is). You can copy the text, or save every signal's text with times as a .txt file.",
+    },
     { name: 'Settings', to: ['settings'], what: 'Speeds, pitch, spoken answers, band conditions, input, and export and import of your progress.' },
     { name: 'Signal bar', to: ['setup'], what: 'It sits at the top right, or under the header on a phone. It shows the input, your tone and a key light. Select it to open Setup.' },
   ];
@@ -86,6 +92,7 @@
     <h2>Keys</h2>
     <ul>
       <li><span class="mono">Enter</span> starts a drill. <span class="mono">Esc</span> stops it if it has a Stop button, and otherwise leaves it.</li>
+      <li>On Radio, <span class="mono">Enter</span> starts listening and <span class="mono">Esc</span> stops it. The arrow keys move through the list of signals.</li>
       <li><span class="mono">Alt + ↑</span> and <span class="mono">Alt + ↓</span> change the receive speed, except on the LICW track while lesson speeds are on.</li>
       <li>On a phone or tablet every shortcut has a button.</li>
       <li>On iPhone and iPad, sound starts from a tap: use Turn sound on, or any Start button. After that it plays even with the silent switch on.</li>

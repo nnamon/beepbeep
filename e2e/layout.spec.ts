@@ -44,6 +44,32 @@ for (const phone of PHONES) for (const s of SCREENS) {
   });
 }
 
+// Radio before Start (the decoding itself is tested with the fake microphone in radio.spec.ts):
+// Start is in view, and scrolled to the end nothing sits under the tab bar or scrolls sideways.
+for (const phone of PHONES) {
+  test(`${phone.name}, Radio: Start in view, nothing under the tab bar`, async ({ page }) => {
+    await page.setViewportSize({ width: phone.width, height: phone.height });
+    await page.addInitScript(() => localStorage.setItem('beepbeep.settings.v1', JSON.stringify({ voice: 'off', guideSeen: true })));
+    await page.goto('./#/radio');
+    await safeAreas(page, phone);
+    await soundOn(page);
+    const bar = () => page.evaluate(() => document.querySelector('.tabbar')!.getBoundingClientRect().top);
+    const start = (await page.getByRole('button', { name: 'Start' }).boundingBox())!;
+    expect(start.y + start.height, 'Start above the tab bar').toBeLessThanOrEqual(await bar());
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    const m = await page.evaluate(() => {
+      let bottom = 0;
+      for (const el of document.querySelectorAll('main *')) {
+        const r = el.getBoundingClientRect();
+        if (r.height && getComputedStyle(el).position !== 'fixed') bottom = Math.max(bottom, r.bottom);
+      }
+      return { bottom, scroll: document.documentElement.scrollWidth };
+    });
+    expect(m.bottom, 'the end of the screen above the tab bar').toBeLessThanOrEqual(await bar());
+    expect(m.scroll, 'no sideways scrolling').toBeLessThanOrEqual(phone.width);
+  });
+}
+
 /** Sets the app's safe-area tokens: test browsers report zero for env(safe-area-inset-*). */
 async function safeAreas(page: Page, s: { top?: number; bottom?: number; left?: number; right?: number }) {
   await page.addStyleTag({
@@ -130,7 +156,7 @@ for (const sz of LANDSCAPE) {
   test(`${sz.name}: the header fits and nothing sits under the notch`, async ({ page }) => {
     await page.setViewportSize({ width: sz.width, height: sz.height });
     await page.addInitScript(() => localStorage.setItem('beepbeep.settings.v1', JSON.stringify({ voice: 'off', guideSeen: true })));
-    for (const route of ['practice', 'practice/copy', 'pocket/round/characters']) {
+    for (const route of ['practice', 'practice/copy', 'pocket/round/characters', 'radio']) {
       await page.goto(`./#/${route}`);
       await safeAreas(page, sz);
       await page.waitForTimeout(200);
@@ -333,6 +359,7 @@ const TARGETS: { route: string; settings?: Record<string, unknown>; targets: (p:
   { route: 'pocket', targets: (p) => [p.getByRole('button', { name: 'Next lesson' }), p.getByRole('link', { name: 'Edit custom set' })] },
   { route: 'pocket/round/characters', targets: (p) => [p.getByRole('link', { name: 'Back to Pocket' })] },
   { route: 'settings', targets: (p) => [p.getByRole('slider').first(), p.getByRole('radiogroup', { name: 'Theme' }).getByRole('radio', { name: 'Light' })] },
+  { route: 'radio', targets: (p) => [p.getByRole('button', { name: 'Start' }), p.locator('.tabbar').getByRole('link', { name: 'Radio' })] },
 ];
 
 for (const width of [390, 360]) for (const t of TARGETS) {

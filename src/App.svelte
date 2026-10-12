@@ -12,6 +12,7 @@
   import Pocket from './views/Pocket.svelte';
   import Qso from './views/Qso.svelte';
   import QsoLearn from './views/QsoLearn.svelte';
+  import Radio from './views/Radio.svelte';
   import Progress from './views/Progress.svelte';
   import Settings from './views/Settings.svelte';
   import Setup from './views/Setup.svelte';
@@ -45,9 +46,10 @@
   }
 
   // The microphone stays on only while a screen that listens is open: sending
-  // drills, QSOs and Setup. Leave them and it is released after a short
+  // drills, QSOs, Radio and Setup. Leave them and it is released after a short
   // while, so a quick visit elsewhere doesn't ask for it again.
-  const listens = (p: string[]) => p[0] === 'setup' || p[0] === 'qso' || (p[0] === 'practice' && ['live', 'send', 'hear-send'].includes(p[1] ?? ''));
+  const listens = (p: string[]) =>
+    p[0] === 'setup' || p[0] === 'qso' || p[0] === 'radio' || (p[0] === 'practice' && ['live', 'send', 'hear-send'].includes(p[1] ?? ''));
   let micTimer: ReturnType<typeof setTimeout> | null = null;
   $effect(() => {
     const away = !listens(route.path);
@@ -61,6 +63,7 @@
     { id: 'pocket', label: 'Pocket' },
     { id: 'qso', label: 'QSO' },
     { id: 'progress', label: 'Progress' },
+    { id: 'radio', label: 'Radio' },
   ];
   const top = $derived(route.path[0] ?? 'practice');
 
@@ -141,6 +144,8 @@
       {#if route.path[1] === 'learn'}<QsoLearn />{:else}<Qso />{/if}
     {:else if top === 'progress'}
       <Progress />
+    {:else if top === 'radio'}
+      <Radio />
     {:else if top === 'settings'}
       <Settings />
     {:else if top === 'setup'}
@@ -485,10 +490,16 @@
     }
   }
 
-  /* Small phones on their side (an iPhone SE, 640 px Androids): the gear and Guide replace two links, and the version is left to Settings. */
+  /* Phones on their side up to 760 px wide: the version is left to Settings, so all the links fit. */
+  @media (orientation: landscape) and (max-height: 500px) and (max-width: 760px) {
+    .ver {
+      display: none;
+    }
+  }
+
+  /* Small phones on their side (an iPhone SE, 640 px Androids): the gear and Guide replace two links. */
   @media (orientation: landscape) and (max-height: 500px) and (max-width: 720px) {
-    .ver,
-    .nav a:nth-child(n + 5) {
+    .nav a:nth-child(n + 6) {
       display: none;
     }
 

@@ -47,6 +47,7 @@ Progress: your speeds over time, and how accurately you copy each character.
 | Receive | Copy drill, Spot the new character, Time to recognise (TTR), Sound surfing, Head copy, Callsign and word sprint |
 | Pocket | Phone quiz rounds by ear: characters, chunks, words, callsigns, phrases, custom sets |
 | QSO | Learn QSOs: guided lessons on each part of a contact, typed or keyed, with each step checked. The QSO simulator: a ragchew (a chat), the LICW QSO protocol, SKCC, K1USN SST, POTA and SOTA (stations in parks and on summits), a contest and a DX pileup |
+| Radio | Leave it listening to a radio: it writes down the Morse it hears, one signal followed in large text and the others listed by pitch. Copy the text, or save it with times as a .txt file |
 | LICW exercises | The syllabus exercises for BC1 to BC3, INT 1 to 3, ADV 1 to 3, TTR+ and OverLearn: familiarity, recognition, TTR, VET and VST, groups, Speed Racing, CW-voice-CW and more, at each stage's speeds, with notes on how to do each one |
 
 Practice opens with today's session: a checklist for your lesson, worked from the top and sized to your session length. Steps tick themselves as you do them.
@@ -130,6 +131,7 @@ src/lib/decoder   decoder, whole-over search, stable live reading, pipeline
 src/lib/audio     AudioContext engine, worklet, keyboard keyer, live decoding, speech
 src/lib/train     courses, material, spaced repetition, scoring, fist analysis
 src/lib/qso       QSO parser and bot stations
+src/lib/radio     Radio: the source of signals, the interim one-pitch source, the transcript for Save
 src/lib/state     settings, IndexedDB store, router, signal state
 src/ui            components
 src/views         screens

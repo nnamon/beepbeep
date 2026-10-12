@@ -39,8 +39,10 @@ export default defineConfig({
     { name: 'pixel', use: { ...devices['Pixel 7'] }, testMatch: /screens\.spec/ },
     // Small Android phones: 360 px is the narrowest common width.
     { name: 'small', use: { ...devices['Pixel 7'], viewport: { width: 360, height: 740 } }, testMatch: /(screens|tokentext)\.spec/ },
-    { name: 'mic', testMatch: /(decode|flows|voice|touch|calibrate|station|micrelease|newbuild)\.spec/, use: { ...devices['Desktop Chrome'], ...fakeMic } },
+    { name: 'mic', testMatch: /(decode|flows|voice|touch|calibrate|station|micrelease|newbuild|radio)\.spec/, use: { ...devices['Desktop Chrome'], ...fakeMic } },
     { name: 'mic-pixel', testMatch: /(decode|touch)\.spec/, use: { ...devices['Pixel 7'], ...fakeMic } },
+    // Radio with three stations in turn: the list of signals.
+    { name: 'mic-radio', testMatch: /radioband\.spec/, use: { ...devices['Desktop Chrome'], ...micPlaying('radio-band.wav') } },
     // README images, on demand (README_SHOTS=1; see e2e/readme.spec.ts).
     { name: 'readme', testMatch: /readme\.spec/, use: { ...devices['Desktop Chrome'], ...micPlaying('room-cq.wav') } },
   ],

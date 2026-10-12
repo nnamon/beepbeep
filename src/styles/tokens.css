@@ -23,6 +23,8 @@
   --size-s: 13px;
   --size-m: 15px;
   --size-l: 20px;
+  /* Text read from across a room on a phone (Radio); wider screens use --size-xl. */
+  --size-big: 28px;
   --size-xl: 40px;
   /* Text in text boxes. iOS Safari zooms into any text box under 16 px and stays zoomed, so touch screens get 16. */
   --size-field: var(--size-m);
