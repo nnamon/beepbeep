@@ -105,23 +105,29 @@
     if (live) {
       const l = live;
       await endOver();
+      // Left while the last over was being read: leaving saved it.
       if (live !== l) return;
       live.stop();
-      // Nothing sent: nothing to record.
-      if (live.chars.length) void saveSession({
-        mode: 'live',
-        seconds: Math.round((Date.now() - startedAt) / 1000),
-        sending: true,
-        items: live.chars.length,
-        accuracy: null,
-        wpm: settings.sendWpm,
-        sentWpm: report?.wpm,
-        fist: report,
-      });
+      save(live, report);
     }
     live = null;
     running = false;
     void keepAwake(false);
+  }
+
+  /** Records the session. Nothing sent: nothing to record. */
+  function save(l: LiveDecoder, fist: FistReport | null) {
+    if (!l.chars.length) return;
+    void saveSession({
+      mode: 'live',
+      seconds: Math.round((Date.now() - startedAt) / 1000),
+      sending: true,
+      items: l.chars.length,
+      accuracy: null,
+      wpm: settings.sendWpm,
+      sentWpm: fist?.wpm,
+      fist,
+    });
   }
 
   function rhythmRows(): RhythmRow[] {
@@ -172,7 +178,14 @@
   onDestroy(() => {
     gone = true;
     if (overTimer) clearTimeout(overTimer);
-    live?.stop();
+    // Left by a link without Stop: the session is saved as Stop saves it.
+    if (live) {
+      const l = live;
+      live = null;
+      l.stop();
+      l.flush();
+      save(l, analyseFist(l.outputs) ?? report);
+    }
     void keepAwake(false);
   });
 </script>

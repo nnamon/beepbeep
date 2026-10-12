@@ -80,6 +80,54 @@ test('a Live decoder session is saved when you stop', async ({ page }) => {
   await expect.poll(async () => (await all(page, 'sessions')).map((s) => s.mode)).toContain('live');
 });
 
+// Before: leaving by a link without Stop saved nothing (Esc, which presses Stop, did).
+for (const leave of ['the Back link', 'a link in the header']) {
+  test(`a Live decoder session is saved when you leave by ${leave} without Stop`, async ({ page }) => {
+    await open(page, 'practice/live');
+    await page.getByRole('button', { name: /Start/ }).click();
+    await key(page, 'CQ CQ DE K1ABC K');
+    await page.waitForTimeout(500);
+    if (leave === 'the Back link') await page.getByRole('link', { name: 'Back', exact: true }).click();
+    else await page.locator('nav.nav a', { hasText: 'Progress' }).click();
+    await expect.poll(async () => (await all(page, 'sessions')).filter((s) => s.mode === 'live').length).toBe(1);
+    const s = (await all(page, 'sessions')).find((x) => x.mode === 'live')!;
+    expect(s.items).toBeGreaterThanOrEqual(10);
+    expect(s.fist).toBeTruthy();
+  });
+}
+
+test('a Live decoder left with nothing sent saves nothing', async ({ page }) => {
+  await open(page, 'practice/live');
+  await page.getByRole('button', { name: /Start/ }).click();
+  await page.waitForTimeout(500);
+  await page.getByRole('link', { name: 'Back', exact: true }).click();
+  await expect(page).toHaveURL(/#\/practice$/);
+  await page.waitForTimeout(800);
+  expect((await all(page, 'sessions')).filter((s) => s.mode === 'live')).toEqual([]);
+});
+
+const THEM = { call: 'W1AW', name: 'BOB', qth: 'NEWINGTON', state: 'CT', skcc: '1234', rig: 'K3', ant: 'DIPOLE', pwr: '100', wx: 'SUNNY', age: '50', job: 'PILOT', rst: '579', serial: 42, pitchOffset: 0, verbosity: 0.5, repeats: 2, pace: 0, abbrev: 1 };
+
+// Before: the lesson's tally was saved without a catch, so an unavailable store
+// raised an unhandled error at the end of the lesson.
+test('finishing a Learn QSOs lesson with storage unavailable raises no error', async ({ page }) => {
+  await page.addInitScript((them) => {
+    const w = window as unknown as { __rejections: string[] };
+    w.__rejections = [];
+    window.addEventListener('unhandledrejection', (e) => w.__rejections.push(String((e.reason as Error)?.message ?? e.reason)));
+    IDBFactory.prototype.open = function () {
+      throw new DOMException('The operation is insecure.', 'SecurityError');
+    } as typeof IDBFactory.prototype.open;
+    // The lesson's last step: a note, then Next finishes it.
+    sessionStorage.setItem('beepbeep.qsoLearn.run', JSON.stringify({ lesson: 'answer-cq', them, idx: 2, firstTry: 2, at: Date.now() }));
+  }, THEM);
+  await open(page, 'qso/learn/answer-cq', { qsoInput: 'type', you: { call: '9V1NE', name: 'AMON', qth: 'SINGAPORE', state: '', skcc: '' } });
+  await page.getByRole('button', { name: 'Next' }).click();
+  await expect(page.getByText('You finished this lesson.')).toBeVisible();
+  await page.waitForTimeout(1000);
+  expect(await page.evaluate(() => (window as unknown as { __rejections: string[] }).__rejections)).toEqual([]);
+});
+
 async function importFile(page: Page, json: unknown) {
   await page.locator('input[type="file"]').setInputFiles({ name: 'backup.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(json)) });
 }

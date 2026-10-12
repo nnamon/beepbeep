@@ -171,7 +171,8 @@
     void keepAwake(false);
     if (lesson) {
       done = { ...done, [lesson.id]: (done[lesson.id] ?? 0) + 1 };
-      void setKv('qsoLessons', { ...done });
+      // Storage unavailable: the tally is kept on this screen only.
+      void setKv('qsoLessons', { ...done }).catch(() => undefined);
     }
     // Each lesson under its own name: Today ticks its QSO step on the whole contact.
     void saveSession({
