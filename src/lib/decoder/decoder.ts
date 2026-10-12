@@ -41,6 +41,18 @@ export function isGlitch(duration: number, dit: number): boolean {
   return duration < Math.max(0.008, 0.25 * dit);
 }
 
+/**
+ * A key held down far longer than any dah (a stuck key, a tuning carrier, a
+ * pause with the key down): not a mark. Longer than 5 dahs, and never under
+ * 1.2 s (5 dahs at 15 wpm), so a beginner's slow dah is never taken for one:
+ * the longest dahs in the beginner fists (fists.ts) are about twice their
+ * fist's dah, and the 1.2 s floor covers a dah estimate that starts too short
+ * (a setting faster than the sender).
+ */
+export function isHeld(duration: number, dah: number): boolean {
+  return duration > Math.max(1.2, 5 * dah);
+}
+
 export interface DecoderOptions {
   /** Expected character speed, to start the estimates. */
   initialWpm?: number;
@@ -63,6 +75,18 @@ export interface DecoderModel {
   marks: number[];
   gaps: number[];
 }
+
+/**
+ * Until the marks show dits and dahs apart, each mark goes to the class it is
+ * nearer, in log time, with the boundary `slowFirst` of the way from the dit
+ * to the dah (a half would be the middle). Beginners key slower than their
+ * speed setting far more often than faster: two 150 ms marks with the setting
+ * at 15 wpm (dit 80 ms, dah 240 ms) are dits at 8 wpm (EE), not dahs at 24
+ * wpm (T T), though 150 ms is a little nearer the dah. At 2/3, a mark counts
+ * a speed twice as far below the setting (in log terms) as one above it: dahs
+ * keyed at 20 wpm with the setting at 15 stay dahs. Tests sweep it.
+ */
+export const markTuning = { slowFirst: 2 / 3 };
 
 const MARK_WINDOW = 20;
 const GAP_WINDOW = 40;
@@ -178,6 +202,10 @@ export class Decoder {
     return this.dit;
   }
 
+  get dahEstimate(): number {
+    return this.dah;
+  }
+
   get wpm(): number {
     return 1.2 / this.dit;
   }
@@ -221,11 +249,9 @@ export class Decoder {
     const d = t - this.downAt;
     this.lastUp = t;
     if (isGlitch(d, this.dit)) return [];
-    // A very long mark is a tuning carrier or a stuck key, not a character.
-    if (d > Math.max(1.2, 5 * this.dah)) {
-      this.pending = [];
-      return [];
-    }
+    // Not a character, and it says nothing about the speed. A letter keyed
+    // before it ends there, as the end-of-over reading (without it) has it.
+    if (isHeld(d, this.dah)) return this.finishChar();
     this.learnMark(d);
     // Classified when the character ends, with the freshest speed estimate.
     this.pending.push({ start: this.downAt, end: t, kind: 'dit' });
@@ -360,11 +386,11 @@ export class Decoder {
       }
     }
     if (!done) {
-      // One class only: nudge whichever class it is nearer, keep the ratio.
+      // One class only: nudge whichever class it is nearer (leaning slow), keep the ratio.
       const ratio = this.dah / this.dit;
       // Trust the first marks more: the starting guess may be far off.
       const rate = this.marks.length <= 2 ? 0.8 : 0.3;
-      const nearDit = Math.abs(l - Math.log(this.dit)) <= Math.abs(l - Math.log(this.dah));
+      const nearDit = l <= Math.log(this.dit) + markTuning.slowFirst * (Math.log(this.dah) - Math.log(this.dit));
       if (nearDit) {
         this.dit = Math.exp(Math.log(this.dit) + (l - Math.log(this.dit)) * rate);
         this.dah = this.dit * ratio;

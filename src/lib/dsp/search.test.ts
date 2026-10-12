@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { Detector } from './detector';
 import { rumble } from './roomnoise';
-import { Decoder, isGlitch } from '../decoder/decoder';
+import { Decoder, isGlitch, isHeld } from '../decoder/decoder';
 import { applyEvents, outputsToText } from '../decoder/pipeline';
 import { renderText } from '../morse/render';
 import { readWav } from '../util/wav';
@@ -24,7 +24,7 @@ function decode(samples: Float32Array, fs: number, pinnedHz: number | null, wpm:
       if (e.type !== 'key') continue;
       if (e.down) down = e.t;
       else if (down !== null) {
-        if (!isGlitch(e.t - down, dec.ditEstimate)) marks.push({ start: down, end: e.t });
+        if (!isGlitch(e.t - down, dec.ditEstimate) && !isHeld(e.t - down, dec.dahEstimate)) marks.push({ start: down, end: e.t });
         down = null;
       }
     }
@@ -131,5 +131,75 @@ describe('pitch search with nothing pinned', () => {
       expect(wrong, wrong.join('\n')).toEqual([]);
       expect(checked).toBeGreaterThan(0);
       expect(foundTotal, 'letter error summed over the takes').toBeLessThanOrEqual(pinnedTotal + 1e-9);
+    });
+});
+
+// A pin set off the tone: a buzzer or oscillator tens of hertz from the
+// pitch the user entered. Before: 30 Hz off or more, the lock-in heard
+// nothing and nothing was decoded; 10 to 25 Hz off, the first letter was lost.
+describe('a pin off the tone', () => {
+  const letterErr = (want: string, got: string) => cer(letters(want), letters(got));
+
+  it('moves to the keyed tone and reads the whole over', () => {
+    const TEXT = 'CQ CQ DE 9V1XX K';
+    const wrong: string[] = [];
+    for (const pitch of [500, 700]) {
+      const { samples } = renderText(TEXT, { sampleRate: FS, pitch, amplitude: 0.1, charWpm: 15, seed: 3, noise: { snrDb: 10 } });
+      const x = new Float32Array(samples.length + FS);
+      x.set(samples, FS / 2);
+      for (const off of [-50, -40, -25, -15, 15, 25, 40, 50]) {
+        const r = decode(x, FS, pitch + off, 15);
+        const err = letterErr(TEXT, r.text);
+        if (err > 0 || r.pitch === null || Math.abs(r.pitch - pitch) > 8) wrong.push(`tone ${pitch}, pin ${pitch + off}: "${r.text}" at ${r.pitch?.toFixed(0)} Hz`);
+      }
+    }
+    expect(wrong, wrong.join('\n')).toEqual([]);
+  });
+
+  // The owner's keying takes (pinned at 600 Hz when recorded, the tone near
+  // it), pinned 25 to 50 Hz off instead. Before: every take read nothing at
+  // 40 and 50 Hz off. Now (12 Oct 2026, 13 takes, 78 readings) every reading
+  // has letters, the mean letter error is 8.4% against 4.1% with the right
+  // pin, and 11 of the 13 takes read within a letter of the right pin at every
+  // offset. The two that do not have typing over a quiet sidetone (67% and,
+  // at one offset, 129%, against 14 to 17%).
+  const DIR = 'samples';
+  const names = existsSync(DIR) ? readdirSync(DIR).filter((f) => f.startsWith('20') && f.endsWith('.json')).map((f) => f.slice(0, -5)).sort() : [];
+  if (!names.length) it.skip('recordings: none in samples/', () => {});
+  else
+    it('reads the recorded keying takes with the pin 25 to 50 Hz off', () => {
+      const labels: Record<string, string | null> = existsSync(`${DIR}/labels.json`) ? JSON.parse(readFileSync(`${DIR}/labels.json`, 'utf8')) : {};
+      const silent: string[] = [];
+      const behind: string[] = [];
+      let takes = 0;
+      let rightSum = 0;
+      let offSum = 0;
+      let readings = 0;
+      for (const n of names) {
+        const meta = JSON.parse(readFileSync(`${DIR}/${n}.json`, 'utf8'));
+        const keyed = n in labels ? labels[n] : meta.keyed || null;
+        if (meta.kind === 'noise' || !keyed || !meta.settings.pinnedHz) continue;
+        const { samples, sampleRate } = readWav(readFileSync(`${DIR}/${n}.wav`));
+        const wpm = meta.settings.sendWpm || 15;
+        const right = letterErr(keyed, decode(samples, sampleRate, meta.settings.pinnedHz, wpm).text);
+        if (right > 0.2) continue;
+        takes++;
+        rightSum += right;
+        let worst = 0;
+        for (const off of [-50, -40, -25, 25, 40, 50]) {
+          const r = decode(samples, sampleRate, meta.settings.pinnedHz + off, wpm);
+          const err = letterErr(keyed, r.text);
+          readings++;
+          offSum += err;
+          worst = Math.max(worst, err);
+          if (!letters(r.text)) silent.push(`${n}, pin ${meta.settings.pinnedHz + off}`);
+        }
+        // One letter's slack in an over.
+        if (worst > right + 0.2) behind.push(`${n}: worst ${(worst * 100).toFixed(0)}%, right pin ${(right * 100).toFixed(0)}%`);
+      }
+      expect(takes).toBeGreaterThan(0);
+      expect(silent, silent.join('\n')).toEqual([]);
+      expect(offSum / readings, 'mean letter error, pin off').toBeLessThanOrEqual(rightSum / takes + 0.06);
+      expect(behind.length, behind.join('\n')).toBeLessThanOrEqual(Math.floor(takes * 0.2));
     });
 });

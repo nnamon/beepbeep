@@ -36,14 +36,15 @@ async function key(page: Page, text: string, wpm = 18) {
   }, events);
 }
 
-const SETTINGS = { input: 'straight', sendWpm: 18, voice: 'off', overTimeout: 2, theme: 'dark', you: { call: 'K1ABC', name: 'TOM', qth: 'BOSTON', state: 'MA', skcc: '' } };
+// A late Koch lesson, so callsigns can be made from the known characters.
+const SETTINGS = { input: 'straight', sendWpm: 18, voice: 'off', overTimeout: 2, theme: 'dark', track: 'koch', level: { koch: 'koch-40', licw: 'licw-bc1-REA' }, you: { call: 'K1ABC', name: 'TOM', qth: 'BOSTON', state: 'MA', skcc: '' } };
 
 test('send drill: key the prompt, see it received', async ({ page }) => {
   await page.addInitScript((s) => localStorage.setItem('beepbeep.settings.v1', JSON.stringify(s)), SETTINGS);
   await page.goto('./#/practice/send');
   await page.getByRole('radio', { name: 'Callsigns' }).click();
   await page.getByRole('button', { name: /Start/ }).click();
-  const prompt = (await page.locator('.block').first().locator('p').innerText()).trim();
+  const prompt = (await page.locator('.block').first().locator('p').first().innerText()).trim();
   await key(page, prompt);
   await page.getByRole('button', { name: /Done/ }).click();
   await expect(page.getByText('Received')).toBeVisible();

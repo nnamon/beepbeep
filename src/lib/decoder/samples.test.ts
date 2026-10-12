@@ -9,7 +9,7 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { Detector, type DetectorEvent } from '../dsp/detector';
-import { Decoder, isGlitch } from './decoder';
+import { Decoder, isGlitch, isHeld } from './decoder';
 import { applyEvents, outputsToText } from './pipeline';
 import { readWav } from '../util/wav';
 import { cer } from '../util/text';
@@ -54,7 +54,7 @@ export function replay(samples: Float32Array, sampleRate: number, meta: Meta) {
       if (e.type !== 'key') continue;
       if (e.down) down = e.t;
       else if (down !== null) {
-        if (!isGlitch(e.t - down, decoder.ditEstimate)) marks.push({ start: down, end: e.t });
+        if (!isGlitch(e.t - down, decoder.ditEstimate) && !isHeld(e.t - down, decoder.dahEstimate)) marks.push({ start: down, end: e.t });
         down = null;
       }
     }

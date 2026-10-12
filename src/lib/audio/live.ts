@@ -2,7 +2,7 @@
 
 import { engine } from './engine';
 import { Keyer, type KeyEvent } from './keyer';
-import { Decoder, isGlitch, type DecodedChar, type DecoderOutput } from '../decoder/decoder';
+import { Decoder, isGlitch, isHeld, type DecodedChar, type DecoderOutput } from '../decoder/decoder';
 import { redecodeAsync } from '../decoder/redecode';
 import { StableReading } from '../decoder/stable';
 import type { DetectorEvent } from '../dsp/detector';
@@ -21,14 +21,26 @@ export function touchKey(down: boolean, timeStamp?: number) {
 }
 
 /**
- * An input event's moment on the audio clock. Events carry their own
- * timestamp (performance clock); handling may run late if the page is busy.
+ * The clock the keyboard and touch keys are timed on, in seconds: the page's
+ * own (performance.now), which input events carry as their timestamps. Not
+ * the audio clock: under load the browser's audio clock stalls and jumps,
+ * and key times read from it shortened dits or lost them (K read as M).
  */
+export function keyClock(): number {
+  return performance.now() / 1000;
+}
+
+/** An input event's timestamp (milliseconds, performance clock) on `keyClock`. */
+export function keyTime(timeStamp: number): number {
+  return timeStamp / 1000;
+}
+
+/** An input event's moment on `keyClock`; handling may run late if the page is busy. */
 function eventTime(timeStamp: number): number {
   const late = performance.now() - timeStamp;
   // A timestamp on another clock (some older browsers) or absurdly old: use now.
-  if (!(late >= 0 && late < 2000)) return engine.now;
-  return engine.now - late / 1000;
+  if (!(late >= 0 && late < 2000)) return keyClock();
+  return keyTime(timeStamp);
 }
 
 export interface LiveStatus {
@@ -61,6 +73,8 @@ export class LiveDecoder {
   outputs: DecoderOutput[] = [];
   private keyer: Keyer | null = null;
   private unsub: (() => void) | null = null;
+  /** Detector time onto `keyClock`, fixed at the first message, so every source keys on one clock. */
+  private micShift: number | null = null;
   private tickTimer: ReturnType<typeof setInterval> | null = null;
   private lastDit = 0;
   private downAt = 0;
@@ -87,21 +101,26 @@ export class LiveDecoder {
   async start() {
     await engine.ensure();
     if (this.opts.source === 'mic') {
+      this.micShift = null;
       this.unsub = engine.onEvents((events, time) => this.onDetector(events, time));
       engine.command({ type: 'dit', dit: this.decoder.ditEstimate });
     } else {
       this.keyer = new Keyer({
         mode: this.opts.source === 'touch' ? 'straight' : this.opts.source,
         dit: 1.2 / this.opts.charWpm,
-        now: () => engine.now,
+        now: keyClock,
         tone: {
           on: (on) => void engine.sidetone(on, this.opts.pitch),
-          element: (s, e) => engine.sidetoneElement(s, e, this.opts.pitch),
+          // The paddles' elements are timed on keyClock; the sidetone plays them on the audio clock.
+          element: (s, e) => {
+            const shift = engine.now - keyClock();
+            engine.sidetoneElement(s + shift, e + shift, this.opts.pitch);
+          },
         },
         emit: (e) => this.onKey(e),
       });
       this.attachKeyboard();
-      this.tickTimer = setInterval(() => this.push(this.decoder.tick(engine.now)), 20);
+      this.tickTimer = setInterval(() => this.push(this.decoder.tick(keyClock())), 20);
       if (this.opts.source === 'touch') {
         touchTarget = this;
         signal.touchKey = true;
@@ -126,7 +145,7 @@ export class LiveDecoder {
 
   /** Ends the current over: emits any pending character. */
   flush(): DecoderOutput[] {
-    const t = this.opts.source === 'mic' ? this.lastEventTime + 10 : engine.now + 10;
+    const t = this.opts.source === 'mic' ? this.lastEventTime + 10 : keyClock() + 10;
     const out = this.decoder.flush(t);
     this.push(out);
     return out;
@@ -189,7 +208,7 @@ export class LiveDecoder {
    * stay as they were settled, so this costs one over however long the session.
    */
   async settled(): Promise<DecoderOutput[]> {
-    const now = this.opts.source === 'mic' ? this.lastEventTime : engine.now;
+    const now = this.opts.source === 'mic' ? this.lastEventTime : keyClock();
     const over = await this.reading.update(this.decoder.model(), this.marks.slice(this.headMarks), now);
     return [...this.head, ...over];
   }
@@ -222,12 +241,15 @@ export class LiveDecoder {
 
   private lastEventTime = 0;
 
-  private onDetector(events: DetectorEvent[], time: number) {
+  private onDetector(events: DetectorEvent[], detectorTime: number) {
+    this.micShift ??= keyClock() - detectorTime;
+    const shift = this.micShift;
+    const time = detectorTime + shift;
     for (const e of events) {
-      if (e.type === 'key') this.onKey({ down: e.down, t: e.t });
+      if (e.type === 'key') this.onKey({ down: e.down, t: e.t + shift });
       else if (e.type === 'status') {
-        this.lastEventTime = e.t;
-        this.push(this.decoder.tick(e.t));
+        this.lastEventTime = e.t + shift;
+        this.push(this.decoder.tick(e.t + shift));
         this.status = { level: e.level, pitch: e.pitch, snr: e.snr, keyDown: e.keyDown, wpm: this.decoder.wpm };
         this.opts.onStatus?.(this.status);
       } else if (e.type === 'lock') {
@@ -252,13 +274,14 @@ export class LiveDecoder {
       this.downAt = e.t;
       this.push(this.decoder.keyDown(e.t));
     } else {
-      // Glitches are dropped here once, so every later reading sees the same marks.
-      if (!isGlitch(e.t - this.downAt, this.decoder.ditEstimate)) this.marks.push({ start: this.downAt, end: e.t });
+      // Glitches and a key held down are dropped here once, so every later reading sees the same marks.
+      const d = e.t - this.downAt;
+      if (!isGlitch(d, this.decoder.ditEstimate) && !isHeld(d, this.decoder.dahEstimate)) this.marks.push({ start: this.downAt, end: e.t });
       this.push(this.decoder.keyUp(e.t));
     }
     if (this.opts.source !== 'mic') {
       // Keyboard keyer events can be scheduled slightly ahead; the LED follows them.
-      const delay = Math.max(0, (e.t - engine.now) * 1000);
+      const delay = Math.max(0, (e.t - keyClock()) * 1000);
       setTimeout(() => {
         signal.keyDown = e.down;
         if (e.down) signal.lastKeyDown = performance.now();

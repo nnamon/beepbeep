@@ -9,7 +9,7 @@
   import Segmented from '../ui/Segmented.svelte';
   import TokenText, { type Tok } from '../ui/TokenText.svelte';
   import InputHelp from '../ui/InputHelp.svelte';
-  import { LiveDecoder } from '../lib/audio/live';
+  import { LiveDecoder, keyTime } from '../lib/audio/live';
   import { engine, type Playback } from '../lib/audio/engine';
   import { href, route } from '../lib/state/router.svelte';
   import { effectiveMix, settings, strict } from '../lib/state/settings.svelte';
@@ -298,8 +298,6 @@
   /** The early press was passed on while the key was still held. */
   let holding = false;
   const straightKeyed = () => sendInput() === 'straight' || sendInput() === 'touch';
-  /** An input event's time on the audio clock, as the decoder reads its own events. */
-  const audioTime = (timeStamp: number) => engine.now - (performance.now() - timeStamp) / 1000;
 
   function press(e: KeyboardEvent | PointerEvent, down: boolean) {
     if (gone || !keyingStep()) return;
@@ -313,7 +311,7 @@
     } else if (!down && holding) {
       // The touch pad didn't see the press begin, so it won't pass on the release.
       holding = false;
-      live.pressStraight(false, audioTime(e.timeStamp));
+      live.pressStraight(false, keyTime(e.timeStamp));
     }
   }
 
@@ -321,10 +319,8 @@
     const p = early;
     early = null;
     if (!p) return;
-    // Kept after the clock's start, so the decoder sees a real key press.
-    const shift = Math.max(0, 0.005 - audioTime(p.down));
-    l.pressStraight(true, audioTime(p.down) + shift);
-    if (p.up !== null) l.pressStraight(false, audioTime(p.up) + shift);
+    l.pressStraight(true, keyTime(p.down));
+    if (p.up !== null) l.pressStraight(false, keyTime(p.up));
     else holding = true;
   }
 
