@@ -253,7 +253,7 @@ export const LESSONS: Lesson[] = [
         explain: [
           regionAfter(c.them)
             ? 'QTH is where they are: a town, then their region (state, province or country). They send both twice.'
-            : 'QTH is where they are: usually a town, then their region (state, province or country). In a city-state such as Singapore the town is the country, so they send it alone, twice.',
+            : 'QTH is where they are: usually a town, then their region (state, province or country). In a city-state such as Singapore the town is also the country, so they send only the town, twice.',
         ],
         play: `QTH ${theirPlace(c)} ${theirPlace(c)}`,
         fields: [overFields(c)[2]],
