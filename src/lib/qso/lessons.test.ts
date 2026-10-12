@@ -55,7 +55,8 @@ describe('guided QSO lessons', () => {
     expect(checkSend('UR RST 579 579', report.slots).result).toBe('pass');
     expect(checkSend('UR RST 5NN 5NN', report.slots).result).toBe('pass');
     expect(checkSend('UR RST 579', report.slots).notes).toEqual(['Send your report twice.']);
-    expect(checkSend('UR RST 679 679', report.slots).result).toBe('try');
+    // Three digits, but not a report: it says which digit is out of range.
+    expect(checkSend('UR RST 679 679', report.slots)).toMatchObject({ result: 'almost', notes: ['Your report: you sent 679, but the first digit, readability, goes from 1 to 5.'] });
     const off = LESSONS.find((l) => l.id === 'sign-off')!.steps({ me: ME, them })[1];
     if (off.kind !== 'send') throw new Error();
     expect(checkSend(`TNX 73 ${them.call} DE K1XYZ`, off.slots).notes).toEqual(['End with SK, one character with no gap inside (· · · – · –).']);
@@ -69,6 +70,31 @@ describe('guided QSO lessons', () => {
     expect(checkField('5NN', '599', 'rst').result).toBe('right');
     expect(checkField('Salem MA', 'SALEM', 'qth').result).toBe('right');
     expect(checkField('SAN FRANCISCO', 'SAN DIEGO', 'qth').result).toBe('wrong');
+  });
+});
+
+describe('their QTH', () => {
+  const qthSteps = (them: ReturnType<typeof newStation>) => {
+    const steps = LESSONS.find((l) => l.id === 'copy-over')!.steps({ me: ME, them });
+    const play = (title: string) => {
+      const s = steps.find((x) => x.title === title)!;
+      return s.kind === 'listen' ? s.play : '';
+    };
+    const explain = steps.find((x) => x.title === 'The QTH')!.explain.join(' ');
+    return { part: play('The QTH'), over: play('Copy their first over'), explain };
+  };
+  it('a city-state station sends its QTH once, twice over', () => {
+    const sg = { ...newStation(mulberry32(1), 'world'), call: '9V1AB', qth: 'SINGAPORE', state: 'SINGAPORE' };
+    const q = qthSteps(sg);
+    expect(q.part).toBe('QTH SINGAPORE SINGAPORE');
+    expect(q.over).toContain('<BT> QTH SINGAPORE SINGAPORE <BT>');
+    expect(q.explain).not.toMatch(/both twice/);
+  });
+  it('a station with a region sends the town and region, twice over', () => {
+    const ct = { ...newStation(mulberry32(1), 'world'), call: 'W1AW', qth: 'NEWINGTON', state: 'CT' };
+    const q = qthSteps(ct);
+    expect(q.part).toBe('QTH NEWINGTON CT NEWINGTON CT');
+    expect(q.over).toContain('<BT> QTH NEWINGTON CT NEWINGTON CT <BT>');
   });
 });
 

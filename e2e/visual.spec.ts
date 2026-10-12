@@ -10,6 +10,7 @@ for (const theme of ['dark', 'light', 'paper'] as const) {
     await page.goto('./#/specimen');
     await page.evaluate(() => document.fonts.ready);
     await page.waitForTimeout(300);
-    await expect(page).toHaveScreenshot(`specimen-${theme}.png`, { fullPage: true });
+    // The version and build change with every release; they are not part of the look.
+    await expect(page).toHaveScreenshot(`specimen-${theme}.png`, { fullPage: true, mask: [page.locator('header .ver')] });
   });
 }

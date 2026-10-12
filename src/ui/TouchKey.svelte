@@ -1,8 +1,19 @@
+<script module lang="ts">
+  /**
+   * `soundOff`: a screen is ready to listen to the touch key but waits for
+   * sound, which the browser keeps off after a reload until a tap. The pad then
+   * says a tap starts it, and its first tap turns sound on; the screen passes
+   * that tap on as keying.
+   */
+  export const touchPad = $state({ soundOff: false });
+</script>
+
 <script lang="ts">
   // On-screen straight key for phones and tablets. Shown while a drill, QSO or
   // calibration is listening to the touch key. Pointer capture keeps the key
   // down if the finger slides off the pad; lifting anywhere releases it.
   import { touchKey } from '../lib/audio/live';
+  import { engine } from '../lib/audio/engine';
   import { signal } from '../lib/state/signal.svelte';
 
   let pressed = $state(false);
@@ -22,9 +33,13 @@
   });
 
   const live = $derived(signal.touchKey);
+  /** Not listening yet only because sound is off: a tap starts it. */
+  const tapToStart = $derived(!live && touchPad.soundOff);
 
   function down(e: PointerEvent) {
     e.preventDefault();
+    // A tap is what lets the browser play sound: it starts here, inside the tap.
+    if (tapToStart) void engine.ensure().catch(() => undefined);
     if (pressed || !live) return;
     try {
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -48,10 +63,14 @@
     type="button"
     class="pad"
     class:on={live && (pressed || signal.keyDown)}
-    class:idle={!live}
+    class:idle={!live && !tapToStart}
     tabindex="-1"
-    aria-disabled={!live}
-    aria-label={live ? 'Touch key. Hold to send. Space also keys.' : 'Touch key, waiting until the app listens.'}
+    aria-disabled={!live && !tapToStart}
+    aria-label={live
+      ? 'Touch key. Hold to send. Space also keys.'
+      : tapToStart
+        ? 'Touch key. Tap it to turn sound on and start keying.'
+        : 'Touch key, waiting until the app listens.'}
     onpointerdown={down}
     onpointerup={up}
     onpointercancel={up}
@@ -59,7 +78,7 @@
     oncontextmenu={(e) => e.preventDefault()}
   >
     <span class="name">Key</span>
-    <span class="hint">{live ? 'Hold to send' : 'Waiting'}</span>
+    <span class="hint">{live ? 'Hold to send' : tapToStart ? 'Tap to start' : 'Waiting'}</span>
   </button>
 </div>
 

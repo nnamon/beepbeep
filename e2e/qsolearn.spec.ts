@@ -146,6 +146,18 @@ test('leaving a lesson stops its sound', async ({ page }) => {
   expect(await playing(page)).toBe(0);
 });
 
+test('Next on the last step while it plays: the sound stops at the end of the lesson', async ({ page }) => {
+  await underway(page, 'answer-cq', 2);
+  await open(page, 'qso/learn/answer-cq', { qsoInput: 'type', qsoHelp: 'text' });
+  await expect(page.getByText('Step 3 of 3 · You have a contact')).toBeVisible();
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await expect.poll(() => playing(page)).toBeGreaterThan(0);
+  await page.getByRole('button', { name: 'Next' }).click();
+  await expect(page.getByText('You finished this lesson.')).toBeVisible();
+  await page.waitForTimeout(500);
+  expect(await playing(page)).toBe(0);
+});
+
 test('Play, Slower and Play again play one at a time', async ({ page }) => {
   await open(page, 'qso/learn/answer-cq', { qsoInput: 'type', qsoHelp: 'text' });
   await page.getByRole('button', { name: /Start/ }).click();
@@ -185,6 +197,60 @@ test('after a reload into a keyed step, the first key press starts the sound and
   await page.waitForTimeout(700);
   await key(page, 'W1AW DE K1XYZ K1XYZ K');
   await expect(page.getByText('Right.')).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator('.keyed .text')).toContainText(/W1AW\s*DE\s*K1XYZ/);
+});
+
+/** A browser's autoplay rule: an AudioContext made before a real tap stays suspended, and resume() waits, until one. */
+async function autoplayRule(page: Page) {
+  await page.addInitScript(() => {
+    const Orig = window.AudioContext;
+    let activated = false;
+    const pend: [AudioContext, () => void][] = [];
+    for (const t of ['pointerdown', 'mousedown', 'keydown', 'touchstart', 'click']) window.addEventListener(t, (e) => e.isTrusted && (activated = true), true);
+    class Gated extends Orig {
+      private allowed: boolean;
+      constructor(...a: ConstructorParameters<typeof AudioContext>) {
+        super(...a);
+        this.allowed = activated;
+        if (!activated) void super.suspend();
+      }
+      override get state(): AudioContextState {
+        return this.allowed ? super.state : 'suspended';
+      }
+      override resume(): Promise<void> {
+        if (!activated) return new Promise((res) => pend.push([this, res]));
+        this.allowed = true;
+        return super.resume().then(() => {
+          for (const [c, r] of pend.splice(0)) if (c === this) r();
+          else pend.push([c, r]);
+        });
+      }
+    }
+    (window as unknown as { AudioContext: typeof AudioContext }).AudioContext = Gated as unknown as typeof AudioContext;
+  });
+}
+
+test('after a reload into a keyed step, the touch key says a tap starts it, and the first tap does', async ({ page }) => {
+  test.skip(test.info().project.name !== 'phone', 'touch screen');
+  test.setTimeout(90_000);
+  await autoplayRule(page);
+  await underway(page, 'answer-cq', 1);
+  await open(page, 'qso/learn/answer-cq', { qsoInput: 'key', qsoHelp: 'text', input: 'touch', sendWpm: 15, overTimeout: 2 });
+  await expect(page.getByText('Step 2 of 3 · Answer it')).toBeVisible();
+  // Sound is off until a tap: the pad is not shown as dead, and says what a tap does.
+  const pad = page.locator('.pad');
+  await expect(pad).toHaveAttribute('aria-label', 'Touch key. Tap it to turn sound on and start keying.');
+  await expect(pad).not.toHaveAttribute('aria-disabled', 'true');
+  await expect(pad).toContainText('Tap to start');
+  await expect(pad).not.toHaveClass(/idle/);
+  // One real tap on the pad itself turns sound on and starts keying.
+  const b = (await pad.boundingBox())!;
+  await page.touchscreen.tap(b.x + b.width / 2, b.y + b.height / 2);
+  await expect(pad).toHaveAttribute('aria-label', /Hold to send/);
+  await expect(pad).toContainText('Hold to send');
+  await page.waitForTimeout(500);
+  await tap(page, 'W1AW DE K1XYZ K1XYZ K');
+  await expect(page.locator('.result .big')).toHaveText(/Right|Almost/, { timeout: 15_000 });
   await expect(page.locator('.keyed .text')).toContainText(/W1AW\s*DE\s*K1XYZ/);
 });
 

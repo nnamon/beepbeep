@@ -242,9 +242,10 @@
           if (n !== overReq || turn !== 'you' || gone) return;
           overTokens = toTokens(outs);
           // Only a finished word can end your turn: "K" may be the start of K1ABC.
+          // Your own region (VA, SK, AR) is a region, not a prosign.
           if (o.kind === 'space') {
             const text = overText();
-            armed = endsTurn(text) ? 'end' : bot?.turnComplete(text) ? 'exchange' : null;
+            armed = endsTurn(text, settings.you.state) ? 'end' : bot?.turnComplete(text) ? 'exchange' : null;
             armedKey = keyAt;
           }
         });
@@ -709,45 +710,49 @@
   </section>
 {:else}
   <section class="run">
-    <div class="head">
-      <h1>QSO · {formatName}</h1>
-      <span class="num muted">{mins(elapsed)}</span>
-    </div>
-
-    <div class="bar">
-      <div class="status" class:you={turn === 'you' && stage === 'running'} role="status" aria-live="polite">
-        {#if stage === 'ended' || stage === 'copying'}
-          <span>QSO ended</span>
-        {:else if stage === 'paused'}
-          <span>Paused</span>
-        {:else if turn === 'bot'}
-          <span>Station sending</span>
-        {:else}
-          <span class="dot" aria-hidden="true"></span><span>Your turn</span>
-        {/if}
+    <!-- On a phone on its side the title, status and buttons share one row, so your sending stays above the touch key. -->
+    <div class="top">
+      <div class="head">
+        <h1>QSO · {formatName}</h1>
+        <span class="num muted">{mins(elapsed)}</span>
       </div>
-      <div class="actions">
-        {#if stage === 'running'}
-          <Button kind="primary" onclick={endOver} disabled={turn !== 'you'} hint="Enter">End my turn</Button>
-          <Button onclick={replayLast} disabled={turn !== 'you' || !lastAudio}>Replay last</Button>
-          <Button kind="quiet" onclick={stop} hint="Esc">Stop</Button>
-        {:else if stage === 'copying'}
-          <Button kind="primary" onclick={finalize} hint="Enter">Score</Button>
-          <Button onclick={replayLast} disabled={!lastAudio}>Replay last</Button>
-        {:else if stage === 'paused'}
-          <Button kind="primary" onclick={carryOn} disabled={signal.starting}>Carry on</Button>
-          <Button kind="quiet" onclick={stop} hint="Esc">Stop</Button>
-        {:else}
-          <Button kind="primary" onclick={() => (stage = 'setup')}>New QSO</Button>
-          <Button href={href('progress')}>QSO log</Button>
-        {/if}
+
+      <div class="bar">
+        <div class="status" class:you={turn === 'you' && stage === 'running'} role="status" aria-live="polite">
+          {#if stage === 'ended' || stage === 'copying'}
+            <span>QSO ended</span>
+          {:else if stage === 'paused'}
+            <span>Paused</span>
+          {:else if turn === 'bot'}
+            <span>Station sending</span>
+          {:else}
+            <span class="dot" aria-hidden="true"></span><span>Your turn</span>
+          {/if}
+        </div>
+        <div class="actions">
+          {#if stage === 'running'}
+            <Button kind="primary" onclick={endOver} disabled={turn !== 'you'} hint="Enter">End my turn</Button>
+            <Button onclick={replayLast} disabled={turn !== 'you' || !lastAudio}>Replay last</Button>
+            <Button kind="quiet" onclick={stop} hint="Esc">Stop</Button>
+          {:else if stage === 'copying'}
+            <Button kind="primary" onclick={finalize} hint="Enter">Score</Button>
+            <Button onclick={replayLast} disabled={!lastAudio}>Replay last</Button>
+          {:else if stage === 'paused'}
+            <Button kind="primary" onclick={carryOn} disabled={signal.starting}>Carry on</Button>
+            <Button kind="quiet" onclick={stop} hint="Esc">Stop</Button>
+          {:else}
+            <Button kind="primary" onclick={() => (stage = 'setup')}>New QSO</Button>
+            <Button href={href('progress')}>QSO log</Button>
+          {/if}
+        </div>
       </div>
     </div>
 
     {#if stage === 'running' && turn === 'you' && !strict()}
       <div class="over" aria-live="polite">
         <span class="label">You, decoded</span>
-        {#if overTokens.length}<TokenText tokens={overTokens} size="l" />{:else}<p class="muted">Nothing yet.</p>{/if}
+        <!-- On a short screen only the newest lines show. -->
+        <div class="said">{#if overTokens.length}<TokenText tokens={overTokens} size="l" />{:else}<p class="muted">Nothing yet.</p>{/if}</div>
       </div>
     {:else if stage === 'copying'}
       <p class="note">The contact is complete. Finish copying what they sent, then press Score. Replay last plays their last transmission again.</p>
@@ -938,10 +943,17 @@
     width: 100%;
   }
 
+  .top {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-3);
+  }
+
   .head {
     display: flex;
     justify-content: space-between;
     align-items: baseline;
+    gap: var(--s-2);
   }
 
   .bar {
@@ -1071,6 +1083,57 @@
     .line {
       grid-template-columns: 1fr;
       gap: 0;
+    }
+  }
+
+  /*
+   * A phone on its side: the touch key takes the bottom of a short screen. The
+   * title, status and buttons share a row, and what you are sending shows its
+   * newest two lines beside its label, so all of it stays above the key.
+   */
+  @media (orientation: landscape) and (max-height: 500px) {
+    .run {
+      gap: var(--s-1);
+    }
+
+    .top {
+      flex-flow: row wrap;
+      align-items: center;
+      gap: var(--s-1) var(--s-2);
+    }
+
+    .run h1 {
+      font-size: var(--size-m);
+    }
+
+    .bar {
+      gap: var(--s-1);
+    }
+
+    .over {
+      flex-direction: row;
+      align-items: flex-start;
+      gap: var(--s-2);
+      padding-bottom: var(--s-1);
+    }
+
+    .over .label {
+      flex: none;
+      line-height: calc(1.4 * var(--size-l));
+    }
+
+    .said {
+      flex: 1;
+      min-width: 0;
+      max-height: calc(2 * 1.4 * var(--size-l));
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+    }
+
+    .said .muted {
+      line-height: calc(1.4 * var(--size-l));
     }
   }
 </style>

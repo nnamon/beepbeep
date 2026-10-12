@@ -24,6 +24,27 @@ describe('when your turn ends', () => {
     expect(endsTurn('W1AW DE 9V1NE <SK> EE')).toBe(true);
     for (const open of ['BK', 'HW?', 'QTH?', '73', 'TU 73', 'QTH REGINA SK', 'QTH RICHMOND VA', 'QTH LITTLE ROCK AR', 'AGN?']) expect(endsTurn(open), open).toBe(false);
   });
+  it('VA, SK and AR sent as a region do not end it', () => {
+    const cutFor = (over: string, own?: string) => {
+      const w = over.split(' ');
+      for (let i = 1; i <= w.length; i++) if (endsTurn(w.slice(0, i).join(' '), own)) return w.slice(0, i).join(' ');
+      return null;
+    };
+    for (const own of [undefined, 'VA']) {
+      // After a report, and sent twice.
+      for (const over of ['R TNX UR 579 579 VA VA NAME AMON AMON NR 1234 BK', 'BK TU 5NN VA VA BK', 'TU 579 VA BK']) expect(cutFor(over, own), `${over} (${own})`).toBe(over);
+      // In a QTH, however long the town, and sent twice.
+      for (const over of ['QTH RICHMOND VA RICHMOND VA HW? W1AW DE W4VA K', 'QTH REGINA SK REGINA SK HW? W1AW DE VE5SK K', 'QTH NORTH LITTLE ROCK AR HW? W1AW DE K5AR K'])
+        expect(cutFor(over, own), `${over} (${own})`).toBe(over);
+    }
+    // Your own region, wherever it comes (an SST exchange: name, then region).
+    expect(endsTurn('GE BOB VA', 'VA')).toBe(false);
+    expect(endsTurn('GE BOB SK', 'SK')).toBe(false);
+    // After a callsign it is the prosign: the end of the contact.
+    expect(endsTurn('TNX FER QSO 73 W1AW DE W4VA VA', 'VA')).toBe(true);
+    expect(endsTurn('TNX 73 W1AW DE VE5SK <SK> EE', 'SK')).toBe(true);
+    expect(endsTurn('W1AW DE K5AR AR', 'AR')).toBe(true);
+  });
 });
 
 describe('exchanges without K', () => {
@@ -50,6 +71,21 @@ describe('exchanges without K', () => {
       p.hear('9V1NE');
       expect(p.turnComplete('R TU 5NN'), format).toBe(false);
       expect(p.turnComplete('R TU 5NN SINGAPORE'), format).toBe(true);
+    }
+  });
+  it('SST: your name sent twice is not your region', () => {
+    const sst = new QsoBot({ format: 'sst', opener: 'you', you: SG, wpm: 18, seed: 2 });
+    sst.hear('CQ SST 9V1NE');
+    const call = sst.active!.call;
+    expect(sst.turnComplete(`${call} GE AMON AMON`)).toBe(false);
+    expect(sst.turnComplete(`${call} GE AMON AMON SINGAPORE`)).toBe(true);
+  });
+  it('SOTA and POTA: a report without UR before it completes the exchange', () => {
+    for (const format of ['pota', 'sota'] as const) {
+      const p = new QsoBot({ format, opener: 'bot', you: SG, wpm: 18, seed: 3 });
+      p.start();
+      p.hear('9V1NE');
+      expect(p.turnComplete('TU 579 SINGAPORE'), format).toBe(true);
     }
   });
   it('a ragchew always needs K or a pause', () => {
@@ -90,6 +126,22 @@ describe('the station hears you right', () => {
     expect(bot.hear('CQ CQ CQ K')[0].text).toBe('QRZ?');
     expect(bot.copied.call).toBeNull();
   });
+  it('a pileup answers a CQ without your call, but does not copy your saved call', () => {
+    for (const cq of ['CQ CQ K', 'CQ CQ DE K', 'CQ CQ DE ⁇⁇⁇ K']) {
+      const bot = new QsoBot({ format: 'pileup', opener: 'you', you: SG, wpm: 18, seed: 2, crowd: 3 });
+      expect(bot.hear(cq).length, cq).toBe(3);
+      expect(bot.copied.call, cq).toBeNull();
+    }
+    // Your call sent later is copied then.
+    const later = new QsoBot({ format: 'pileup', opener: 'you', you: SG, wpm: 18, seed: 2, crowd: 3 });
+    later.hear('CQ CQ K');
+    later.hear('CQ DE 9V1NE K');
+    expect(later.copied.call).toBe('9V1NE');
+    // Sent at once, as heard (a slip included).
+    const slip = new QsoBot({ format: 'pileup', opener: 'you', you: SG, wpm: 18, seed: 2, crowd: 3 });
+    slip.hear('CQ DE 9V1NI K');
+    expect(slip.copied.call).toBe('9V1NI');
+  });
   it('HW? closing a full over is not a request for your report', () => {
     const bot = new QsoBot({ format: 'ragchew', opener: 'bot', you: SG, wpm: 18, seed: 4 });
     bot.start();
@@ -120,6 +172,21 @@ describe('SST outside the USA', () => {
       expect(bot.copied).toMatchObject({ name: 'AMON', state: 'SINGAPORE' });
     });
   }
+  for (const over of ['GE AMON AMON SINGAPORE SINGAPORE', 'GE NAME AMON QTH SINGAPORE', 'TU NAME AMON AMON QTH SINGAPORE SINGAPORE', 'QTH SINGAPORE NAME AMON', 'AMON SINGAPORE AMON SINGAPORE', 'NAME IS AMON SINGAPORE', 'AMON QTH SINGAPORE BK']) {
+    it(`reads sent twice, and NAME and QTH, in "${over}"`, () => {
+      const bot = new QsoBot({ format: 'sst', opener: 'you', you: SG, wpm: 18, seed: 4 });
+      bot.hear('CQ SST 9V1NE');
+      bot.hear(`${bot.active!.call} ${over}`);
+      expect(bot.copied).toMatchObject({ name: 'AMON', state: 'SINGAPORE' });
+    });
+  }
+  it('reads a region sent twice when the station called CQ', () => {
+    const bot = new QsoBot({ format: 'sst', opener: 'bot', you: { ...ME, call: 'K6ABC', name: 'JOHN', state: 'CA' }, wpm: 18, seed: 4 });
+    bot.start();
+    bot.hear('K6ABC');
+    bot.hear(`GE ${bot.active!.name} JOHN JOHN CA CA`);
+    expect(bot.copied).toMatchObject({ name: 'JOHN', state: 'CA' });
+  });
   it('Delaware and Ontario still count as regions', () => {
     for (const st of ['DE', 'ON']) {
       const bot = new QsoBot({ format: 'sst', opener: 'you', you: { ...ME, state: st }, wpm: 18, seed: 4 });
@@ -172,6 +239,14 @@ describe('parser', () => {
     expect(parse('NAME?').asks).toContain('name');
     expect(parse('TNX FER QSO 73 TU <SK>').signoff).toBe(true);
     expect(parse('AGN?').agn).toBe(true);
+  });
+  it('reads a report sent without UR, but not a number in a sentence or a serial number alone', () => {
+    expect(parse('TU 579 SINGAPORE SINGAPORE BK').rst).toBe('579');
+    expect(parse('R 579 579 VA VA BK').rst).toBe('579');
+    expect(parse('9V1NE 559 SINGAPORE BK').rst).toBe('559');
+    expect(parse('ANT IS DIPOLE UP 135 FT').rst).toBeNull();
+    expect(parse('9V1NE 123').rst).toBeNull();
+    expect(parse('TU 5NN 123').serial).toBe('123');
   });
   it('finds the missed part of a busted call', () => {
     expect(missingPart('WB2UZ', 'WB2UZE')).toBe('E');
@@ -263,6 +338,33 @@ describe('bot calls CQ', () => {
     const pota = run('pota', () => ['K1ABC K1ABC', 'BK TU UR 5NN 5NN MA MA 73 BK']);
     expect(pota.done).toBe(true);
     expect(pota.copied.state).toBe('MA');
+  });
+
+  it('SOTA logs a report sent without UR', () => {
+    const sota = run('sota', () => ['K1ABC', 'TU 579 MA MA BK']);
+    expect(sota.done).toBe(true);
+    expect(sota.copied).toMatchObject({ rst: '579', state: 'MA' });
+  });
+});
+
+describe('a city-state station', () => {
+  it('sends its QTH once for each repeat, with no region after it', () => {
+    for (const repeats of [1, 2]) {
+      const bot = new QsoBot({ format: 'ragchew', opener: 'bot', you: ME, wpm: 18, seed: 4 });
+      Object.assign(bot.active!, { qth: 'SINGAPORE', state: 'SINGAPORE', repeats, abbrev: 1 });
+      bot.start();
+      const over = bot.hear(`${bot.active!.call} DE K1ABC K1ABC K`)[0].text;
+      expect(over, `${repeats}`).toContain(repeats === 2 ? '= QTH SINGAPORE SINGAPORE =' : '= QTH SINGAPORE =');
+      // Asked for it again, it sends it twice.
+      const again = bot.hear(`QTH? ${bot.active!.call} DE K1ABC K`)[0].text;
+      expect(again).toMatch(/^QTH SINGAPORE SINGAPORE K1ABC DE/);
+    }
+  });
+  it('a station with a region still sends it after the town', () => {
+    const bot = new QsoBot({ format: 'ragchew', opener: 'bot', you: ME, wpm: 18, seed: 4 });
+    Object.assign(bot.active!, { qth: 'NEWINGTON', state: 'CT', repeats: 2, abbrev: 1 });
+    bot.start();
+    expect(bot.hear(`${bot.active!.call} DE K1ABC K1ABC K`)[0].text).toContain('= QTH NEWINGTON NEWINGTON CT =');
   });
 });
 

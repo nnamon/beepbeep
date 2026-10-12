@@ -295,3 +295,20 @@ test('Enter after clicking a drill button with the mouse still submits the answe
   if (item.replace(/ /g, '').length > 1) await page.keyboard.press('Enter');
   await expect(page.getByText('Sent', { exact: true })).toBeVisible();
 });
+
+test('Pocket words: Enter after a miss goes on without answering the next one', async ({ page }) => {
+  await instrument(page);
+  await settings(page, { ...BASE, track: 'koch', level: { koch: 'koch-44', licw: 'licw-bc1-REA' } });
+  await page.goto('./#/pocket/round/words');
+  await page.getByRole('button', { name: 'Start the round' }).click();
+  await nextAudio(page, 0);
+  await page.waitForTimeout(300);
+  await page.keyboard.press('Q');
+  await page.keyboard.press('Q');
+  await page.keyboard.press('Enter');
+  await expect(page.getByText(/^You typed QQ/)).toBeVisible();
+  await page.keyboard.press('Enter');
+  await expect(page.getByText('2 / 20')).toBeVisible();
+  await page.waitForTimeout(600);
+  await expect(page.getByText(/^You typed/)).toHaveCount(0);
+});

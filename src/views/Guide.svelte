@@ -94,6 +94,14 @@
 </section>
 
 <style>
+  /* Links in the tables and the list are tap targets of their own, not words in a sentence. */
+  td a,
+  dt a {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--target-min);
+  }
+
   .guide {
     display: flex;
     flex-direction: column;

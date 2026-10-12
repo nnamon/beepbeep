@@ -45,7 +45,6 @@ Known and left as they are:
 
 ### Small
 
-14. **README images** (`docs/images/`) show a few old labels (Level 14, older layout). Regenerate: `docker compose run --rm -T -e README_SHOTS=1 -e GITHUB_SHA=$(git rev-parse HEAD) e2e npx playwright test --project=readme`, then look at every image before committing.
 
 ## Not checked
 

@@ -16,6 +16,7 @@
   import Settings from './views/Settings.svelte';
   import Setup from './views/Setup.svelte';
   import Reference from './views/Reference.svelte';
+  import Changes from './views/Changes.svelte';
   import Specimen from './views/Specimen.svelte';
   import { effectiveMix, settings } from './lib/state/settings.svelte';
   import { setMix } from './lib/train/world';
@@ -102,7 +103,7 @@
 
 <a
   class="skip"
-  href={href(...route.path)}
+  href="#main-content"
   onclick={(e) => {
     e.preventDefault();
     focusContent(true);
@@ -128,7 +129,7 @@
   <SoundGate />
   {#if top !== 'pocket'}<div class="signal-strip"><SignalBar compact /></div>{/if}
 
-  <main class="main">
+  <main class="main" id="main-content">
     {#if top === 'practice'}
       <Practice />
     {:else if top === 'pocket'}
@@ -143,6 +144,8 @@
       <Setup />
     {:else if top === 'reference'}
       <Reference />
+    {:else if top === 'changes'}
+      <Changes />
     {:else if top === 'specimen'}
       <Specimen />
     {:else if top === 'guide'}
@@ -210,6 +213,7 @@
     align-items: center;
     gap: var(--s-1);
     min-height: var(--target-min);
+    min-width: var(--target-min);
     font-size: var(--size-m);
     font-weight: var(--weight-strong);
     text-decoration: none;
@@ -239,7 +243,9 @@
   .nav a {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     min-height: var(--target-min);
+    min-width: var(--target-min);
     border-top: 2px solid transparent;
   }
 

@@ -15,10 +15,24 @@
   const toneLost = $derived(
     signal.micOn && !!signal.pitch && signal.snr < 8 && performance.now() - signal.lastKeyDown > 15000 && signal.level > -200,
   );
+  // The same words as on screen, as one sentence for a screen reader.
+  const shown = $derived(
+    keyboard
+      ? (NAMES[settings.input] ?? settings.input)
+      : !signal.micOn
+        ? 'Mic off'
+        : toneLost
+          ? 'No tone'
+          : signal.pitch
+            ? `${Math.round(signal.pitch)} Hz`
+            : 'Listening',
+  );
+  const extra = $derived(signal.notice || (signal.wpm > 0 && !hide ? `${signal.wpm.toFixed(0)} wpm` : ''));
+  const name = $derived(`${shown}${extra ? `, ${extra}` : ''}. Open input setup.`);
 </script>
 
 <!-- Named by what it shows ("Mic off", "Touch key", a notice), then where it goes. -->
-<a class="bar" class:compact href={href('setup')}>
+<a class="bar" class:compact href={href('setup')} aria-label={name}>
   {#if keyboard}
     <span class="cell muted">{NAMES[settings.input] ?? settings.input}</span>
     {#if !hide}<span class="led" class:on={signal.keyDown} aria-hidden="true"></span>{/if}
@@ -37,7 +51,6 @@
   {/if}
   {#if signal.notice}<span class="cell notice">{signal.notice}</span>
   {:else if signal.wpm > 0 && !hide}<span class="cell num">{signal.wpm.toFixed(0)} wpm</span>{/if}
-  <span class="visually-hidden">. Open input setup.</span>
 </a>
 
 <style>

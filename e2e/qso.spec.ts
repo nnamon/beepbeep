@@ -185,6 +185,34 @@ test('what the station sends last can still be copied, and is scored; the QSO is
   await expect.poll(async () => (await all(page, 'sessions')).map((s) => s.mode)).toContain('qso');
 });
 
+test('the QSO log: SST has no report and says so; a city-state QTH shows once', async ({ page }) => {
+  test.skip(!desktop(), 'one screen size is enough');
+  await open(page);
+  // Progress opens the database; the log is written into it, then read again.
+  await page.getByRole('link', { name: 'Progress' }).first().click();
+  await expect(page.getByText('No QSOs yet.')).toBeVisible();
+  await page.evaluate(async () => {
+    const db: IDBDatabase = await new Promise((res, rej) => {
+      const r = indexedDB.open('beepbeep', 1);
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    });
+    const tx = db.transaction('qsos', 'readwrite');
+    const base = { opener: 'bot', seconds: 40, overs: 2, copyScore: 1, sendScore: 1, wpm: 18 };
+    tx.objectStore('qsos').add({ ...base, at: Date.now() - 2000, format: 'sst', call: 'VR2SP', name: 'WING', qth: 'KOWLOON', state: 'HK', rstSent: '', rstRcvd: '' });
+    tx.objectStore('qsos').add({ ...base, at: Date.now() - 1000, format: 'ragchew', call: '9V1AB', name: 'TAN', qth: 'SINGAPORE', state: 'SINGAPORE', rstSent: '579', rstRcvd: '599' });
+    await new Promise((res) => (tx.oncomplete = res));
+    db.close();
+  });
+  await page.reload();
+  const cells = (call: string) => page.locator('tr', { hasText: call }).locator('td').allInnerTexts();
+  await expect.poll(() => cells('VR2SP')).toHaveLength(10);
+  const sst = await cells('VR2SP');
+  // QTH, RST sent, RST rcvd.
+  expect(sst.slice(4, 7)).toEqual(['KOWLOON HK', 'no report in SST', 'no report in SST']);
+  expect((await cells('9V1AB')).slice(4, 7)).toEqual(['SINGAPORE', '579', '599']);
+});
+
 test('the copy boxes say Region, not State', async ({ page }) => {
   test.skip(!desktop(), 'one screen size is enough');
   await open(page);
@@ -254,6 +282,76 @@ test('leaving while the station sends: Carry on plays its transmission again, th
   expect((await theirs(page)).length).toBe(1);
   expect((await theirs(page))[0]).toMatch(/CQ CQ CQ DE/);
 });
+
+// A phone on its side: a short, wide window. Your turn, End my turn and what
+// you are sending must stay above the touch key, even after a long over.
+const ON_ITS_SIDE = [
+  { name: 'iPhone 13, installed', width: 844, height: 390, top: 0, left: 47, right: 47, bottom: 21 },
+  { name: 'iPhone 13, Safari', width: 844, height: 340, top: 0, left: 47, right: 47, bottom: 21 },
+  { name: 'iPhone, 342 px tall, notch and home bar tokens', width: 750, height: 342, top: 47, left: 0, right: 0, bottom: 34 },
+  { name: 'iPhone SE', width: 667, height: 375, top: 0, left: 0, right: 0, bottom: 0 },
+  { name: 'Android', width: 780, height: 330, top: 0, left: 0, right: 0, bottom: 0 },
+];
+
+for (const sz of ON_ITS_SIDE)
+  test(`on its side (${sz.name}): your turn, its buttons and what you send stay above the touch key`, async ({ page }) => {
+    test.skip(test.info().project.name !== 'phone', 'phone layout');
+    test.setTimeout(120_000);
+    await page.setViewportSize({ width: sz.width, height: sz.height });
+    await open(page, { input: 'touch', sendWpm: 30, overTimeout: 20 });
+    await page.addStyleTag({ content: `:root { --safe-top: ${sz.top}px !important; --safe-bottom: ${sz.bottom}px !important; --safe-left: ${sz.left}px !important; --safe-right: ${sz.right}px !important; }` });
+    const measure = () =>
+      page.evaluate(() => {
+        const r = (sel: string) => document.querySelector(sel)?.getBoundingClientRect();
+        const end = [...document.querySelectorAll('.run button')].find((b) => /End my turn/.test(b.textContent ?? ''))?.getBoundingClientRect();
+        return {
+          pad: Math.round(r('.dock')!.top),
+          title: Math.round(r('.run h1')!.top),
+          status: Math.round(r('.run .status')!.bottom),
+          end: Math.round(end?.bottom ?? Infinity),
+          over: Math.round(r('.run .over')?.bottom ?? Infinity),
+          wide: document.documentElement.scrollWidth - innerWidth,
+        };
+      });
+    for (const format of ['Ragchew', 'LICW QSO Protocol', 'SKCC']) {
+      await setup(page, format, 'You');
+      await page.getByRole('button', { name: 'Start QSO' }).click();
+      await expect(status(page)).toHaveText(/Your turn/);
+      // iPhone: the Turn sound on banner goes once the Start tap has turned sound on.
+      await expect(page.getByRole('button', { name: 'Turn sound on' })).toBeHidden({ timeout: 10_000 });
+      await page.evaluate(() => window.scrollTo(0, 0));
+      const m = await measure();
+      await page.screenshot({ path: `test-results/screens/qso-side-${sz.width}x${sz.height}-${format.replace(/\s/g, '')}.png` });
+      expect(m.title, `${format}: the top of the QSO is on screen`).toBeGreaterThanOrEqual(sz.top);
+      expect(m.status, `${format}: status`).toBeLessThanOrEqual(m.pad);
+      expect(m.end, `${format}: End my turn`).toBeLessThanOrEqual(m.pad);
+      expect(m.over, `${format}: what you are sending`).toBeLessThanOrEqual(m.pad);
+      expect(m.wide, `${format}: no sideways scrolling`).toBeLessThanOrEqual(0);
+      if (format === 'Ragchew') {
+        // A long over, three lines or more on a phone: the newest words stay in view above the pad.
+        await key(page, 'R TNX BOB UR RST 579 579 NAME AMON AMON QTH SINGAPORE SINGAPORE RIG IS IC7300 ANT IS DIPOLE WX IS HOT', 30);
+        await expect.poll(async () => (await page.locator('.run .over').innerText()).length, { timeout: 20_000 }).toBeGreaterThan(70);
+        await page.evaluate(() => window.scrollTo(0, 0));
+        const long = await measure();
+        await page.screenshot({ path: `test-results/screens/qso-side-${sz.width}x${sz.height}-long.png` });
+        expect(long.over, 'a long over').toBeLessThanOrEqual(long.pad);
+        expect(long.end, 'End my turn, after a long over').toBeLessThanOrEqual(long.pad);
+        // The last word sent shows inside the visible box.
+        const lastShown = await page.evaluate(() => {
+          const box = document.querySelector('.run .over')!.getBoundingClientRect();
+          const text = document.querySelector('.run .over .text')!;
+          const range = document.createRange();
+          range.selectNodeContents(text);
+          const rects = [...range.getClientRects()];
+          const last = rects[rects.length - 1];
+          return !!last && last.bottom <= box.bottom + 1 && last.top >= box.top - 1;
+        });
+        expect(lastShown, 'the newest words are in view').toBe(true);
+      }
+      await page.getByRole('button', { name: 'Stop' }).click();
+      await page.getByRole('button', { name: 'New QSO' }).click();
+    }
+  });
 
 test('on a phone with a notch and a home bar, your turn and its buttons show above the touch key', async ({ page }) => {
   test.skip(test.info().project.name !== 'phone', 'phone layout');

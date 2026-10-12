@@ -29,3 +29,33 @@ export function reloadIfUpdated(force = false): boolean {
   location.reload();
   return true;
 }
+
+/**
+ * Loads the latest version from the internet, skipping the copy saved on this
+ * device: drops the service worker and its caches, refetches the page past the
+ * browser's own cache, then reloads. Progress and settings are kept (they live
+ * in IndexedDB and localStorage, not in these caches). Refused when offline,
+ * since without the saved copy the app couldn't load.
+ */
+export async function reloadFresh(): Promise<'offline' | 'reloading'> {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return 'offline';
+  try {
+    const regs = (await navigator.serviceWorker?.getRegistrations()) ?? [];
+    await Promise.all(regs.map((r) => r.unregister()));
+  } catch {
+    /* no service worker support */
+  }
+  try {
+    const keys = await caches.keys();
+    await Promise.all(keys.map((k) => caches.delete(k)));
+  } catch {
+    /* no Cache Storage */
+  }
+  try {
+    await fetch(location.pathname, { cache: 'reload' });
+  } catch {
+    /* the reload below still asks the network */
+  }
+  location.replace(`${location.pathname}?fresh=${Date.now()}${location.hash}`);
+  return 'reloading';
+}

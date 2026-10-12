@@ -39,7 +39,8 @@
 
   onMount(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (disabled || e.metaKey || e.ctrlKey || e.altKey) return;
+      // A key the screen already acted on (Enter for Next after a miss) is not also an answer.
+      if (disabled || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
       if (inField(e)) return;
       // Enter or Space on another focused control (a link, the Next button) is for that control.
       const t = e.target as HTMLElement | null;

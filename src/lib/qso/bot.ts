@@ -24,10 +24,10 @@ export const FORMATS: { id: Format; name: string; exchange: string }[] = [
 /** Formats with short exchanges, where K at the end is optional. */
 const NO_K: ReadonlySet<Format> = new Set(['contest', 'sst', 'pota', 'sota', 'pileup']);
 
-/** Everyday words around a bare SST exchange (GE TOM TOM MA TU): none of them is a name or a region. */
+/** Everyday words around a bare SST exchange (GE TOM MA TU): none of them is a name or a region. */
 const SST_FILLER = new Set([
   'GE', 'GM', 'GA', 'GN', 'TU', 'TNX', 'TKS', 'THANKS', 'R', 'RR', 'OM', 'BK', 'K', 'KN', '73', 'SST', 'FB', 'ES', 'HR', 'NAME',
-  'OP', 'IS', 'UR', '5NN', '599', 'CQ', 'TEST', 'PSE', 'AGN', 'AGN?', 'QRS', 'EE', 'AR', 'BT', 'HI', 'GL', 'CUL', 'HW?', '?',
+  'OP', 'NM', 'QTH', 'IS', 'UR', '5NN', '599', 'CQ', 'TEST', 'PSE', 'AGN', 'AGN?', 'QRS', 'EE', 'AR', 'BT', 'HI', 'GL', 'CUL', 'HW?', '?',
 ]);
 
 /** The report a station sends you in this format, as digits (5NN is 599), or '' when the exchange has none (SST). */
@@ -231,13 +231,17 @@ export class QsoBot {
   }
 
   /**
-   * The bare SST exchange in an over: your name, then your region. The region
+   * The bare SST exchange in an over: your name, then your region. A name
+   * after NAME and a region after QTH are read as such. Otherwise the region
    * may be any word (a state, a country, DX), so it is read by position, after
-   * calls, DE, greetings and the station's own name are set aside.
+   * calls, DE, greetings, the station's own name and words sent twice are set aside.
    */
   private sstExchange(p: Parsed): { name: string | null; region: string | null } {
     const w = p.words;
     let theirName = this.active?.name;
+    // QTH SALEM MA: the region if one is there, else the place.
+    const qthWords = new Set(p.qth?.split(' ') ?? []);
+    const keyedRegion = p.qth ? (p.state && qthWords.has(p.state) ? p.state : p.qth.split(' ').at(-1)!) : null;
     const rest: string[] = [];
     for (let i = 0; i < w.length; i++) {
       const x = w[i];
@@ -248,11 +252,13 @@ export class QsoBot {
         theirName = undefined;
         continue;
       }
+      // Read after NAME or QTH, or sent before (AMON AMON).
+      if (x === p.name || qthWords.has(x) || rest.includes(x)) continue;
       rest.push(x);
     }
-    if (rest.length >= 2) return { name: rest[0], region: rest[1] };
-    if (rest.length === 1) return this.regions.has(rest[0]) ? { name: null, region: rest[0] } : { name: rest[0], region: null };
-    return { name: null, region: null };
+    const name = p.name ?? (keyedRegion || rest.length >= 2 || (rest.length === 1 && !this.regions.has(rest[0])) ? (rest[0] ?? null) : null);
+    const region = keyedRegion ?? rest.filter((x) => x !== name)[0] ?? null;
+    return { name, region };
   }
 
   /**
@@ -350,7 +356,8 @@ export class QsoBot {
   private onYourCq(p: Parsed): BotTurn[] {
     if (this.format === 'pileup') {
       if (!p.cq && !this.isPileupPick(p) && this.active !== null) return [];
-      this.copied.call = p.calls[0] ?? this.you.call ?? null;
+      // The pileup calls you either way, but only a call you sent is copied.
+      this.copyYourCall(p);
       return this.pileupCall();
     }
     const b = this.active!;
@@ -482,9 +489,18 @@ export class QsoBot {
     return this.sayMany(left.map((s) => ({ s, text: this.rep(s.call, this.rng() < 0.5 ? 1 : 2) })));
   }
 
+  /** In a pileup: your call, when you sent one (a call that is none of the stations'). */
+  private copyYourCall(p: Parsed) {
+    const yours = p.calls.find((c) => !this.stations.some((s) => s.call === c));
+    if (yours) this.copied.call = yours;
+  }
+
   private pileupPick(p: Parsed): BotTurn[] {
     const left = this.stations.filter((s) => !this.completed.includes(s));
-    if (p.cq) return this.pileupCall();
+    if (p.cq) {
+      this.copyYourCall(p);
+      return this.pileupCall();
+    }
     const frag = p.words.map((w) => w.replace(/\?$/, '')).find((w) => /[A-Z0-9]{2,}/.test(w) && w !== 'DE' && w !== 'QRZ');
     if (!frag) return this.sayMany(left.map((s) => ({ s, text: s.call })));
     const exact = left.find((s) => s.call === frag);
@@ -523,7 +539,7 @@ export class QsoBot {
       `${greeting(this.rng)} ES TNX FER CALL`,
       `UR RST ${r(b.rst)}`,
       `NAME ${r(b.name)}`,
-      `QTH ${r(b.qth)} ${b.state}`,
+      `QTH ${r(b.qth)}${regionAfter(b)}`,
       'HW CPY?',
     ];
     return `${parts.join(' = ')} ${theirs} DE ${b.call} KN`;
@@ -556,7 +572,7 @@ export class QsoBot {
         case 'name':
           return `NAME ${this.rep(b.name, 3)}`;
         case 'qth':
-          return `QTH ${this.rep(b.qth, 2)} ${b.state}`;
+          return `QTH ${this.rep(b.qth, 2)}${regionAfter(b)}`;
         case 'rst':
           return `UR RST ${this.rep(b.rst, 3)}`;
         case 'rig':
@@ -633,6 +649,11 @@ export class QsoBot {
   private rep(x: string, n: number): string {
     return Array.from({ length: n }, () => x).join(' ');
   }
+}
+
+/** The region sent after the town (QTH SALEM MA), or nothing in a city-state, whose town is its country (QTH SINGAPORE). */
+export function regionAfter(s: { qth: string; state: string }): string {
+  return s.state && s.state !== s.qth ? ` ${s.state}` : '';
 }
 
 function greeting(rng: Rng): string {

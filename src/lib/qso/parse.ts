@@ -98,7 +98,7 @@ export function parse(text: string, regions: ReadonlySet<string> = REGION_SET): 
       if (!p.calls.includes(x)) p.calls.push(x);
     } else if ((x === 'RST' || x === 'UR') && next() && RST_RE.test(next()!.replace('?', ''))) {
       p.rst = norm(next()!);
-    } else if (RST_RE.test(x) && !p.rst && (w[i - 1] === 'UR' || w[i - 1] === 'RST' || x === '5NN' || /N/.test(x))) {
+    } else if (RST_RE.test(x) && !p.rst && (w[i - 1] === 'UR' || w[i - 1] === 'RST' || x === '5NN' || /N/.test(x) || bareReport(w, i))) {
       p.rst = norm(x);
     } else if (x === 'NAME' || x === 'OP' || x === 'NM') {
       let j = i + 1;
@@ -164,26 +164,64 @@ export function parse(text: string, regions: ReadonlySet<string> = REGION_SET): 
   return p;
 }
 
+/** Words a report may follow without UR or RST before it: TU 579, R 579, 9V1NE 579. */
+const BEFORE_REPORT = new Set(['TU', 'TNX', 'TKS', 'R', 'RR', 'BK', 'GM', 'GA', 'GE', 'GN', 'FB', 'ES']);
+
+/**
+ * Word i, three digits that could be a report, is one although no UR or RST
+ * comes before it: it is sent twice (579 579), or it follows a greeting, thanks
+ * or a callsign and something other than a number follows it (TU 579
+ * SINGAPORE). A number in a sentence (UP 135 FT), or alone at the end where a
+ * contest serial number goes (9V1NE 123), is not a report.
+ */
+function bareReport(w: string[], i: number): boolean {
+  const prev = w[i - 1];
+  const next = w[i + 1];
+  if (next === w[i]) return true;
+  return (prev === undefined || BEFORE_REPORT.has(prev) || isCallsign(prev)) && next !== undefined && !/^\d/.test(next);
+}
+
 /** Prosigns that end your turn when they are the last thing you send. */
 const ENDINGS = new Set(['K', 'KN', 'SK', 'VA', 'AR']);
 /** What may follow SK in a sign-off: a last goodbye. */
 const AFTER_SK = new Set(['EE', 'E', 'EEE', 'TU', '73', 'GL']);
 
 /**
+ * Word i (VA, SK or AR, or any region) is sent as a region, not as a prosign:
+ * it is your own region (`own`), it follows a report or the same word (579 VA
+ * VA), or it is part of a QTH (QTH NORTH LITTLE ROCK AR). Straight after a
+ * callsign it is the prosign (DE W4VA VA).
+ */
+function asRegion(w: string[], i: number, own: string): boolean {
+  const x = w[i];
+  if (!REGION_SET.has(x) && x !== own) return false;
+  const prev = w[i - 1] ?? '';
+  if (isCallsign(prev)) return false;
+  if (x === own || prev === x || RST_RE.test(prev) || prev === '5NN') return true;
+  // Back over the town's words (letters only) to QTH.
+  for (let j = i - 1; j >= Math.max(0, i - 6); j--) {
+    if (w[j] === 'QTH') return true;
+    if (!/^[A-Z]+$/.test(w[j]) || (KEYWORDS.has(w[j]) && !REGION_SET.has(w[j]))) break;
+  }
+  return false;
+}
+
+/**
  * True when what you have sent so far ends your turn: K, KN, AR or SK at the
  * end, or BK at the end of an over that does not start with it. HW?, 73 or a
- * leading BK in the middle of an over do not end it.
+ * leading BK in the middle of an over do not end it, and neither does VA, SK
+ * or AR sent as a region (see asRegion); `own` is your own region, if you set one.
  */
-export function endsTurn(text: string): boolean {
+export function endsTurn(text: string, own = ''): boolean {
   const w = words(text);
+  const mine = own.trim().toUpperCase();
   const last = w[w.length - 1];
   if (!last) return false;
   if (last === 'BK') return w.length > 1;
-  // QTH REGINA SK is Saskatchewan (and VA Virginia, AR Arkansas), not the end of the contact.
-  if (REGION_SET.has(last) && w.slice(-4, -1).includes('QTH')) return false;
+  if (asRegion(w, w.length - 1, mine)) return false;
   if (ENDINGS.has(last)) return true;
   const sk = Math.max(w.lastIndexOf('SK'), w.lastIndexOf('VA'));
-  return sk >= 0 && sk < w.length - 1 && w.slice(sk + 1).every((x) => AFTER_SK.has(x));
+  return sk >= 0 && sk < w.length - 1 && !asRegion(w, sk, mine) && w.slice(sk + 1).every((x) => AFTER_SK.has(x));
 }
 
 function norm(rst: string): string {
