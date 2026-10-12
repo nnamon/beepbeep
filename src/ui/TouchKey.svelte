@@ -79,7 +79,7 @@
     z-index: 11;
     display: flex;
     justify-content: center;
-    padding: var(--s-1) var(--s-2) calc(var(--s-1) + var(--safe-bottom));
+    padding: var(--s-1) calc(var(--s-2) + var(--safe-right)) calc(var(--s-1) + var(--safe-bottom)) calc(var(--s-2) + var(--safe-left));
     background: var(--bg);
     border-top: var(--hairline) solid var(--line);
   }
@@ -123,5 +123,19 @@
   .hint {
     font-size: var(--size-s);
     color: var(--muted);
+  }
+
+  /* A phone on its side: a lower pad, so the drill keeps most of the short screen. Still a big target. */
+  @media (orientation: landscape) and (max-height: 500px) {
+    .dock {
+      padding-top: var(--s-half);
+      padding-bottom: calc(var(--s-half) + var(--safe-bottom));
+    }
+
+    .pad {
+      height: 64px;
+      flex-direction: row;
+      gap: var(--s-2);
+    }
   }
 </style>

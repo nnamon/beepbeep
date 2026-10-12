@@ -32,6 +32,80 @@ async function open(page: Page, route: string, settings: Record<string, unknown>
   await page.waitForTimeout(300);
 }
 
+test('each screen has its own title, and focus moves to its heading', async ({ page }) => {
+  await open(page, 'practice');
+  await expect(page).toHaveTitle('Practice · BeepBeep');
+  // On first load focus stays where the browser puts it.
+  expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
+
+  await page.locator('header nav').getByRole('link', { name: 'Pocket' }).focus();
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveTitle('Pocket · BeepBeep');
+  await expect(page.getByRole('heading', { level: 1, name: 'Pocket' })).toBeFocused();
+
+  await page.getByRole('link', { name: /^Characters/ }).click();
+  await expect(page).toHaveTitle('Characters · Pocket · BeepBeep');
+  await expect(page.locator('main')).toBeFocused();
+
+  await page.getByRole('link', { name: 'Back to Pocket' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Pocket' })).toBeFocused();
+
+  await page.goto('./#/practice/copy');
+  await expect(page).toHaveTitle('Copy drill · BeepBeep');
+  await expect(page.getByRole('heading', { level: 1, name: 'Copy drill' })).toBeFocused();
+
+  await page.getByRole('link', { name: 'Back', exact: true }).click();
+  await expect(page).toHaveTitle('Practice · BeepBeep');
+  await expect(page.getByRole('heading', { level: 1, name: 'Practice' })).toBeFocused();
+
+  await page.goto('./#/practice/class/bc1/familiarity');
+  await expect(page).toHaveTitle(/^Familiarity.* · BeepBeep$/);
+  await expect(page.locator('main h1')).toBeFocused();
+
+  // Focus on a heading shows no ring: it is not something you can press.
+  expect(await page.locator('main h1').evaluate((h) => getComputedStyle(h).outlineStyle)).toBe('none');
+});
+
+test('a skip link is the first stop and moves to the content', async ({ page }) => {
+  await open(page, 'practice');
+  await page.keyboard.press('Tab');
+  const skip = page.getByRole('link', { name: 'Skip to content' });
+  await expect(skip).toBeFocused();
+  const box = (await skip.boundingBox())!;
+  expect(box.y, 'shown on screen while focused').toBeGreaterThanOrEqual(0);
+  expect(box.height).toBeGreaterThanOrEqual(24);
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('heading', { level: 1, name: 'Practice' })).toBeFocused();
+  expect(page.url()).toMatch(/#\/practice$/);
+  // Hidden again once you move on.
+  await page.keyboard.press('Tab');
+  expect((await skip.boundingBox())?.y ?? -1).toBeLessThan(0);
+});
+
+test('the signal bar is named by what it shows', async ({ page }) => {
+  await open(page, 'practice', { input: 'mic' });
+  const bar = page.locator('header .signal a');
+  await expect(bar).toContainText('Mic off');
+  await expect(bar).toHaveAccessibleName(/^Mic off\b.*input setup/i);
+  await open(page, 'practice', { input: 'touch' });
+  // Same address, so load it again for the new settings to apply.
+  await page.reload();
+  await expect(page.locator('header .signal a')).toHaveAccessibleName(/^Touch key\b.*input setup/i);
+  await page.keyboard.press('Alt+ArrowUp');
+  await expect(page.locator('header .signal a')).toHaveAccessibleName(/Receive \d+ wpm/);
+});
+
+test('notices are announced', async ({ page }) => {
+  await open(page, 'practice');
+  const live = await page.locator('[aria-live="polite"], [role="status"]').elementHandles();
+  expect(live.length).toBeGreaterThan(0);
+  await page.keyboard.press('Alt+ArrowUp');
+  await expect(page.getByRole('status').filter({ hasText: /^Receive \d+ wpm$/ })).toHaveCount(1);
+  // The region was there before the text arrived, so screen readers notice the change.
+  const texts = await Promise.all(live.map((h) => h.evaluate((e) => e.isConnected && e.textContent)));
+  expect(texts.some((t) => t && /Receive \d+ wpm/.test(t))).toBe(true);
+});
+
 test('Pocket: the answer after a miss is announced', async ({ page }) => {
   await open(page, 'pocket/round/characters', { level: { koch: 'koch-20', licw: 'licw-bc1-REA' } });
   await page.getByRole('button', { name: 'Start the round' }).click();

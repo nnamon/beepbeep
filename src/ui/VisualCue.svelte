@@ -29,19 +29,17 @@
   });
 </script>
 
-<div class="cue" class:on aria-hidden="true"></div>
+<!-- Sits in the header (App.svelte places it in the free space), so it never covers a control. -->
+<span class="cue" class:on aria-hidden="true" title="Visual cue. It lights up while the app plays its tone."></span>
 
 <style>
   .cue {
-    position: fixed;
-    top: max(var(--s-2), var(--safe-top));
-    right: var(--s-2);
+    display: block;
+    flex: none;
     width: 14px;
     height: 14px;
     border-radius: 50%;
     border: 1.5px solid var(--muted);
-    z-index: 20;
-    pointer-events: none;
   }
 
   .on {
