@@ -139,12 +139,13 @@
     submitting = true;
     const got = typed.join('');
     log.push({ want: item, got });
-    // Per-character stats from the alignment.
+    // Per-character stats from the alignment. The space between words is not a character.
     const ops = align(textTokens(item), textTokens(got));
     for (const o of ops) {
+      if (o.op === 'ins' || o.want === ' ') continue;
       if (o.op === 'match') await answer(map, `rx:${o.want}`, true, firstKeyMs || 1500, 1500);
       else if (o.op === 'sub') await answer(map, `rx:${o.want}`, false, firstKeyMs || 1500, 1500, { want: o.want, got: o.got });
-      else if (o.op === 'del') await answer(map, `rx:${o.want}`, false, 3000, 1500);
+      else await answer(map, `rx:${o.want}`, false, 3000, 1500);
     }
     i++;
     submitting = false;

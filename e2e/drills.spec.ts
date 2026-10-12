@@ -417,3 +417,41 @@ test('LICW exercise: Esc stops it and stays on the exercise, as Stop does', asyn
   await expect(page.getByRole('button', { name: /^Start/ })).toBeVisible();
   expect((await played(page)).filter((p) => p.at > at + 50)).toEqual([]);
 });
+
+/** The keys of the item stats stored so far. */
+const itemKeys = (page: Page) =>
+  page.evaluate(async () => {
+    const db: IDBDatabase = await new Promise((res, rej) => {
+      const r = indexedDB.open('beepbeep', 1);
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    });
+    const keys: string[] = await new Promise((res) => {
+      const q = db.transaction('items').objectStore('items').getAllKeys();
+      q.onsuccess = () => res(q.result as string[]);
+    });
+    db.close();
+    return keys;
+  });
+
+// Before: the space between words was recorded as a missed character ("rx: ").
+for (const how of ['right', 'with a letter missed'] as const) {
+  test(`Copy drill, Short phrases: the space between words is not a character (answered ${how})`, async ({ page }) => {
+    await instrument(page);
+    await settings(page, { ...BASE, track: 'koch', level: { koch: 'koch-44', licw: 'licw-bc1-REA' } });
+    await page.goto('./#/practice/copy/context');
+    await expect(page.getByRole('radio', { name: 'Short phrases' })).toHaveAttribute('aria-checked', 'true');
+    await page.getByRole('button', { name: /Start/ }).click();
+    const item = await nextAudio(page, 0);
+    expect(item).toContain(' ');
+    await page.waitForTimeout(item.length * 150);
+    // Missing a letter puts a letter of the next word against the space.
+    await typeText(page, how === 'right' ? item : item.replace(/(\S) /, ' '));
+    await page.keyboard.press('Enter');
+    await expect(page.getByText('Sent', { exact: true })).toBeVisible();
+    await expect.poll(() => itemKeys(page)).not.toEqual([]);
+    const keys = await itemKeys(page);
+    expect(keys.filter((k) => k.trim() !== k || k === 'rx:')).toEqual([]);
+    expect(keys.sort()).toEqual([...new Set(item.replace(/ /g, '').split('').map((c) => `rx:${c}`))].sort());
+  });
+}

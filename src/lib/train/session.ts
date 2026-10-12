@@ -217,11 +217,13 @@ export async function answer(
   slowMs: number,
   confusion?: { want: string; got: string },
 ) {
+  // The space between words is not a character: there is nothing to record.
+  if (/\s$/.test(key)) return map.get(key) ?? newStat(key);
   const s = recordAnswer(map.get(key) ?? newStat(key), right, ms, slowMs);
   map.set(key, s);
   try {
     await putItem(s);
-    if (!right && confusion && confusion.got) await addConfusion(confusion.want, confusion.got);
+    if (!right && confusion && confusion.got.trim()) await addConfusion(confusion.want, confusion.got);
   } catch {
     /* storage unavailable: keep in memory */
   }
