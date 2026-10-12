@@ -45,7 +45,7 @@ test('touch key sends and decodes', async ({ page }) => {
   }, { pattern: '-.- --', dit: 100 });
 
   await expect(page.getByLabel('Decoded sending')).toContainText('KM', { timeout: 5_000 });
-  await expect(page.locator('a[aria-label^="Signal"]').first()).toContainText('Touch key');
+  await expect(page.getByRole('link', { name: /Open input setup/ }).first()).toContainText('Touch key');
   await page.screenshot({ path: `test-results/screens/flow-touch-${phone ? 'phone' : 'desktop'}.png` });
   await page.getByRole('button', { name: 'Stop' }).click();
   await expect(pad).toHaveAttribute('aria-disabled', 'true');

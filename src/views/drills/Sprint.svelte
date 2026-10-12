@@ -1,6 +1,6 @@
 <script lang="ts">
   // Callsign and word sprint: speed rises 2 wpm after each right answer and
-  // falls 2 after a miss.
+  // falls 2 after a miss. Callsigns and words use only your lesson's characters.
   import { onDestroy } from 'svelte';
   import DrillFrame from '../../ui/DrillFrame.svelte';
   import Button from '../../ui/Button.svelte';
@@ -10,10 +10,12 @@
   import { engine } from '../../lib/audio/engine';
   import { signal } from '../../lib/state/signal.svelte';
   import { strict } from '../../lib/state/settings.svelte';
-  import { playCw, receiveSpeeds, saveSession } from '../../lib/train/session';
+  import { currentLevel, playCw, receiveSpeeds, saveSession } from '../../lib/train/session';
   import { items } from '../../lib/train/generate';
+  import { usesOnly } from '../../lib/train/words';
+  import { forControl } from '../../lib/util/keys';
   import { textTokens } from '../../lib/util/text';
-  import { mulberry32, randomSeed } from '../../lib/util/random';
+  import { mulberry32, pick, randomSeed } from '../../lib/util/random';
   import { keepAwake } from '../../lib/util/wakelock';
 
   const ROUND = 20;
@@ -28,8 +30,29 @@
   let typed = $state<string[]>([]);
   let log = $state<{ item: string; got: string; wpm: number; ok: boolean }[]>([]);
   let startedAt = 0;
+  let pool: string[] = [];
+  let tooFew = $state(false);
+  $effect(() => {
+    void material;
+    tooFew = false;
+  });
+  let endPerf = 0;
+  /** Bumped for each item and on leaving, so nothing plays after you have moved on. */
+  let turn = 0;
+
+  /** Callsigns or words made only of the characters you know. */
+  function buildPool(kind = material): string[] {
+    const known = new Set(currentLevel().known);
+    return [...new Set(items(rng, kind, known, 60).filter((x) => usesOnly(x, known)))];
+  }
+  // Callsigns need digits: until the lesson has some, start on words.
+  if (buildPool('callsigns').length < 2) material = 'words';
 
   async function start() {
+    if (stage !== 'ready' && stage !== 'done') return;
+    pool = buildPool();
+    tooFew = pool.length < 2;
+    if (tooFew) return;
     wpm = receiveSpeeds().charWpm;
     n = 0;
     log = [];
@@ -39,11 +62,16 @@
   }
 
   async function next() {
+    const me = ++turn;
+    engine.stopAll();
     if (n >= ROUND) return finish();
-    item = items(rng, material, null, 1)[0];
+    item = pick(rng, pool);
     typed = [];
     stage = 'playing';
+    endPerf = Infinity;
     const pb = await playCw(item, { charWpm: wpm, effectiveWpm: wpm });
+    if (me !== turn) return;
+    endPerf = performance.now() + (pb.startTime - engine.now + pb.duration - 0.2) * 1000;
     stage = 'typing';
     await pb.done;
   }
@@ -52,11 +80,14 @@
     if (stage === 'shown' && k === 'DONE') return void next();
     if (stage !== 'typing' && stage !== 'playing') return;
     if (k === 'DEL') typed.pop();
-    else if (k === 'DONE') submit();
-    else if (k !== ' ' || material === 'words') typed.push(k);
+    // Enter with nothing typed before it has finished playing is a stray press.
+    else if (k === 'DONE') {
+      if (typed.length || performance.now() >= endPerf) submit();
+    } else if (k !== ' ' || material === 'words') typed.push(k);
   }
 
   function submit() {
+    if (stage !== 'typing' && stage !== 'playing') return;
     const got = typed.join('');
     const ok = textTokens(got).join('') === textTokens(item).join('');
     log.push({ item, got, wpm, ok });
@@ -81,6 +112,7 @@
   }
 
   onDestroy(() => {
+    turn++;
     signal.receiving = false;
     engine.stopAll();
     void keepAwake(false);
@@ -90,22 +122,25 @@
   const last = $derived(log[log.length - 1]);
 </script>
 
-<DrillFrame title="Sprint" eyebrow="{material === 'callsigns' ? 'Callsigns' : 'Words'} · +2 wpm right, −2 wpm missed" count={stage !== 'ready' && stage !== 'done' ? `${Math.min(n + 1, ROUND)} / ${ROUND}` : ''}>
+<DrillFrame title="Callsign and word sprint" eyebrow={material === 'callsigns' ? 'Callsigns' : 'Words'} count={stage !== 'ready' && stage !== 'done' ? `${Math.min(n + 1, ROUND)} / ${ROUND}` : ''}>
   {#if stage === 'ready'}
     <Segmented label="Material" bind:value={material} options={[{ value: 'callsigns', label: 'Callsigns' }, { value: 'words', label: 'Words' }]} />
     <p class="muted">{ROUND} to copy, starting at {receiveSpeeds().charWpm} wpm. Each one you get right makes the next 2 wpm faster; each miss makes it 2 wpm slower.</p>
+    {#if tooFew}
+      <p>There aren't enough {material} yet that use only the characters in {currentLevel().name}. Try {material === 'callsigns' ? 'words' : 'callsigns'}, or come back in a later lesson.</p>
+    {/if}
   {:else if stage === 'done'}
     <dl class="facts">
-      <div><dt class="label">Top speed copied</dt><dd class="num big">{top || '–'} wpm</dd></div>
+      <div><dt class="label">Top speed copied</dt><dd class="num big">{top ? `${top} wpm` : 'none'}</dd></div>
       <div><dt class="label">Copied</dt><dd class="num big">{log.filter((l) => l.ok).length} of {log.length}</dd></div>
     </dl>
     <ul class="list">
       {#each log as l, k (k)}
-        <li><span class="num muted">{l.wpm}</span><span class="mono">{l.item}</span><span class="muted mono">{l.ok ? '' : l.got || '–'}</span></li>
+        <li><span class="num muted">{l.wpm}</span><span class="mono">{l.item}</span><span class="muted mono">{l.ok ? '' : l.got || 'nothing'}</span></li>
       {/each}
     </ul>
   {:else}
-    <div class="row">
+    <div class="row" aria-live="polite">
       <span class="num speed">{stage === 'shown' && last ? last.wpm : wpm} wpm</span>
       {#if stage === 'shown' && last}
         <TokenText tokens={textTokens(last.item).map((t) => ({ t, state: last.ok ? 'ok' : 'miss' }))} size="xl" />
@@ -128,7 +163,7 @@
 
 <svelte:window
   onkeydown={(e) => {
-    if (e.key === 'Enter' && (stage === 'ready' || stage === 'done') && !(e.target instanceof HTMLButtonElement) && !(e.target instanceof HTMLInputElement)) {
+    if (e.key === 'Enter' && (stage === 'ready' || stage === 'done') && !forControl(e)) {
       e.preventDefault();
       void start();
     }

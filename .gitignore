@@ -12,3 +12,4 @@ e2e/.debug/
 samples/
 *.exp.test.ts
 data/
+.claude/

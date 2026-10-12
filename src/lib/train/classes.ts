@@ -40,10 +40,22 @@ export interface ClassInfo {
   name: string;
   /** The class speed, as shown. */
   band: string;
+  /** Receive drill speeds on this stage. Carousel stages follow your lesson; TTR+ and OverLearn use your own speeds. */
+  speeds?: { charWpm: number; effectiveWpm: number };
   /** BC1 and BC2 follow your carousel group. */
   carousel?: 'bc1' | 'bc2';
   routine: string[];
   exercises: Exercise[];
+}
+
+/** A speed for the screen: "12 wpm", or "12 wpm characters, 8 wpm overall". */
+export function speedText(cw: number, eff: number): string {
+  return cw === eff ? `${cw} wpm` : `${cw} wpm characters, ${eff} wpm overall`;
+}
+
+/** The same, short enough for a one-line subtitle on a phone: "12 wpm, 8 overall". */
+export function speedShort(cw: number, eff: number): string {
+  return cw === eff ? `${cw} wpm` : `${cw} wpm, ${eff} overall`;
 }
 
 const spell = (when: 'before' | 'after' | 'end', delay: number, after = 0) => ({ when, spell: true, delay, after });
@@ -56,12 +68,12 @@ function familiarity(id: string, name: string, w: number, source: Source, opts: 
   return {
     id,
     name,
-    summary: `Hear the name first, then the sound${plays === 1 ? '' : `, ${plays === 2 ? 'twice' : `${plays} times`}`}. At ${w} wpm.`,
+    summary: `The voice ${opts.spelled ?? true ? 'spells' : 'says'} it, then it plays${plays === 1 ? ' once' : plays === 2 ? ' twice' : ` ${plays === 3 ? 'three' : plays} times`}. At ${w} wpm.`,
     recipe: { wpm: w, fwpm: w, repeats: plays - 1, repeatGap: 2, voice: (opts.spelled ?? true ? spell : word)('before', opts.delay ?? 1.5, opts.after ?? 0.25) },
     source,
     perLine: opts.perLine,
     count: opts.count ?? 15,
-    how: `Listen to the name, then the sound${plays > 1 ? ', each time it plays' : ''}. Say the name with it, out loud.`,
+    how: `Listen to the voice, then the code. ${plays > 1 ? 'Each time it plays, say' : 'Say'} it out loud along with the code.`,
     aim: 'You know the name the moment you hear the sound, without working it out.',
     mind: "Don't count dits and dahs. Counting builds a translation step you have to unlearn later.",
   };
@@ -93,7 +105,7 @@ function ttr(w: number, delay: number, source: Source = 'chars'): Exercise {
     count: 40,
     how: `Each character plays once; the voice names it ${delay} s later. Say it before the voice.`,
     aim: 'Beat the voice two times in three, then nearly every time.',
-    mind: "Say it, don't type it. BeepBeep's typed TTR drill measures your time if you want a number.",
+    mind: "Say it out loud; don't type it. To have your time measured, use the Time to recognise (TTR) drill, where you type.",
   };
 }
 
@@ -101,7 +113,7 @@ function vet(reverse: boolean, cw: number, eff: number[]): Exercise {
   const steps = (reverse ? [...eff].reverse() : eff).map((fwpm) => ({ seconds: 30, wpm: cw, fwpm }));
   return {
     id: reverse ? 'vet-reverse' : 'vet',
-    name: reverse ? 'Reverse VET' : 'VET',
+    name: reverse ? 'Reverse VET (gaps grow)' : 'VET (gaps shrink)',
     summary: reverse
       ? 'Groups of three to copy. The gaps between characters start short and grow every 30 seconds.'
       : 'Groups of three to copy. The gaps between characters start wide and shrink every 30 seconds.',
@@ -121,7 +133,7 @@ function vst(reverse: boolean, eff: number): Exercise {
   const steps = (reverse ? [...cw].reverse() : cw).map((wpm) => ({ seconds: 30, wpm, fwpm: eff }));
   return {
     id: reverse ? 'vst-reverse' : 'vst',
-    name: reverse ? 'Reverse VST' : 'VST',
+    name: reverse ? 'Reverse VST (characters speed up)' : 'VST (characters slow down)',
     summary: reverse
       ? 'Pairs to copy. The characters start slow and speed up every 30 seconds.'
       : 'Pairs to copy. The characters start fast and slow down every 30 seconds.',
@@ -141,7 +153,7 @@ function groupsOf(min: number, max: number, cw: number, eff: number): Exercise {
   return {
     id: fixed ? `groups-${min}` : `groups-${min}-${max}`,
     name: fixed ? `Groups of ${min}` : `Random groups ${min} to ${max}`,
-    summary: `Groups of ${fixed ? min : `${min} to ${max}`} characters to copy, read back at the end. At ${cw}/${eff} wpm.`,
+    summary: `Copy groups of ${fixed ? min : `${min} to ${max}`} characters. The voice reads them back at the end. At ${speedText(cw, eff)}.`,
     recipe: { wpm: cw, fwpm: eff, wait: 0.5, voice: spell('end', 0) },
     source: 'groups',
     min,
@@ -173,7 +185,7 @@ function racer(kind: 'letters' | 'words', rate: 1 | 2): Exercise {
   const speeds = m.map((x) => Math.round(base * x));
   return {
     id: `racer-${kind}-${rate}`,
-    name: `Speed Racer ${kind}, rate ${rate}`,
+    name: `Speed Racing ${kind}, rate ${rate}`,
     summary: `Each ${kind === 'letters' ? 'character' : 'word'} plays at ${speeds.join(', then ')} wpm.`,
     recipe: { wpm: base, fwpm: base, racer: { multipliers: m }, wait: 1 },
     source: kind === 'letters' ? 'chars' : 'words',
@@ -186,8 +198,8 @@ function racer(kind: 'letters' | 'words', rate: 1 | 2): Exercise {
 function sending(w: number): Exercise {
   return {
     id: 'sending',
-    name: 'Sending practice',
-    summary: 'Copy it, send it back. BeepBeep decodes what you send.',
+    name: 'Hear it, send it',
+    summary: 'Copy a character or word, then send it back. BeepBeep shows what it received.',
     recipe: { wpm: w, fwpm: w },
     source: 'chars',
     drill: ['hear-send'],
@@ -201,7 +213,7 @@ function copyRecap(id: string, name: string, cw: number, eff: number, source: So
   return {
     id,
     name,
-    summary: `Mixed material to copy, read back at the end. At ${cw}/${eff} wpm.`,
+    summary: `Copy everything on paper. The voice reads it back at the end. At ${speedText(cw, eff)}.`,
     recipe: { wpm: cw, fwpm: eff, wait: 1, voice: (spelled ? spell : word)('end', 0) },
     source,
     perLine,
@@ -215,14 +227,14 @@ function copyRecap(id: string, name: string, cw: number, eff: number, source: So
 function callsigns(w: number): Exercise {
   return {
     id: 'callsigns',
-    name: 'Call signs',
-    summary: `Hear a call sign and say it; the voice spells it 1 s later. At ${w} wpm.`,
+    name: 'Callsigns',
+    summary: `Hear a callsign and say it; the voice spells it 1 second later. At ${w} wpm.`,
     recipe: { wpm: w, fwpm: w, voice: spell('after', 1, 1) },
     source: 'callsigns',
     count: 20,
-    how: 'A call sign plays; say it before the voice spells it back.',
+    how: 'A callsign plays; say it before the voice spells it back.',
     aim: 'The whole call the first time you hear it.',
-    mind: 'Calls have a shape: prefix, digit, suffix. Listen for the digit to anchor it.',
+    mind: 'Callsigns have a shape: a prefix, a digit, then a suffix. Listen for the digit to anchor it.',
   };
 }
 
@@ -247,12 +259,12 @@ function phrases(id: string, name: string, cw: number, eff: number, voice: boole
   return {
     id,
     name,
-    summary: voice ? `Short phrases to say back; the voice gives the answer 2 s later. At ${cw}/${eff} wpm.` : `Short phrases to copy, with a pause after each. At ${cw}/${eff} wpm.`,
+    summary: voice ? `Hear a short phrase and say it back; the voice gives the answer 2 seconds later. At ${speedText(cw, eff)}.` : `Copy short phrases, with a pause after each. At ${speedText(cw, eff)}.`,
     recipe: { wpm: cw, fwpm: eff, wait: voice ? 0 : 2, ...(voice ? { voice: word('after', 2) } : {}) },
     source,
     perLine: true,
     count: 15,
-    how: voice ? 'A phrase plays; say it back before the voice does.' : 'Phrases with a pause after each. Copy in your head or on paper.',
+    how: voice ? 'A phrase plays; say it back before the voice does.' : 'Each phrase is followed by a pause. Copy in your head or on paper.',
     aim: 'Common phrases like CQ, TNX FER CALL and 73 heard as one sound each.',
   };
 }
@@ -264,10 +276,10 @@ function bc(n: 1 | 2): ClassInfo {
   return {
     id: n === 1 ? 'bc1' : 'bc2',
     name: `BC${n}`,
-    band: `12/${eff} wpm`,
+    band: speedText(12, eff),
     carousel: n === 1 ? 'bc1' : 'bc2',
     routine: [
-      'Exercises use the group you are on and every group before it.',
+      'Exercises use the characters of your lesson and of every lesson before it.',
       'Copy by hand, on paper, in the copy exercises.',
       'Fifteen to twenty minutes a day does more than an hour once a week.',
       ...(n === 2 ? ['Treat numbers and prosigns like any other character: say them as you hear them, such as five or A R.'] : []),
@@ -307,7 +319,8 @@ function intermediate(n: 1 | 2 | 3): ClassInfo {
   return {
     id: `int${n}` as ClassId,
     name: `INT ${n}`,
-    band: `${w}/${w} wpm`,
+    band: speedText(w, w),
+    speeds: { charWpm: w, effectiveWpm: w },
     routine: [
       'Learn to hear each word as one sound.',
       'Head copy where you can: follow it without writing.',
@@ -319,7 +332,7 @@ function intermediate(n: 1 | 2 | 3): ClassInfo {
       familiarity('fam-spelled', 'Familiarity, spelled', fam, 'words', { delay: 1, after: 1 }),
       familiarity('fam-phrases', 'Familiarity, phrases', fam, 'phrases', { spelled: false, plays: 2, delay: 1, after: 1, perLine: true }),
       familiarity('fam-sentences', 'Familiarity, sentences', fam, 'sentences', { spelled: false, plays: 1, delay: 2, after: 0.5, perLine: true }),
-      { ...familiarity('multi', 'Multi words', w, 'multi', { spelled: false, plays: 2, delay: 1, after: 0, perLine: true }), summary: `Two words at a time: hear them said, then sent. At ${w} wpm.` },
+      { ...familiarity('multi', 'Multi words', w, 'multi', { spelled: false, plays: 2, delay: 1, after: 0, perLine: true }), summary: `The voice says two words, then they play twice. At ${w} wpm.`, how: 'Hear the two words said, then sent twice. Say them along with the code.' },
       recognition('rec-spelled', 'Recognition, spelled', rec, 'words', { delay: n === 1 ? 0.75 : 1, after: 1.5 }),
       recognition('rec-words', 'Recognition, words', rec, 'words', { spelled: false, delay: n === 1 ? 0.75 : 1, after: 1.5 }),
       speedRacing('spell', w),
@@ -342,11 +355,12 @@ function advanced(n: 1 | 2 | 3): ClassInfo {
   return {
     id: `adv${n}` as ClassId,
     name: `ADV ${n}`,
-    band: `${w}/${w} wpm`,
+    band: speedText(w, w),
+    speeds: { charWpm: w, effectiveWpm: w },
     routine: [
       "Follow the meaning; don't spell words out. Write only what you need to keep.",
       'Stories and sentences of your own play under Your text.',
-      'Recognition and Speed Racing keep words coming as single sounds at speed.',
+      'Recognition and Speed Racing train you to hear words as single sounds at speed.',
     ],
     exercises: [
       familiarity('fam-words', 'Familiarity, words', famWords, 'words', { spelled: false, delay: 0.5, after: 0.5 }),
@@ -362,7 +376,7 @@ function advanced(n: 1 | 2 | 3): ClassInfo {
       {
         id: 'stories',
         name: 'Stories',
-        summary: `Stories from your own text, a line at a time, each said after it plays. ${w} wpm.`,
+        summary: 'Your own story, a line at a time. The voice says each line after it plays.',
         recipe: { wpm: w, fwpm: w, wait: 2, voice: word('after', 1.25) },
         source: 'text',
         perLine: true,
@@ -398,12 +412,12 @@ const ttrPlus: ClassInfo = {
   id: 'ttrplus',
   name: 'TTR+',
   band: '12 to 30 wpm',
-  routine: ['Pairs, each played three times with 3 s to answer after the voice.', 'Pick a speed where you answer before the voice about half the time.'],
+  routine: ['Each pair plays three times, and the voice spells it 0.75 seconds later. Say it before the voice.', 'Pick a speed where you answer before the voice about half the time.'],
   exercises: [
     {
       id: 'spell',
       name: 'Pairs, spelled',
-      summary: 'A pair of characters plays three times; the voice spells it 0.75 s later.',
+      summary: 'A pair of characters plays three times; the voice spells it 0.75 seconds later.',
       recipe: { wpm: 12, fwpm: 12, repeats: 2, voice: spell('after', 0.75, 3) },
       source: 'groups',
       min: 2,
@@ -416,7 +430,7 @@ const ttrPlus: ClassInfo = {
     {
       id: 'words',
       name: 'Word pairs',
-      summary: 'Two words play three times; the voice says them 1.25 s later.',
+      summary: 'Two words play three times; the voice says them 1.25 seconds later.',
       recipe: { wpm: 12, fwpm: 12, repeats: 2, voice: word('after', 1.25, 3) },
       source: 'multi',
       perLine: true,
@@ -439,32 +453,32 @@ const overlearnClass: ClassInfo = {
   name: 'OverLearn',
   band: '23 to 35 wpm',
   routine: [
-    'Material you already know, at 23 to 31 wpm, until it is automatic.',
+    'These exercises play material you already know, at 23 to 31 wpm, until you know it without thinking.',
     'Pick the speed that is just uncomfortable. Move up when it stops being hard.',
     'Stories and sentences of your own play under Your text.',
   ],
   exercises: [
-    ol('characters', 'Characters', 'Single characters, one second apart.', { wait: 1 }, 'chars', 'Name each character to yourself as it plays.', { count: 40 }),
+    ol('characters', 'Characters', 'Single characters play one second apart.', { wait: 1 }, 'chars', 'Name each character to yourself as it plays.', { count: 40 }),
     ol('words-2x', 'Words, twice', 'Each word plays twice.', { repeats: 1, wait: 2 }, 'words', 'Each word plays twice. Try to know it the first time.'),
     ol('words-3x', 'Words, three times', 'Each word plays three times.', { repeats: 2, wait: 2 }, 'words', 'Each word plays three times. Try to know it the first time.'),
-    ol('binomials', 'Binomials', 'Word pairs, three times each.', { repeats: 2, wait: 2 }, 'binomials', 'Hear the pair as one phrase.', { perLine: true }),
-    ol('suffixes', 'Suffixes', 'Word endings, three times each.', { repeats: 2, wait: 2 }, 'affixes', 'Hear endings like ING and TION as one sound each.'),
-    ol('rhythm', 'Rhythm', 'Once at your speed, then three times half again as fast.', { racer: { multipliers: [1, 1.52, 1.52, 1.52] }, wait: 2 }, 'words', 'The fast plays carry the rhythm of the word. Listen for the shape.'),
-    ol('cw-voice-cw', 'CW, voice, CW', 'A phrase, the voice, the phrase again.', { voice: word('after', 1.25), again: true, wait: 1 }, 'phrases', 'Copy the phrase, hear it said, then hear it again knowing what it is.', { perLine: true }),
-    ol('sentences-cw', 'Sentences', 'Sentences, two seconds apart.', { wait: 2 }, 'sentences', 'Follow each sentence in your head.', { perLine: true }),
-    ol('sentences-cv', 'Sentences, voice after', 'Each sentence, then the voice.', { voice: word('after', 1.25), wait: 2 }, 'sentences', 'Follow the sentence; the voice confirms it.', { perLine: true }),
-    ol('sentences-cvc', 'Sentences, CW, voice, CW', 'Each sentence, the voice, the sentence again.', { voice: word('after', 2), again: true, wait: 1 }, 'sentences', 'Follow it, hear it said, then follow it again.', { perLine: true }),
-    ol('racing', 'Speed Racing', 'Each word at 31, 27, then 23 wpm.', { racer: { multipliers: [1.348, 1.174, 1] }, wait: 2 }, 'words', 'Catch it at the fastest play.'),
-    ol('racing-reversed', 'Speed Racing, reversed', 'Each word at 23, 27, then 31 wpm.', { racer: { multipliers: [1, 1.174, 1.348] }, wait: 2 }, 'words', 'Know it at the slow play, and keep up as it speeds up.'),
+    ol('binomials', 'Binomials', 'Each word pair plays three times.', { repeats: 2, wait: 2 }, 'binomials', 'Hear the pair as one phrase.', { perLine: true }),
+    ol('suffixes', 'Suffixes', 'Each word ending plays three times.', { repeats: 2, wait: 2 }, 'affixes', 'Hear endings like ING and TION as one sound each.'),
+    ol('rhythm', 'Rhythm', 'Each word plays once at your speed, then three times half again as fast.', { racer: { multipliers: [1, 1.52, 1.52, 1.52] }, wait: 2 }, 'words', 'The fast plays carry the rhythm of the word. Listen for the shape.'),
+    ol('cw-voice-cw', 'CW, voice, CW', 'Each phrase plays, the voice says it, and it plays again.', { voice: word('after', 1.25), again: true, wait: 1 }, 'phrases', 'Copy the phrase, hear it said, then hear it again knowing what it is.', { perLine: true }),
+    ol('sentences-cw', 'Sentences', 'Sentences play two seconds apart.', { wait: 2 }, 'sentences', 'Follow each sentence in your head.', { perLine: true }),
+    ol('sentences-cv', 'Sentences, voice after', 'Each sentence plays, then the voice says it.', { voice: word('after', 1.25), wait: 2 }, 'sentences', 'Follow the sentence; the voice confirms it.', { perLine: true }),
+    ol('sentences-cvc', 'Sentences, CW, voice, CW', 'Each sentence plays, the voice says it, and it plays again.', { voice: word('after', 2), again: true, wait: 1 }, 'sentences', 'Follow it, hear it said, then follow it again.', { perLine: true }),
+    ol('racing', 'Speed Racing', 'Each word plays three times, slowing down to your chosen speed.', { racer: { multipliers: [1.348, 1.174, 1] }, wait: 2 }, 'words', 'Catch it at the fastest play.'),
+    ol('racing-reversed', 'Speed Racing, reversed', 'Each word plays three times, speeding up from your chosen speed.', { racer: { multipliers: [1, 1.174, 1.348] }, wait: 2 }, 'words', 'Know it at the slow play, and keep up as it speeds up.'),
     ol('voice-after', 'Voice after words', 'Each word plays three times, then the voice says it.', { repeats: 2, voice: { when: 'after', spell: false, delay: 0, after: 0, lastWord: true }, wait: 1 }, 'words', 'Know it before the voice says it.'),
-    ol('send-alphabet', 'Sending: alphabet', 'A to Z, each three times, with room to send it back.', { repeats: 2, wait: 2 }, 'alphabet', 'Listen to the three plays, then send the character back in the gap.'),
-    ol('send-numbers', 'Sending: numbers', '1 to 0, each three times, with room to send it back.', { repeats: 2, wait: 2 }, 'numbers', 'Listen, then send the number back in the gap.'),
-    ol('send-trigrams', 'Sending: three letters', 'Three-letter groups, said first, 5 s to send each.', { voice: spell('before', 0), wait: 5 }, 'trigrams', 'The voice spells a group; send it in the 5 s that follow, then check it against the CW.'),
-    ol('send-words', 'Sending: words', 'Words, said first, 5 s to send each.', { voice: word('before', 0), wait: 5 }, 'words', 'The voice says a word; send it in the 5 s that follow, then check it against the CW.'),
+    ol('send-alphabet', 'Sending: alphabet', 'Each letter from A to Z plays three times, with a gap to send it back.', { repeats: 2, wait: 2 }, 'alphabet', 'Listen to the three plays, then send the character back in the gap.'),
+    ol('send-numbers', 'Sending: numbers', 'Each number from 1 to 0 plays three times, with a gap to send it back.', { repeats: 2, wait: 2 }, 'numbers', 'Listen, then send the number back in the gap.'),
+    ol('send-trigrams', 'Sending: three letters', 'The voice spells a three-letter group and it plays. Then you have 5 seconds to send it.', { voice: spell('before', 0), wait: 5 }, 'trigrams', 'The voice spells a group, then it plays in code. Send it back in the 5 seconds after that.'),
+    ol('send-words', 'Sending: words', 'The voice says a word and it plays. Then you have 5 seconds to send it.', { voice: word('before', 0), wait: 5 }, 'words', 'The voice says a word, then it plays in code. Send it back in the 5 seconds after that.'),
     {
       id: 'stories',
       name: 'Stories',
-      summary: 'Stories from your own text, a line at a time, each said after it plays.',
+      summary: 'Your own story, a line at a time. The voice says each line after it plays.',
       recipe: { wpm: 20, fwpm: 20, wait: 2, voice: word('after', 1.25) },
       source: 'text',
       perLine: true,
@@ -475,7 +489,7 @@ const overlearnClass: ClassInfo = {
     {
       id: 'stories-cvc',
       name: 'Stories, CW, voice, CW',
-      summary: 'Each line, the voice, the line again.',
+      summary: 'Each line plays, the voice says it, and it plays again.',
       recipe: { wpm: 25, fwpm: 25, wait: 1, voice: word('after', 0.5, 0.5), again: true },
       source: 'text',
       perLine: true,
@@ -489,10 +503,11 @@ const overlearnClass: ClassInfo = {
 const bc3: ClassInfo = {
   id: 'bc3',
   name: 'BC3',
-  band: '12/12 wpm',
+  band: speedText(12, 12),
+  speeds: { charWpm: 12, effectiveWpm: 12 },
   routine: [
-    'BC3 is about operating: call signs, contest exchanges and the QSO protocol.',
-    'Put it together in the QSO simulator: LICW protocol, SKCC, SST, POTA.',
+    'BC3 is about operating: callsigns, contest exchanges and the order of a QSO.',
+    'Use Learn QSOs and the QSO simulator to practise whole contacts.',
   ],
   exercises: [
     familiarity('fam-words', 'Familiarity, QSO words', 14, 'words', { spelled: false, delay: 1, after: 1 }),
@@ -502,18 +517,18 @@ const bc3: ClassInfo = {
     {
       id: 'contests',
       name: 'Contest exchanges',
-      summary: 'Hear a contest exchange and say it; the voice spells it 1 s later. At 12 wpm.',
+      summary: 'Hear a contest exchange and say it; the voice spells it 1 second later. At 12 wpm.',
       recipe: { wpm: 12, fwpm: 12, voice: spell('after', 1, 1) },
       source: 'contest',
       perLine: true,
       count: 15,
-      how: 'A contest exchange plays: call, 5NN, state or serial. Say it before the voice.',
+      how: 'A contest exchange plays: a callsign, 5NN (the signal report 599), then a serial number or region. Say it before the voice.',
       aim: 'The whole exchange the first time you hear it.',
       mind: '5NN is always 5NN: listen past it for the part that changes.',
     },
     sending(12),
     copyRecap('copy', 'Copy, read back', 12, 12, 'phrases', true, false),
-    copyRecap('copy-15', 'Copy at 15/12', 15, 12, 'phrases', true, false),
+    copyRecap('copy-15', 'Copy, faster characters', 15, 12, 'phrases', true, false),
   ],
 };
 

@@ -13,13 +13,14 @@
   import { settings, strict, type ExercisePrefs } from '../../lib/state/settings.svelte';
   import { signal } from '../../lib/state/signal.svelte';
   import { deleteText, listTexts, saveText, type SavedText } from '../../lib/state/texts';
-  import { atSpeed, classById } from '../../lib/train/classes';
+  import { atSpeed, classById, speedShort } from '../../lib/train/classes';
   import { cardsFromText, material, type Card } from '../../lib/train/cards';
   import { Player, type PlayerState } from '../../lib/train/player';
   import { playCw, saveSession, trackLevels, wait } from '../../lib/train/session';
   import { textTokens } from '../../lib/util/text';
   import { mulberry32, randomSeed, shuffle } from '../../lib/util/random';
   import { keepAwake } from '../../lib/util/wakelock';
+  import { forControl, inField } from '../../lib/util/keys';
 
   let { classId, exerciseId }: { classId: string; exerciseId: string } = $props();
 
@@ -31,6 +32,9 @@
   const prefs = $derived<ExercisePrefs>(settings.exercisePrefs[key] ?? {});
   function setPref<K extends keyof ExercisePrefs>(k: K, v: ExercisePrefs[K]) {
     settings.exercisePrefs[key] = { ...prefs, [k]: v };
+  }
+  function setPrefs(p: Partial<ExercisePrefs>) {
+    settings.exercisePrefs[key] = { ...prefs, ...p };
   }
 
   // BC1 and BC2 follow your carousel group; later stages know every character.
@@ -45,11 +49,13 @@
   signal.receiving = true;
 
   let texts = $state<SavedText[]>([]);
-  onMount(async () => (texts = await listTexts()));
+  onMount(async () => (texts = await listTexts().catch(() => [])));
 
   const onlyText = ex?.source === 'text';
-  const useText = $derived(onlyText || !!prefs.text);
-  const chosen = $derived(texts.find((t) => t.id === prefs.text) ?? (onlyText ? texts[0] : undefined));
+  // "Your text" stays chosen with no texts saved yet, so the paste and file controls show.
+  const useText = $derived(onlyText || (prefs.source ? prefs.source === 'text' : !!prefs.text));
+  // A text deleted from another exercise falls back to the first one left, as the list shows.
+  const chosen = $derived(useText ? (texts.find((t) => t.id === prefs.text) ?? texts[0]) : undefined);
   const speed = $derived(prefs.speed ?? ex?.speeds?.[0] ?? ex?.recipe.wpm ?? 12);
   const recipe = $derived(ex ? atSpeed(ex.recipe, speed, ex.keepSpacing) : null);
 
@@ -61,7 +67,7 @@
       return prefs.shuffle ? shuffle(rng, c) : c;
     }
     if (ex.source === 'text') return [];
-    return material(ex.source, { rng, known: level.known, added: level.added, words: level.words, count: ex.count ?? 20, min: ex.min, max: ex.max });
+    return material(ex.source, { rng, known: level.known, added: level.added, words: level.words, addedWords: level.addedWords, count: ex.count ?? 20, min: ex.min, max: ex.max });
   }
 
   // Lesson material can run out early in the carousel (phrases from three letters).
@@ -69,13 +75,45 @@
     if (!ex) return false;
     if (useText) return !!chosen && cardsFromText(chosen.text, ex.perLine ?? false).length > 0;
     if (ex.source === 'text') return false;
-    return material(ex.source, { rng: mulberry32(1), known: level.known, added: level.added, words: level.words, count: 3, min: ex.min, max: ex.max }).length > 0;
+    return material(ex.source, { rng: mulberry32(1), known: level.known, added: level.added, words: level.words, addedWords: level.addedWords, count: 3, min: ex.min, max: ex.max }).length > 0;
   });
 
   let player = $state.raw<Player | null>(null);
   let st = $state<PlayerState | null>(null);
   let startedAt = 0;
   let saved = false;
+
+  // A run left part-way (another tab, another screen) can be picked up again
+  // for half an hour in this browser tab. Timed runs (VET, VST) start afresh.
+  const LEFT = 'beepbeep.exercise.left';
+  type Left = { key: string; cards: Card[]; index: number; at: number };
+  let left = $state<Left | null>(null);
+  try {
+    const l = JSON.parse(sessionStorage.getItem(LEFT) ?? 'null') as Left | null;
+    if (l && l.key === key && Date.now() - l.at < 30 * 60_000 && l.cards?.length) left = l;
+  } catch {
+    /* storage unavailable */
+  }
+  function keepPlace() {
+    try {
+      if (player && st && player.length === null && !['ready', 'done', 'recap'].includes(st.phase) && st.index > 0) {
+        sessionStorage.setItem(LEFT, JSON.stringify({ key, cards: player.cards, index: st.index, at: Date.now() } satisfies Left));
+      } else if (left === null) sessionStorage.removeItem(LEFT);
+    } catch {
+      /* storage unavailable */
+    }
+  }
+  function carryOn() {
+    if (!left || !recipe) return;
+    const l = left;
+    left = null;
+    try {
+      sessionStorage.removeItem(LEFT);
+    } catch {
+      /* storage unavailable */
+    }
+    begin(l.cards, l.index);
+  }
 
   const deps = {
     cw: async (text: string, wpm: number, fwpm: number) => {
@@ -88,20 +126,22 @@
     now: () => performance.now(),
   };
 
-  function begin() {
+  function begin(given?: Card[], at?: number) {
     if (!recipe) return;
-    const cards = build();
+    const cards = given ?? build();
     if (!cards.length) return;
+    if (!given) left = null;
     player?.stop();
     saved = false;
     startedAt = Date.now();
     player = new Player(cards, recipe, deps, (s) => {
+      const was = st?.phase;
       st = s;
-      if (s.phase === 'done') finished();
+      if (s.phase === 'done' && was !== 'done') finished();
     });
     st = { ...player.state };
     void keepAwake(true);
-    player.start();
+    player.start(at);
   }
 
   let loopTimer: ReturnType<typeof setTimeout> | null = null;
@@ -109,6 +149,7 @@
   function finished() {
     void keepAwake(false);
     record();
+    if (loopTimer) clearTimeout(loopTimer);
     if (prefs.loop) loopTimer = setTimeout(begin, 2000);
   }
 
@@ -134,6 +175,7 @@
   }
 
   onDestroy(() => {
+    keepPlace();
     if (loopTimer) clearTimeout(loopTimer);
     record();
     player?.stop();
@@ -178,10 +220,18 @@
   let newName = $state('');
   let newText = $state('');
 
+  let textError = $state('');
+
   async function addText(name: string, text: string) {
-    const t = await saveText(name, text);
-    texts = await listTexts();
-    setPref('text', t.id);
+    try {
+      const t = await saveText(name, text);
+      texts = await listTexts();
+      setPrefs({ source: 'text', text: t.id });
+      textError = '';
+    } catch {
+      textError = "The text couldn't be saved. The browser's storage isn't available.";
+      return;
+    }
     adding = false;
     newName = '';
     newText = '';
@@ -195,14 +245,23 @@
 
   async function removeText() {
     if (!chosen) return;
-    await deleteText(chosen.id);
-    texts = await listTexts();
-    setPref('text', onlyText ? (texts[0]?.id ?? null) : null);
+    if (!confirm(`Delete "${chosen.name}"? Other exercises that play it will play your first text instead.`)) return;
+    try {
+      await deleteText(chosen.id);
+      texts = await listTexts();
+    } catch {
+      textError = "The text couldn't be deleted. The browser's storage isn't available.";
+      return;
+    }
+    setPref('text', texts[0]?.id ?? null);
   }
 
   function onkey(e: KeyboardEvent) {
-    const t = e.target as HTMLElement | null;
-    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) return;
+    if (inField(e)) return;
+    // Arrows move between radio buttons and sliders when one has focus.
+    const role = (e.target as HTMLElement | null)?.getAttribute?.('role');
+    if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && (role === 'radio' || role === 'slider')) return;
+    if ((e.key === 'Enter' || e.key === ' ') && forControl(e)) return;
     if (e.key === 'Enter' && !running && st?.phase !== 'paused' && playable) {
       e.preventDefault();
       begin();
@@ -222,18 +281,24 @@
     <p>No such exercise. <a href={href('practice')}>Back to Practice</a></p>
   </DrillFrame>
 {:else}
-  <DrillFrame title={ex.name} eyebrow="{cls.name}{cls.carousel ? ` · ${level.name.split(' · ')[1]}` : ''} · {st ? `${st.wpm}/${st.fwpm}` : `${recipe.wpm}/${recipe.fwpm}`} wpm" {count}>
+  <DrillFrame title={ex.name} eyebrow="{cls.name}{cls.carousel ? ` · ${level.name.split(' · ')[1]}` : ''} · {st ? speedShort(st.wpm, st.fwpm) : speedShort(recipe.wpm, recipe.fwpm)}" {count}>
     {#if !st || st.phase === 'ready'}
       <p class="summary">{ex.summary}</p>
+      {#if left}
+        <div class="left">
+          <p>You left this exercise at {left.index + 1} of {left.cards.length}.</p>
+          <Button kind="primary" onclick={carryOn}>Carry on from there</Button>
+        </div>
+      {/if}
       {#if !onlyText}
         <Segmented
           label="Material"
           options={[
-            { value: 'lesson', label: cls.carousel ? 'This group' : 'Generated' },
+            { value: 'lesson', label: cls.carousel ? 'This lesson' : 'Generated' },
             { value: 'text', label: 'Your text' },
           ]}
           value={useText ? 'text' : 'lesson'}
-          onchange={(v) => setPref('text', v === 'text' ? (texts[0]?.id ?? '') : null)}
+          onchange={(v) => setPrefs({ source: v, text: v === 'text' ? (chosen?.id ?? texts[0]?.id ?? null) : prefs.text })}
         />
       {/if}
       {#if ex.speeds && ex.speeds.length > 1}
@@ -248,7 +313,7 @@
             </div>
             {#if chosen}<p class="muted small">{cardsFromText(chosen.text, ex.perLine ?? false).length} {ex.perLine ? 'lines' : 'words'}. Each {ex.perLine ? 'line' : 'word'} plays on its own.</p>{/if}
           {:else}
-            <p class="muted">No texts yet. Paste one or open a .txt file{settings.licwEnrolled ? ', such as a class handout' : ''}. {"{cw|speech}"} markup from Morse Browser files works.</p>
+            <p class="muted">No texts yet. Paste one or open a .txt file{settings.licwEnrolled ? ', such as a class handout' : ''}. Files made for Morse Browser work too.</p>
           {/if}
           {#if adding}
             <label class="field"><span class="label">Name</span><input bind:value={newName} placeholder="BC2 phrases" /></label>
@@ -263,6 +328,7 @@
               <label class="file"><input type="file" accept=".txt,text/plain" onchange={openFile} /><span>Open a .txt file</span></label>
             </div>
           {/if}
+          {#if textError}<p class="warn">{textError}</p>{/if}
           {#if texts.length}<Toggle label="Shuffle" checked={!!prefs.shuffle} onchange={(v) => setPref('shuffle', v)} />{/if}
         </div>
       {/if}
@@ -271,7 +337,10 @@
       {/if}
       <Toggle label="Repeat" detail="Start again when it finishes." checked={!!prefs.loop} onchange={(v) => setPref('loop', v)} />
       {#if !useText && !playable}
-        <p class="warn">Too few characters for this exercise yet. {ex.source === 'prosigns' ? 'It needs the AR SK BT group.' : 'It works once you have more groups.'} Your text works now.</p>
+        <p class="warn">
+          Your lesson doesn't have enough characters for this exercise yet. {ex.source === 'prosigns' ? 'It needs the lesson with AR, SK and BT.' : 'It works from a later lesson.'}
+          You can play a text of your own instead: choose Your text above.
+        </p>
       {/if}
       {#if ex.recipe.voice && settings.voice === 'off'}
         <p class="warn">Voice is off in Settings, so nothing is said. <button type="button" class="link" onclick={() => (settings.voice = 'builtin')}>Turn it on</button></p>
@@ -311,19 +380,19 @@
 
     {#snippet footer()}
       {#if !st || st.phase === 'ready'}
-        <Button kind="primary" onclick={begin} hint="Enter" disabled={!playable}>Start</Button>
+        <Button kind={left ? 'secondary' : 'primary'} onclick={() => begin()} hint="Enter" disabled={!playable}>{left ? 'Start again' : 'Start'}</Button>
       {:else if finishedRun}
-        <Button kind="primary" onclick={begin} hint="Enter">Again</Button>
+        <Button kind="primary" onclick={() => begin()} hint="Enter">Again</Button>
         {#if ex.recipe.voice && st.phase === 'done'}<Button onclick={() => player?.recap()}>Read back</Button>{/if}
-        <Button kind="quiet" onclick={() => { stop(); st = null; }}>Options</Button>
+        <Button kind="quiet" onclick={() => { stop(); st = null; }}>Change options</Button>
       {:else}
         {#if st.phase === 'paused'}
           <Button kind="primary" onclick={() => player?.resume()} hint="Space">Resume</Button>
         {:else}
           <Button kind="primary" onclick={() => player?.pause()} hint="Space">Pause</Button>
         {/if}
-        <Button onclick={() => player?.back()} label="Previous card" hint="←">Back</Button>
-        <Button onclick={() => player?.next()} label="Next card" hint="→">Next</Button>
+        <Button onclick={() => player?.back()} hint="←">Back</Button>
+        <Button onclick={() => player?.next()} hint="→">Next</Button>
         <Button kind="quiet" onclick={() => { stop(); st = null; }}>Stop</Button>
       {/if}
     {/snippet}
@@ -333,6 +402,15 @@
 <style>
   .summary {
     font-size: var(--size-m);
+  }
+
+  .left {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-1) var(--s-2);
+    border-left: 2px solid var(--signal);
+    padding-left: var(--s-2);
   }
 
   .texts {

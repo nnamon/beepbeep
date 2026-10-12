@@ -1,6 +1,6 @@
-// Today's session: an ordered checklist for your course and lesson. New
-// sounds first, then naming them fast, then copying under pressure, then
-// sending. A step ticks itself when a session of its kind is recorded today.
+// Today's session: an ordered checklist for your course and lesson, worked
+// from the top. A step ticks itself when a session of its kind is recorded
+// today.
 
 import type { ClassId } from './classes';
 
@@ -44,41 +44,41 @@ function scale(steps: Step[], minutes: number): Step[] {
 function bc(stage: 'bc1' | 'bc2', i: TodayInput): Step[] {
   const group = i.added.join(' ');
   const copy = [
-    ['vet', 'VET'],
-    ['vst', 'VST'],
+    ['vet', 'VET (gaps shrink)'],
+    ['vst', 'VST (characters slow down)'],
     ['groups-5', 'Groups of 5'],
     [stage === 'bc1' ? 'groups-1-3' : 'groups-1-4', stage === 'bc1' ? 'Random groups 1 to 3' : 'Random groups 1 to 4'],
-    ['vet-reverse', 'Reverse VET'],
-    ['vst-reverse', 'Reverse VST'],
+    ['vet-reverse', 'Reverse VET (gaps grow)'],
+    ['vst-reverse', 'Reverse VST (characters speed up)'],
   ][i.day % 6];
   return [
-    { id: 'familiarity', title: `Familiarity on ${group}`, why: 'Hear the new sounds with their names before anything else.', minutes: 2, to: ex(stage, 'familiarity'), modes: [mode(stage, 'familiarity')] },
+    { id: 'familiarity', title: `Familiarity on ${group}`, why: 'Hear the name of each new character, then its sound.', minutes: 2, to: ex(stage, 'familiarity'), modes: [mode(stage, 'familiarity')] },
     ...(i.fresh.length
-      ? [{ id: 'spot', title: 'Spot the new character', why: 'Pick each new sound out from the others before you hear its name.', minutes: 2, to: ['practice', 'familiarity'], modes: ['familiarity'] }]
+      ? [{ id: 'spot', title: 'Spot the new character', why: 'Tap when you hear a new character among the ones you know.', minutes: 2, to: ['practice', 'familiarity'], modes: ['familiarity'] }]
       : []),
-    { id: 'recognition', title: 'Recognition', why: 'Say each character before the voice, across everything you know.', minutes: 3, to: ex(stage, 'recognition'), modes: [mode(stage, 'recognition')] },
-    { id: 'ttr', title: 'TTR', why: 'The same with less time, so recognition gets instant.', minutes: 2, to: ex(stage, 'ttr'), modes: [mode(stage, 'ttr')] },
-    { id: 'copy', title: copy[1], why: "Today's copy exercise, on paper. It changes each day.", minutes: 3, to: ex(stage, copy[0]), modes: [mode(stage, copy[0])] },
-    { id: 'send', title: 'Sending practice', why: 'A quarter of your time should be sending.', minutes: 4, to: ['practice', 'hear-send'], modes: ['hear-send', 'send', 'live'] },
-    { id: 'check', title: 'Copy drill', why: 'Scores your copy. 80% opens the next group.', minutes: 3, to: ['practice', 'copy', 'groups'], modes: ['copy'] },
+    { id: 'recognition', title: 'Recognition', why: 'Say each character out loud before the voice names it. It uses every character you know.', minutes: 3, to: ex(stage, 'recognition'), modes: [mode(stage, 'recognition')] },
+    { id: 'ttr', title: 'TTR (time to recognise)', why: 'Like Recognition, with less time before the voice names it.', minutes: 2, to: ex(stage, 'ttr'), modes: [mode(stage, 'ttr')] },
+    { id: 'copy', title: copy[1], why: 'Copy on paper. A different copy exercise comes up each day.', minutes: 3, to: ex(stage, copy[0]), modes: [mode(stage, copy[0])] },
+    { id: 'send', title: 'Hear it, send it', why: 'Copy a character or word, then send it on your key.', minutes: 4, to: ['practice', 'hear-send'], modes: ['hear-send', 'send', 'live'] },
+    { id: 'check', title: 'Copy drill', why: 'Type what you hear and get a score. At 80% or more, move on to the next lesson.', minutes: 3, to: ['practice', 'copy', 'groups'], modes: ['copy'] },
   ];
 }
 
 function later(stage: ClassId, i: TodayInput): Step[] {
-  const send = { id: 'send', title: 'A QSO', why: 'Send to the simulated station; it answers what it copies.', minutes: 5, to: ['qso'], modes: ['qso', 'hear-send', 'send'] };
+  const send = { id: 'send', title: 'A QSO', why: 'Make a contact with the simulated station. It answers what it copies from your sending.', minutes: 5, to: ['qso'], modes: ['qso', 'hear-send', 'send'] };
   switch (stage) {
     case 'bc3':
       return [
-        { id: 'fam', title: 'Familiarity, QSO words', why: 'The words of a QSO as single sounds.', minutes: 3, to: ex(stage, 'fam-words'), modes: [mode(stage, 'fam-words')] },
-        { id: 'calls', title: 'Call signs', why: 'Every QSO starts with copying a call.', minutes: 3, to: ex(stage, 'callsigns'), modes: [mode(stage, 'callsigns')] },
-        { id: 'contests', title: 'Contest exchanges', why: 'Short, fast, and the same shape every time.', minutes: 3, to: ex(stage, 'contests'), modes: [mode(stage, 'contests')] },
-        { id: 'send', title: 'A guided QSO', why: 'Put it together: a whole contact, checked step by step.', minutes: 5, to: ['qso', 'learn', 'whole'], modes: ['qso-learn', 'qso'] },
-        { id: 'copy', title: 'Copy, read back', why: 'Phrases on paper, checked at the end.', minutes: 3, to: ex(stage, 'copy'), modes: [mode(stage, 'copy')], optional: true },
+        { id: 'fam', title: 'Familiarity, QSO words', why: 'Hear common QSO words said, then sent, until each sounds like one word.', minutes: 3, to: ex(stage, 'fam-words'), modes: [mode(stage, 'fam-words')] },
+        { id: 'calls', title: 'Callsigns', why: 'Say each callsign before the voice spells it.', minutes: 3, to: ex(stage, 'callsigns'), modes: [mode(stage, 'callsigns')] },
+        { id: 'contests', title: 'Contest exchanges', why: 'Say each contest exchange before the voice spells it.', minutes: 3, to: ex(stage, 'contests'), modes: [mode(stage, 'contests')] },
+        { id: 'send', title: 'A whole QSO, guided', why: 'Make a whole contact in Learn QSOs, checked one step at a time.', minutes: 5, to: ['qso', 'learn', 'whole'], modes: ['qso-learn:whole', 'qso'] },
+        { id: 'copy', title: 'Copy, read back', why: 'Copy phrases on paper. The voice reads them back at the end so you can check.', minutes: 3, to: ex(stage, 'copy'), modes: [mode(stage, 'copy')], optional: true },
       ];
     case 'ttrplus':
       return [
-        { id: 'spell', title: 'Pairs, spelled', why: 'Two characters with 3 s to answer after the voice.', minutes: 5, to: ex(stage, 'spell'), modes: [mode(stage, 'spell')] },
-        { id: 'words', title: 'Word pairs', why: 'The same with words.', minutes: 5, to: ex(stage, 'words'), modes: [mode(stage, 'words')] },
+        { id: 'spell', title: 'Pairs, spelled', why: 'A pair of characters plays three times. Say it before the voice spells it.', minutes: 5, to: ex(stage, 'spell'), modes: [mode(stage, 'spell')] },
+        { id: 'words', title: 'Word pairs', why: 'Two words play three times. Say them before the voice does.', minutes: 5, to: ex(stage, 'words'), modes: [mode(stage, 'words')] },
         send,
       ];
     case 'overlearn': {
@@ -93,23 +93,23 @@ function later(stage: ClassId, i: TodayInput): Step[] {
       const a = pick[i.day % pick.length];
       const b = pick[(i.day + 3) % pick.length];
       return [
-        { id: 'chars', title: 'Characters', why: 'A fast warm-up on single characters.', minutes: 2, to: ex(stage, 'characters'), modes: [mode(stage, 'characters')] },
-        { id: 'a', title: a[1], why: "Today's first OverLearn exercise.", minutes: 5, to: ex(stage, a[0]), modes: [mode(stage, a[0])] },
-        { id: 'b', title: b[1], why: "Today's second. They change each day.", minutes: 5, to: ex(stage, b[0]), modes: [mode(stage, b[0])] },
+        { id: 'chars', title: 'Characters', why: 'Warm up on single characters at speed.', minutes: 2, to: ex(stage, 'characters'), modes: [mode(stage, 'characters')] },
+        { id: 'a', title: a[1], why: 'One of the two OverLearn exercises for today. They change each day.', minutes: 5, to: ex(stage, a[0]), modes: [mode(stage, a[0])] },
+        { id: 'b', title: b[1], why: 'The other OverLearn exercise for today.', minutes: 5, to: ex(stage, b[0]), modes: [mode(stage, b[0])] },
         send,
       ];
     }
     default: {
       // INT and ADV.
       const extra: [string, string][] = stage.startsWith('int')
-        ? [['callsigns', 'Call signs'], ['multi', 'Multi words'], stage === 'int1' ? ['binomials', 'Binomials'] : ['affixes', 'Affixes'], stage === 'int1' ? ['callsigns', 'Call signs'] : ['phrases', 'Phrases']]
-        : [['callsigns', 'Call signs'], ['fam-sentences', 'Familiarity, sentences'], ['affixes', 'Affixes'], ['fam-phrases', 'Familiarity, phrases']];
+        ? [['callsigns', 'Callsigns'], ['multi', 'Multi words'], stage === 'int1' ? ['binomials', 'Binomials'] : ['affixes', 'Affixes'], stage === 'int1' ? ['callsigns', 'Callsigns'] : ['phrases', 'Phrases']]
+        : [['callsigns', 'Callsigns'], ['fam-sentences', 'Familiarity, sentences'], ['affixes', 'Affixes'], ['fam-phrases', 'Familiarity, phrases']];
       const x = extra[i.day % extra.length];
       return [
-        { id: 'fam', title: 'Familiarity, words', why: 'Words heard as single sounds, with their names first.', minutes: 3, to: ex(stage, 'fam-words'), modes: [mode(stage, 'fam-words')] },
+        { id: 'fam', title: 'Familiarity, words', why: 'Hear each word said, then sent.', minutes: 3, to: ex(stage, 'fam-words'), modes: [mode(stage, 'fam-words')] },
         { id: 'rec', title: 'Recognition, words', why: 'Say each word before the voice.', minutes: 3, to: ex(stage, 'rec-words'), modes: [mode(stage, 'rec-words')] },
         { id: 'racing', title: 'Speed Racing, words', why: 'Catch words at a speed above your own.', minutes: 3, to: ex(stage, 'racing-words'), modes: [mode(stage, 'racing-words')] },
-        { id: 'extra', title: x[1], why: 'Changes each day.', minutes: 3, to: ex(stage, x[0]), modes: [mode(stage, x[0])] },
+        { id: 'extra', title: x[1], why: 'This exercise changes each day.', minutes: 3, to: ex(stage, x[0]), modes: [mode(stage, x[0])] },
         send,
       ];
     }
@@ -119,15 +119,15 @@ function later(stage: ClassId, i: TodayInput): Step[] {
 function koch(i: TodayInput): Step[] {
   return [
     ...(i.fresh.length
-      ? [{ id: 'spot', title: `Spot the new character: ${i.fresh.join(' ')}`, why: 'Pick the new sound out from the others before you hear its name.', minutes: 2, to: ['practice', 'familiarity'], modes: ['familiarity'] }]
+      ? [{ id: 'spot', title: `Spot the new character: ${i.fresh.join(' ')}`, why: 'Tap when you hear the new character among the ones you know.', minutes: 2, to: ['practice', 'familiarity'], modes: ['familiarity'] }]
       : []),
-    { id: 'copy', title: 'Copy drill', why: 'Your main receive practice. 90% opens the next lesson.', minutes: 5, to: ['practice', 'copy', 'groups'], modes: ['copy'] },
-    { id: 'ttr', title: 'TTR drill', why: 'Type each character before the voice, so recognition gets instant.', minutes: 3, to: ['practice', 'ttr'], modes: ['ttr'] },
-    { id: 'send', title: 'Hear it, send it', why: 'A quarter of your time should be sending.', minutes: 4, to: ['practice', 'hear-send'], modes: ['hear-send', 'send', 'live'] },
+    { id: 'copy', title: 'Copy drill', why: 'Type what you hear and get a score. At 90% or more, move on to the next lesson.', minutes: 5, to: ['practice', 'copy', 'groups'], modes: ['copy'] },
+    { id: 'ttr', title: 'Time to recognise (TTR)', why: 'Type each character before the voice names it.', minutes: 3, to: ['practice', 'ttr'], modes: ['ttr'] },
+    { id: 'send', title: 'Hear it, send it', why: 'Copy a character or word, then send it on your key.', minutes: 4, to: ['practice', 'hear-send'], modes: ['hear-send', 'send', 'live'] },
     ...(i.weak.length
-      ? [{ id: 'weak', title: `Pocket round for ${i.weak.join(' ')}`, why: 'Your weakest characters this month get more turns in a round.', minutes: 2, to: ['pocket', 'round', 'characters'], modes: ['pocket-characters'], optional: true }]
+      ? [{ id: 'weak', title: `Pocket round for ${i.weak.join(' ')}`, why: 'A quiz round where your weakest characters this month come up more often.', minutes: 2, to: ['pocket', 'round', 'characters'], modes: ['pocket-characters'], optional: true }]
       : []),
-    { id: 'more', title: 'Sound surfing (IFR)', why: 'A continuous stream: keep going through misses.', minutes: 3, to: ['practice', 'ifr'], modes: ['ifr'], optional: true },
+    { id: 'more', title: 'Sound surfing', why: 'Copy a continuous stream. Keep going when you miss one.', minutes: 3, to: ['practice', 'ifr'], modes: ['ifr'], optional: true },
   ];
 }
 

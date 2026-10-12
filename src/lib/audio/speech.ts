@@ -32,6 +32,21 @@ export function clipName(token: string): string | null {
 let current: HTMLAudioElement | null = null;
 let currentClip: Playback | null = null;
 const clips = new Map<string, Promise<AudioBuffer | null>>();
+/** Bumped by stopSpeech(): anything still waiting to speak gives up. */
+let epoch = 0;
+
+/** Stops whatever is being said, and anything queued to be said next. */
+export function stopSpeech() {
+  epoch++;
+  if (speechAvailable()) speechSynthesis.cancel();
+  current?.pause();
+  current = null;
+  currentClip?.stop();
+  currentClip = null;
+}
+
+// Stopping the app's sound stops the voice too: leaving or pausing a drill does both.
+engine.onStopAll(stopSpeech);
 
 function builtin(name: string): Promise<AudioBuffer | null> {
   let p = clips.get(name);
@@ -67,13 +82,16 @@ export function voices(): SpeechSynthesisVoice[] {
 /** Says a single token or a word. Resolves when done (or immediately if voice is off). */
 export async function say(tokenOrWord: string): Promise<void> {
   if (settings.voice === 'off') return;
+  const me = epoch;
   if (settings.voice === 'recorded') {
     const blob = await voiceClip(tokenOrWord).catch(() => null);
+    if (me !== epoch) return;
     if (blob) return playBlob(blob);
   }
   const name = settings.voice === 'system' ? null : clipName(tokenOrWord);
   if (name) {
     const buf = await builtin(name);
+    if (me !== epoch) return;
     if (buf) return playClip(buf);
   }
   if (!speechAvailable()) return;
@@ -115,7 +133,9 @@ function device(text: string): Promise<void> {
 export async function sayCard(text: string, spell: boolean): Promise<void> {
   if (settings.voice === 'off') return;
   if (!spell) return device(text.toLowerCase());
+  const me = epoch;
   for (const token of tokenize(text.toUpperCase())) {
+    if (me !== epoch) return;
     if (token === ' ') {
       await new Promise((r) => setTimeout(r, 250));
       continue;
@@ -139,8 +159,3 @@ function playBlob(blob: Blob): Promise<void> {
   });
 }
 
-export function stopSpeech() {
-  if (speechAvailable()) speechSynthesis.cancel();
-  current?.pause();
-  currentClip?.stop();
-}

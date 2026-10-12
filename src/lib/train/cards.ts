@@ -3,8 +3,8 @@
 
 import { patternOf, tokenize } from '../morse/code';
 import { type Rng, pick, shuffle } from '../util/random';
-import { callsign, fillPhrase, groups } from './generate';
-import { AFFIXES, BINOMIALS, COMMON_WORDS, PHRASES, QSO_WORDS, SENTENCES, STATES, usesOnly } from './words';
+import { fillPhrase, groups, stationAndRegion, callsign } from './generate';
+import { AFFIXES, BINOMIALS, COMMON_WORDS, PHRASES, QSO_WORDS, SENTENCES, usesOnly } from './words';
 
 export interface Card {
   /** Sent as CW; empty for a card the voice only says. */
@@ -86,8 +86,9 @@ export interface MaterialOptions {
   /** Characters you know, and those just added (BC carousel). */
   known: string[];
   added: string[];
-  /** Letter pairs practised as a unit (BK). */
+  /** Letter pairs practised as a unit (BK), and the ones this lesson adds. */
   words?: string[];
+  addedWords?: string[];
   count: number;
   /** Group size for 'groups'. */
   min?: number;
@@ -103,6 +104,19 @@ function cycle(rng: Rng, list: string[], count: number): string[] {
   return out.slice(0, count);
 }
 
+/** Fewer different phrases than this, and an exercise would play the same few over and over. */
+const MIN_PHRASES = 4;
+
+/** Distinct generated lines that fit, cycled to `count`; none when too few fit. */
+function distinct(rng: Rng, make: () => string, fits: (s: string) => boolean, count: number): string[] {
+  const seen = new Set<string>();
+  for (let i = 0; i < count * 30 && seen.size < count; i++) {
+    const p = make();
+    if (fits(p)) seen.add(p);
+  }
+  return seen.size < Math.min(MIN_PHRASES, count) ? [] : cycle(rng, [...seen], count);
+}
+
 /** Generated cards from your lesson's characters. Text cards come from cardsFromText. */
 export function material(source: Exclude<Source, 'text'>, o: MaterialOptions): Card[] {
   const { rng, count } = o;
@@ -110,7 +124,7 @@ export function material(source: Exclude<Source, 'text'>, o: MaterialOptions): C
   const fits = (s: string) => usesOnly(s, known);
   switch (source) {
     case 'new':
-      return cycle(rng, [...o.added, ...(o.words ?? [])], count).map(card);
+      return cycle(rng, [...o.added, ...(o.addedWords ?? [])], count).map(card);
     case 'chars': {
       // Half from the newest group, half from everything known.
       const fresh = o.added.length ? o.added : o.known;
@@ -127,30 +141,21 @@ export function material(source: Exclude<Source, 'text'>, o: MaterialOptions): C
       const words = [...QSO_WORDS, ...COMMON_WORDS].filter(fits);
       return words.length ? Array.from({ length: count }, () => `${pick(rng, words)} ${pick(rng, words)}`).map(card) : [];
     }
-    case 'phrases': {
-      const out: string[] = [];
-      for (let i = 0; i < count * 30 && out.length < count; i++) {
-        const p = fillPhrase(rng, pick(rng, PHRASES));
-        if (fits(p)) out.push(p);
-      }
-      return out.map(card);
-    }
+    case 'phrases':
+      return distinct(rng, () => fillPhrase(rng, pick(rng, PHRASES)), fits, count).map(card);
     case 'prosigns': {
       const signs = ['<AR>', '<SK>', '<BT>', '<KN>'].filter((s) => known.has(s));
-      const out: string[] = [];
-      for (let i = 0; i < count * 30 && out.length < count && signs.length; i++) {
-        const p = `${fillPhrase(rng, pick(rng, PHRASES))} ${pick(rng, signs)}`;
-        if (fits(p)) out.push(p);
-      }
-      return out.map(card);
+      if (!signs.length) return [];
+      return distinct(rng, () => `${fillPhrase(rng, pick(rng, PHRASES))} ${pick(rng, signs)}`, fits, count).map(card);
     }
     case 'callsigns':
       return Array.from({ length: count }, () => callsign(rng, { known })).map(card);
     case 'contest':
+      // A station's call and the region it sends, from the same country: 5NN TX, 5NN ON, 5NN JAPAN.
       return Array.from({ length: count }, () => {
-        const call = callsign(rng, { known });
+        const { call, region } = stationAndRegion(rng, known);
         const serial = String(1 + Math.floor(rng() * 400)).padStart(3, '0');
-        return pick(rng, [`${call} 5NN ${pick(rng, STATES)}`, `5NN ${serial}`, `TU ${call}`, `${call} TU 5NN ${serial}`, `5NN ${pick(rng, STATES)} TU`]);
+        return pick(rng, [`${call} 5NN ${region}`, `5NN ${serial}`, `TU ${call}`, `${call} TU 5NN ${serial}`, `5NN ${region} TU`]);
       }).map(card);
     case 'binomials':
       return cycle(rng, BINOMIALS.filter(fits), count).map(card);

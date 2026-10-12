@@ -5,7 +5,7 @@ export type TrackId = 'koch' | 'licw';
 export interface Level {
   /** Stable id, e.g. 'koch-5' or 'licw-bc1-TIN'. */
   id: string;
-  /** Short name, e.g. 'Level 5' or 'BC1 · TIN'. */
+  /** Short name, e.g. 'Lesson 5' or 'BC1 · TIN'. */
   name: string;
   /** Characters introduced at this level. */
   added: string[];
@@ -13,6 +13,8 @@ export interface Level {
   known: string[];
   /** Letter pairs practised as one unit from this level on, e.g. BK. */
   words?: string[];
+  /** Letter pairs this lesson adds (BK in 2 8 BK). */
+  addedWords?: string[];
   /** Recommended character / effective speed. */
   charWpm: number;
   effectiveWpm: number;
@@ -74,7 +76,7 @@ function kochLevels(): Level[] {
     const known = KOCH_ORDER.slice(0, n);
     levels.push({
       id: `koch-${n - 1}`,
-      name: `Level ${n - 1}`,
+      name: `Lesson ${n - 1}`,
       added: n === 2 ? known.slice() : [KOCH_ORDER[n - 1]],
       known,
       charWpm: 20,
@@ -112,6 +114,7 @@ export function licwLevels(c: Carousel = DEFAULT_CAROUSEL): Level[] {
       added: group,
       known: known.slice(),
       ...(words.length ? { words: words.slice() } : {}),
+      ...(w.length ? { addedWords: w.slice() } : {}),
       charWpm: 12,
       effectiveWpm: 10,
     });

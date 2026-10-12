@@ -1,6 +1,7 @@
 <script lang="ts">
   // Hear it, send it: the app sends a character or word, you send it straight
-  // back. No restarts; sets alternate your comfortable speed and +4 WPM.
+  // back. Sets alternate your comfortable speed and 4 wpm faster; on the LICW
+  // track with lesson speeds on, every set uses the lesson's character speed.
   import { onDestroy } from 'svelte';
   import DrillFrame from '../../ui/DrillFrame.svelte';
   import Button from '../../ui/Button.svelte';
@@ -13,13 +14,14 @@
   import { engine } from '../../lib/audio/engine';
   import { settings, strict } from '../../lib/state/settings.svelte';
   import { signal, touchKeyArea, startMic } from '../../lib/state/signal.svelte';
-  import { currentLevel, followInput, playMarks, recordSend, saveSession, sendInput, wait } from '../../lib/train/session';
+  import { courseSpeedsInUse, currentLevel, followInput, playMarks, receiveSpeeds, recordSend, saveSession, sendInput, wait } from '../../lib/train/session';
   import { items } from '../../lib/train/generate';
   import { buildSchedule } from '../../lib/morse/schedule';
   import { textTokens } from '../../lib/util/text';
   import { compareCopy } from '../../lib/train/scoring';
   import { mulberry32, randomSeed } from '../../lib/util/random';
   import { keepAwake } from '../../lib/util/wakelock';
+  import { forControl } from '../../lib/util/keys';
 
   // The touch key pad stays in place while this screen is open.
   $effect(() => touchKeyArea());
@@ -42,13 +44,18 @@
   const rng = mulberry32(randomSeed());
   const startedAt = Date.now();
 
-  const speedFor = (n: number) => settings.comfortWpm + (Math.floor(n / SET) % 2 === 1 ? 4 : 0);
+  const course = $derived(courseSpeedsInUse());
+  const speedFor = (n: number) => (course ? receiveSpeeds().charWpm : settings.comfortWpm + (Math.floor(n / SET) % 2 === 1 ? 4 : 0));
   const total = SET * 2;
+  /** Set on leaving: a start still waiting for the microphone gives up. */
+  let gone = false;
 
   async function run() {
+    if (running) return;
     if (settings.input === 'mic' && !signal.micOn) {
-      if (!(await startMic())) return;
+      if (!(await startMic()) || gone) return;
     }
+    if (running || gone) return;
     running = true;
     stopFlag = false;
     results = [];
@@ -131,7 +138,7 @@
         sending: true,
         items: results.length,
         accuracy: results.filter((r) => r.ok).length / results.length,
-        wpm: settings.comfortWpm,
+        wpm: speedFor(0),
       });
     }
   }
@@ -142,7 +149,9 @@
   }
 
   onDestroy(() => {
+    gone = true;
     stopFlag = true;
+    engine.stopAll();
     void keepAwake(false);
   });
 
@@ -152,13 +161,17 @@
 
 <DrillFrame
   title="Hear it, send it"
-  eyebrow="{currentLevel().name} · {settings.comfortWpm} and {settings.comfortWpm + 4} wpm, alternating sets"
+  eyebrow={course ? `${currentLevel().name} · ${speedFor(0)} wpm` : `${currentLevel().name} · ${settings.comfortWpm} and ${settings.comfortWpm + 4} wpm, alternating sets`}
   count={running ? `${Math.min(i + 1, total)} / ${total}` : ''}
 >
   {#if !running && !done}
     <div class="intro">
       <Segmented label="Material" bind:value={material} options={[{ value: 'characters', label: 'Characters' }, { value: 'words', label: 'Words' }]} />
-      <p class="muted">A character or word plays. Copy it, then send it back on your key. Use headphones so the microphone hears only your key, not the app.</p>
+      <p class="muted">
+        A character or word plays. Copy it, then send it back on your key. You have 8 seconds to start. When you stop
+        sending for about a second, BeepBeep shows what it received and plays the next one.
+      </p>
+      {#if settings.input === 'mic'}<p class="muted">Use headphones, so the microphone hears only your key and not the app.</p>{/if}
       <InputHelp />
     </div>
   {:else if running}
@@ -172,7 +185,7 @@
           <p class="big muted">Next</p>
         {:else}
           <span class="label">Received</span>
-          {#if lastResult.got}<TokenText tokens={toks(lastResult.got)} size="xl" />{:else}<p class="muted">Nothing decoded</p>{/if}
+          {#if lastResult.got}<TokenText tokens={toks(lastResult.got)} size="xl" />{:else}<p class="muted">Nothing decoded.</p>{/if}
           {#if !lastResult.ok}
             <span class="label">It was</span>
             <TokenText tokens={toks(lastResult.want)} size="l" />
@@ -183,13 +196,13 @@
     </div>
   {:else}
     <div class="summary">
-      <p class="big">{results.filter((r) => r.ok).length} of {results.length} matched</p>
+      <p class="big">You sent {results.filter((r) => r.ok).length} of {results.length} right.</p>
       <ul class="list">
         {#each results as r, k (k)}
           <li>
             <span class="num muted">{r.wpm}</span>
             <TokenText tokens={toks(r.want)} size="m" />
-            <span class="muted">{r.ok ? 'matched' : `received ${r.got || 'nothing'}`}</span>
+            <span class="muted">{r.ok ? 'Right' : r.got ? `Decoded as ${r.got}` : 'Nothing decoded'}</span>
             <span class="replays">
               {#if r.marks.length}<button type="button" onclick={() => playMarks(r.marks)}>Mine</button>{/if}
               <button type="button" onclick={() => engine.playText(r.want, { charWpm: r.wpm, pitch: settings.pitch })}>Standard</button>
@@ -214,7 +227,7 @@
     if (e.key === 'Escape' && running) {
       e.preventDefault();
       stop();
-    } else if (e.key === 'Enter' && !running) {
+    } else if (e.key === 'Enter' && !running && !forControl(e)) {
       e.preventDefault();
       void run();
     }

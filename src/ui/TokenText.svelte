@@ -32,10 +32,11 @@
 </p>
 
 <style>
+  /* Lines break at the spaces between words. Only a word wider than the whole line breaks inside. */
   .text {
     margin: 0;
     overflow-wrap: anywhere;
-    line-height: 1.25;
+    line-height: 1.4;
     letter-spacing: 0.02em;
   }
 
@@ -55,13 +56,30 @@
     font-size: var(--size-xl);
   }
 
+  /* Kept as typed, and a place to break the line; at a line end it hangs instead of starting the next line. */
   .sp {
-    white-space: pre;
+    white-space: pre-wrap;
   }
 
+  /*
+   * The overline is drawn just above the capitals, not at the top of the line box where a
+   * text-decoration overline sits: there it reads as an underline of the line above.
+   * The span's box runs from the font's ascent (1 em above the baseline); capitals are 0.68 em tall.
+   */
   .prosign {
-    text-decoration: overline;
-    text-decoration-thickness: 1.5px;
+    position: relative;
+    white-space: nowrap;
+    text-decoration: none;
+  }
+
+  .prosign::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0.02em;
+    top: 0.17em;
+    border-top: max(1.5px, 0.06em) solid currentcolor;
+    pointer-events: none;
   }
 
   .miss {
@@ -80,11 +98,23 @@
   }
 
   .unknown {
+    position: relative;
     font: inherit;
     color: var(--muted);
     background: none;
     border: 0;
     padding: 0;
     cursor: pointer;
+  }
+
+  /* A full-size tap target around the one character, without spacing the text out. */
+  .unknown::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: var(--target-min);
+    height: var(--target-min);
+    transform: translate(-50%, -50%);
   }
 </style>

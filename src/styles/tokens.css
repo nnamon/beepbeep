@@ -43,9 +43,13 @@
   --radius: 4px;
   --hairline: 1px;
   --target: 48px;
-  /* Notch and home bar on phones; tests set these to emulate a device. */
+  /* The smallest tap target allowed, for compact controls such as choice buttons. */
+  --target-min: 44px;
+  /* Notch and home bar on phones; tests set these to emulate a device. A phone on its side has the notch at the left or right. */
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
   /* The phone tab bar: links, their top rule, its border, the home bar. */
   --tabbar: calc(var(--target) + 3px + var(--safe-bottom));
   --reading: 72ch;

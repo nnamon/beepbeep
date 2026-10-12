@@ -1,8 +1,154 @@
 import { describe, expect, it } from 'vitest';
-import { parse, isCallsign, missingPart } from './parse';
-import { QsoBot, type Format } from './bot';
+import { parse, isCallsign, missingPart, endsTurn } from './parse';
+import { QsoBot, FORMATS, reportSent, type Format } from './bot';
 
 const ME = { call: 'K1ABC', name: 'TOM', qth: 'BOSTON', state: 'MA', skcc: '12345T' };
+const SG = { call: '9V1NE', name: 'AMON', qth: 'SINGAPORE', state: '', skcc: '' };
+
+describe('when your turn ends', () => {
+  /** Where the simulator would stop listening, word by word: the first prefix that ends the turn. */
+  const cut = (over: string) => {
+    const w = over.split(' ');
+    for (let i = 1; i <= w.length; i++) if (endsTurn(w.slice(0, i).join(' '))) return w.slice(0, i).join(' ');
+    return null;
+  };
+  it("the lessons' own overs run to their end", () => {
+    const over = 'W1AW DE 9V1NE R TNX BOB <BT> UR RST 579 579 <BT> NAME AMON AMON <BT> QTH SINGAPORE <BT> HW? W1AW DE 9V1NE K';
+    expect(cut(over)).toBe(over);
+    expect(cut('BK TU 5NN SINGAPORE SINGAPORE BK')).toBe('BK TU 5NN SINGAPORE SINGAPORE BK');
+    expect(cut('TNX BOB 73 W1AW DE 9V1NE <SK>')).toBe('TNX BOB 73 W1AW DE 9V1NE <SK>');
+    expect(cut('R R TNX FER QSO 73 ES GL W1AW DE 9V1NE KN')).toBe('R R TNX FER QSO 73 ES GL W1AW DE 9V1NE KN');
+  });
+  it('K, KN, SK, AR and a closing BK end it; EE after SK still ends it', () => {
+    for (const end of ['K', 'KN', '<KN>', 'SK', '<SK>', 'AR', '+', 'BK']) expect(endsTurn(`W1AW DE 9V1NE ${end}`), end).toBe(true);
+    expect(endsTurn('W1AW DE 9V1NE <SK> EE')).toBe(true);
+    for (const open of ['BK', 'HW?', 'QTH?', '73', 'TU 73', 'QTH REGINA SK', 'QTH RICHMOND VA', 'QTH LITTLE ROCK AR', 'AGN?']) expect(endsTurn(open), open).toBe(false);
+  });
+});
+
+describe('exchanges without K', () => {
+  it('a contest exchange ends once your callsign, then your serial number, is in', () => {
+    const c = new QsoBot({ format: 'contest', opener: 'bot', you: SG, wpm: 20, seed: 1 });
+    c.start();
+    expect(c.turnComplete(c.active!.call)).toBe(false);
+    expect(c.turnComplete('9V1NE')).toBe(true);
+    c.hear('9V1NE');
+    expect(c.turnComplete('TU 5NN')).toBe(false);
+    expect(c.turnComplete('TU 5NN 001')).toBe(true);
+  });
+  it('SST needs your name and region; POTA and SOTA your report and region', () => {
+    const sst = new QsoBot({ format: 'sst', opener: 'you', you: SG, wpm: 18, seed: 2 });
+    expect(sst.turnComplete('CQ SST')).toBe(false);
+    expect(sst.turnComplete('CQ SST 9V1NE')).toBe(true);
+    sst.hear('CQ SST 9V1NE');
+    const call = sst.active!.call;
+    expect(sst.turnComplete(`${call} GE AMON`)).toBe(false);
+    expect(sst.turnComplete(`${call} GE AMON SINGAPORE`)).toBe(true);
+    for (const format of ['pota', 'sota'] as const) {
+      const p = new QsoBot({ format, opener: 'bot', you: SG, wpm: 18, seed: 3 });
+      p.start();
+      p.hear('9V1NE');
+      expect(p.turnComplete('R TU 5NN'), format).toBe(false);
+      expect(p.turnComplete('R TU 5NN SINGAPORE'), format).toBe(true);
+    }
+  });
+  it('a ragchew always needs K or a pause', () => {
+    const r = new QsoBot({ format: 'ragchew', opener: 'bot', you: SG, wpm: 18, seed: 4 });
+    r.start();
+    expect(r.turnComplete('9V1NE')).toBe(false);
+    expect(r.turnComplete(`${r.active!.call} DE 9V1NE 9V1NE`)).toBe(false);
+  });
+});
+
+describe('the station hears you right', () => {
+  it('works a station whose call is close to yours', () => {
+    const bot = new QsoBot({ format: 'ragchew', opener: 'bot', you: SG, wpm: 18, seed: 1 });
+    bot.active!.call = '9V1AB';
+    bot.start();
+    const reply = bot.hear('9V1AB DE 9V1NE 9V1NE K')[0].text;
+    expect(reply).not.toMatch(/QRZ/);
+    expect(reply).toMatch(/^9V1NE DE 9V1AB /);
+    expect(bot.copied.call).toBe('9V1NE');
+    // Calling CQ: the close call is still yours, and the station does not "repair" its own call.
+    const you = new QsoBot({ format: 'licw', opener: 'you', you: SG, wpm: 18, seed: 1 });
+    you.active!.call = '9V1AB';
+    expect(you.hear('CQ CQ DE 9V1NE 9V1NE K')[0].text).toMatch(/^9V1NE DE 9V1AB/);
+    expect(you.hear('9V1AB DE 9V1NE GE TNX FER CALL UR RST 579 579 NAME AMON AMON QTH SINGAPORE HW? 9V1AB DE 9V1NE KN')[0].text).toMatch(/^9V1NE DE 9V1AB R R/);
+  });
+  it('answers a garbled CQ that has your call, and asks who is calling when it has none', () => {
+    for (const format of ['ragchew', 'pota', 'contest', 'sst'] as Format[]) {
+      const bot = new QsoBot({ format, opener: 'you', you: SG, wpm: 18, seed: 4 });
+      const r = bot.hear('KQ KQ DE 9V1NE K');
+      expect(r.length, format).toBe(1);
+      expect(r[0].text, format).toContain(bot.active!.call);
+      const none = new QsoBot({ format, opener: 'you', you: SG, wpm: 18, seed: 4 });
+      expect(none.hear('TETQ TETQ K')[0]?.text, format).toBe('QRZ?');
+    }
+  });
+  it('a CQ without your call gets QRZ?, not your saved call', () => {
+    const bot = new QsoBot({ format: 'ragchew', opener: 'you', you: SG, wpm: 18, seed: 4 });
+    expect(bot.hear('CQ CQ CQ K')[0].text).toBe('QRZ?');
+    expect(bot.copied.call).toBeNull();
+  });
+  it('HW? closing a full over is not a request for your report', () => {
+    const bot = new QsoBot({ format: 'ragchew', opener: 'bot', you: SG, wpm: 18, seed: 4 });
+    bot.start();
+    const c = bot.active!.call;
+    bot.hear(`${c} DE 9V1NE 9V1NE K`);
+    const reply = bot.hear(`${c} DE 9V1NE R TNX <BT> UR RST 579 579 <BT> NAME AMON AMON <BT> QTH SINGAPORE <BT> HW? ${c} DE 9V1NE K`)[0].text;
+    expect(reply).not.toMatch(/^UR RST/);
+    // On its own, HW? asks how they copy you: they give you a report.
+    expect(bot.hear(`HW? ${c} DE 9V1NE K`)[0].text).toMatch(/UR RST/);
+  });
+});
+
+describe('SST outside the USA', () => {
+  for (const region of ['SG', '9V', 'DX', 'TAMPINES', 'SINGAPORE']) {
+    it(`takes ${region} as your region and finishes`, () => {
+      const bot = new QsoBot({ format: 'sst', opener: 'you', you: SG, wpm: 18, seed: 4 });
+      bot.hear('CQ SST 9V1NE');
+      bot.hear(`${bot.active!.call} GE AMON ${region}`);
+      expect(bot.done).toBe(true);
+      expect(bot.copied).toMatchObject({ name: 'AMON', state: region });
+    });
+  }
+  for (const over of ['GE AMON SINGAPORE', 'TNX AMON SINGAPORE', 'BK AMON SINGAPORE', 'DE 9V1NE AMON SINGAPORE', 'GE OM AMON SINGAPORE', 'R TU AMON SINGAPORE BK']) {
+    it(`reads the name and region in "${over}"`, () => {
+      const bot = new QsoBot({ format: 'sst', opener: 'you', you: SG, wpm: 18, seed: 4 });
+      bot.hear('CQ SST 9V1NE');
+      bot.hear(`${bot.active!.call} ${over}`);
+      expect(bot.copied).toMatchObject({ name: 'AMON', state: 'SINGAPORE' });
+    });
+  }
+  it('Delaware and Ontario still count as regions', () => {
+    for (const st of ['DE', 'ON']) {
+      const bot = new QsoBot({ format: 'sst', opener: 'you', you: { ...ME, state: st }, wpm: 18, seed: 4 });
+      bot.hear('CQ SST K1ABC');
+      bot.hear(`${bot.active!.call} GE TOM ${st}`);
+      expect(bot.copied, st).toMatchObject({ name: 'TOM', state: st });
+    }
+  });
+});
+
+describe('what the station sent you', () => {
+  it('is the report it actually sent, as digits, or nothing in SST', () => {
+    const bot = new QsoBot({ format: 'ragchew', opener: 'bot', you: SG, wpm: 18, seed: 4 });
+    const s = { ...bot.active!, rst: '579' };
+    expect(reportSent('ragchew', s)).toBe('579');
+    expect(reportSent('sota', s)).toBe('579');
+    for (const f of ['pota', 'contest', 'pileup'] as Format[]) expect(reportSent(f, s), f).toBe('599');
+    expect(reportSent('sst', s)).toBe('');
+  });
+});
+
+describe('format descriptions', () => {
+  it('explain each format in whole sentences, without "state" alone or WPM in capitals', () => {
+    for (const f of FORMATS) {
+      expect(f.exchange, f.id).toMatch(/\.$/);
+      expect(f.exchange, f.id).not.toMatch(/\bstate\b(?!, province)|WPM|each repeated/);
+    }
+  });
+});
 
 describe('parser', () => {
   it('reads a typical first over', () => {

@@ -8,7 +8,7 @@ test('decodes CW from the microphone', async ({ page }) => {
   await page.goto('./#/practice/live');
   await page.getByRole('button', { name: 'Start' }).click();
   await expect(page.getByLabel('Decoded sending')).toContainText('PARIS PARIS', { timeout: 20_000 });
-  await expect(page.locator('a[aria-label^="Signal"]').first()).toContainText(/6[45]\d Hz/);
+  await expect(page.getByRole('link', { name: /Open input setup/ }).first()).toContainText(/6[45]\d Hz/);
   expect(errors).toEqual([]);
 });
 

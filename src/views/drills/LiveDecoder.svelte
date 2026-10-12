@@ -1,7 +1,8 @@
 <script lang="ts">
   // Free practice scope: key anything and watch your own sending decoded live,
-  // with its rhythm drawn to scale above the standard. In LICW strict mode the
-  // text and rhythm show after each over (silence, or End over) instead.
+  // with its rhythm drawn to scale above the standard and a timing note that
+  // updates as you go. In LICW strict mode the text shows only when you pause
+  // (or press Done sending), and there are no rhythm bars.
   import { onDestroy } from 'svelte';
   import DrillFrame from '../../ui/DrillFrame.svelte';
   import Button from '../../ui/Button.svelte';
@@ -17,6 +18,7 @@
   import { analyseFist, type FistReport } from '../../lib/train/fist';
   import { oneNote } from '../../lib/train/scoring';
   import { keepAwake } from '../../lib/util/wakelock';
+  import { forControl } from '../../lib/util/keys';
   import { followInput, keepSend, saveSession, sendInput } from '../../lib/train/session';
 
   // The touch key pad stays in place while this screen is open.
@@ -40,10 +42,25 @@
   let startedAt = 0;
   const shown = $derived(strict() ? tokens.slice(0, revealed) : tokens);
 
+  let starting = false;
+
   async function start() {
+    if (running || starting) return;
+    starting = true;
+    try {
+      await begin();
+    } finally {
+      starting = false;
+    }
+  }
+
+  /** Set on leaving: a start still waiting for the microphone gives up. */
+  let gone = false;
+
+  async function begin() {
     if (settings.input === 'mic' && !signal.micOn) {
       const ok = await startMic();
-      if (!ok) return;
+      if (!ok || gone) return;
     }
     live = new LiveDecoder({
       source: sendInput(),
@@ -56,6 +73,11 @@
           if (n === req && live) tokens = render(o);
         });
         signal.wpm = live?.decoder.wpm ?? 0;
+        // Timing feedback as you go, not only when you finish (not in strict mode).
+        if (live && !strict()) {
+          report = analyseFist(live.outputs);
+          note = oneNote(report, [], settings.sendTolerance);
+        }
       },
       onKey: (down) => {
         if (overTimer) clearTimeout(overTimer);
@@ -68,6 +90,10 @@
       },
     });
     await live.start();
+    if (gone) {
+      live.stop();
+      return;
+    }
     running = true;
     startedAt = Date.now();
     void keepAwake(true);
@@ -81,7 +107,8 @@
       await endOver();
       if (live !== l) return;
       live.stop();
-      void saveSession({
+      // Nothing sent: nothing to record.
+      if (live.chars.length) void saveSession({
         mode: 'live',
         seconds: Math.round((Date.now() - startedAt) / 1000),
         sending: true,
@@ -128,7 +155,7 @@
     report = analyseFist(live.outputs);
     note = oneNote(report, [], settings.sendTolerance);
     revealed = tokens.length;
-    rows = rhythmRows();
+    if (!strict()) rows = rhythmRows();
     void keepSend(live.text, live.marks);
   }
 
@@ -143,13 +170,14 @@
   }
 
   onDestroy(() => {
+    gone = true;
     if (overTimer) clearTimeout(overTimer);
     live?.stop();
     void keepAwake(false);
   });
 </script>
 
-<DrillFrame title="Live decoder" eyebrow={strict() ? 'Your sending, decoded after each over' : 'Your sending, decoded live'}>
+<DrillFrame title="Live decoder" eyebrow={strict() ? 'Your sending, shown when you pause' : 'Your sending, decoded live'}>
   <div class="screen" aria-live="polite">
     {#if shown.length}
       <TokenText tokens={shown} size="xl" label="Decoded sending" />
@@ -160,9 +188,9 @@
     {/if}
   </div>
   {#if inspecting}<Inspect marks={inspecting} onclose={() => (inspecting = null)} />{/if}
-  {#if rows.length && rows[0].marks.length}
+  {#if rows.length && rows[0].marks.length && !strict()}
     <div class="rhythm">
-      <span class="label">Rhythm, last {rows[0].marks.length} marks</span>
+      <span class="label">Rhythm of your last {rows[0].marks.length} dits and dahs</span>
       <RhythmView {rows} />
     </div>
   {/if}
@@ -175,7 +203,7 @@
   {#snippet footer()}
     {#if running}
       <Button kind="primary" onclick={stop} hint="Esc">Stop</Button>
-      <Button onclick={endOver}>End over</Button>
+      <Button onclick={endOver}>Done sending</Button>
     {:else}
       <Button kind="primary" onclick={start} disabled={signal.starting}>Start</Button>
     {/if}
@@ -188,7 +216,7 @@
     if (e.key === 'Escape' && running) {
       e.preventDefault();
       stop();
-    } else if (e.key === 'Enter' && !running && !(e.target instanceof HTMLButtonElement)) {
+    } else if (e.key === 'Enter' && !running && !forControl(e)) {
       e.preventDefault();
       void start();
     }

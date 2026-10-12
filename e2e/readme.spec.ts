@@ -84,7 +84,7 @@ test.describe('desktop', () => {
       await open(page, 'practice/live', theme, { input: 'mic', sendWpm: 16, pinnedHz: 600 });
       await page.getByRole('button', { name: /Start/ }).click();
       await expect(page.getByLabel('Decoded sending')).toContainText('K1ABC K', { timeout: 60_000 });
-      await page.getByRole('button', { name: 'End over' }).click();
+      await page.getByRole('button', { name: 'Done sending' }).click();
       await page.waitForTimeout(1500);
       await shot(page, 'live-decoder', theme);
     });

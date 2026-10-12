@@ -24,7 +24,7 @@
 
 {#if IS_IOS && !running}
   <div class="gate" role="status">
-    <span>Sound is off until you tap. It plays with the silent switch on.</span>
+    <span>Sound is off until you tap. Once it is on, it plays even with the silent switch on.</span>
     <button type="button" onclick={enable}>Turn sound on</button>
   </div>
 {/if}
@@ -36,14 +36,14 @@
     justify-content: space-between;
     flex-wrap: wrap;
     gap: var(--s-1) var(--s-2);
-    padding: var(--s-1) var(--s-2);
+    padding: var(--s-1) calc(var(--s-2) + var(--safe-right)) var(--s-1) calc(var(--s-2) + var(--safe-left));
     border-bottom: var(--hairline) solid var(--line);
     font-size: var(--size-s);
     color: var(--muted);
   }
 
   button {
-    min-height: 40px;
+    min-height: var(--target-min);
     padding: 0 var(--s-2);
     border: var(--hairline) solid var(--signal);
     border-radius: var(--radius);

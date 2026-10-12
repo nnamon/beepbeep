@@ -1,6 +1,6 @@
 // Plays the class exercises: a run of cards, each in a set pattern of CW,
 // voice and silence. Familiarity says the card first; recognition and TTR say
-// it after; groups and copy read everything back at the end; Speed Racer plays
+// it after; groups and copy read everything back at the end; Speed Racing plays
 // each card fast to slow; VET and VST step the speed on a timer.
 //
 // Audio, speech and time come in through PlayerDeps, so tests can run the
@@ -27,7 +27,7 @@ export interface Recipe {
   /** Silence between cards, seconds. */
   wait?: number;
   /**
-   * Speed Racer: each card at wpm × each multiplier in turn. `say` speaks the
+   * Speed Racing: each card at wpm × each multiplier in turn. `say` speaks the
    * card after the last; `replay` then plays it once more at the first.
    */
   racer?: { multipliers: number[]; say?: boolean; replay?: boolean };
@@ -113,11 +113,13 @@ export class Player {
     }
   }
 
-  start() {
+  /** Starts the run, or with `at`, carries on from that card (cards before it count as done). */
+  start(at?: number) {
     if (this.state.phase === 'done' || this.state.phase === 'recap') {
       this.activeMs = 0;
       this.set({ index: 0, done: 0 });
     }
+    if (at !== undefined) this.set({ index: Math.max(0, Math.min(at, this.cards.length - 1)), done: Math.max(0, Math.min(at, this.cards.length)) });
     this.interrupt();
     void this.run(this.gen);
   }
@@ -125,13 +127,19 @@ export class Player {
   pause() {
     if (this.state.phase === 'ready' || this.state.phase === 'done' || this.state.phase === 'paused') return;
     this.interrupt();
+    // Pausing the read-back ends it; Read back starts it again.
+    if (this.state.phase === 'recap') return this.set({ phase: 'done' });
     this.set({ phase: 'paused' });
   }
 
-  /** Plays the current card again from its start. */
+  /**
+   * Plays the current card again from its start. Paused in the gap after a
+   * card, it goes on with the next one rather than repeating the card just heard.
+   */
   resume() {
     if (this.state.phase !== 'paused') return;
     this.interrupt();
+    if (this.state.done > this.state.index) this.set({ index: Math.min(this.state.done, this.cards.length - 1) });
     void this.run(this.gen);
   }
 
@@ -144,7 +152,9 @@ export class Player {
   }
 
   private jump(index: number) {
-    const playing = !['ready', 'paused', 'done'].includes(this.state.phase);
+    // Not once the run has finished: Again starts a new one.
+    if (this.state.phase === 'done' || this.state.phase === 'recap') return;
+    const playing = !['ready', 'paused'].includes(this.state.phase);
     this.interrupt();
     this.set({ index, done: Math.min(this.state.done, index) });
     if (playing) void this.run(this.gen);

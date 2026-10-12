@@ -144,7 +144,94 @@ describe('cards', () => {
     }
     expect(material('new', { rng, known, added: ['T', 'I', 'N'], count: 9 }).map((c) => c.cw).sort()).toEqual(['I', 'I', 'I', 'N', 'N', 'N', 'T', 'T', 'T']);
     // BK comes as a pair with 2 and 8.
-    const bk = material('new', { rng, known: [...known, '2', '8', 'B', 'K'], added: ['2', '8'], words: ['BK'], count: 30 });
+    const bk = material('new', { rng, known: [...known, '2', '8', 'B', 'K'], added: ['2', '8'], words: ['BK'], addedWords: ['BK'], count: 30 });
     expect(bk.some((c) => c.cw === 'BK')).toBe(true);
+    // Later lessons still know BK, but it isn't new there.
+    const later = material('new', { rng, known: [...known, '2', '8', 'B', 'K', '4', '0'], added: ['4', '0'], words: ['BK'], count: 30 });
+    expect(later.some((c) => c.cw === 'BK')).toBe(false);
+  });
+
+  it('phrases: several different ones, or none when the lesson is too early', () => {
+    const rng = mulberry32(5);
+    // BC1 at PSG: only a phrase or two fit, which would repeat all run long.
+    const early = material('phrases', { rng, known: 'REATINPSG'.split(''), added: ['P', 'S', 'G'], count: 15 });
+    expect(early).toEqual([]);
+    const all = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789?/'.split('');
+    const late = material('phrases', { rng, known: all, added: [], count: 15 });
+    expect(late.length).toBe(15);
+    expect(new Set(late.map((c) => c.cw)).size).toBeGreaterThanOrEqual(10);
+  });
+
+  it('contest exchanges send a region that goes with the call, from around the world', () => {
+    const rng = mulberry32(8);
+    const all = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/'.split('');
+    const lines = Array.from({ length: 300 }, () => material('contest', { rng, known: all, added: [], count: 1 })[0].cw);
+    // Never the prosign-like US state codes DE or ME after 5NN.
+    expect(lines.some((l) => /5NN (DE|ME)\b/.test(l))).toBe(false);
+    expect(lines.some((l) => /5NN [A-Z]{3,}/.test(l))).toBe(true);
+  });
+});
+
+/** Deps whose silences wait until released, to pause or skip mid-run. */
+function held() {
+  const log: string[] = [];
+  const pending: (() => void)[] = [];
+  const deps: PlayerDeps = {
+    async cw(text) {
+      log.push(`cw ${text}`);
+      return { done: Promise.resolve(), stop: () => {} };
+    },
+    async say(text) {
+      log.push(`say ${text}`);
+    },
+    hush: () => {},
+    sleep: (ms) => (ms > 0 ? new Promise<void>((r) => pending.push(r)) : Promise.resolve()),
+    now: () => 0,
+  };
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+  return { deps, log, pending, flush };
+}
+
+describe('exercise player: pausing and skipping', () => {
+  it('paused in the gap after a card, Resume goes on with the next card', async () => {
+    const h = held();
+    const p = new Player(cards('A', 'B', 'C'), { wpm: 14, fwpm: 14, wait: 1 }, h.deps);
+    p.start();
+    await h.flush();
+    expect(p.state.phase).toBe('gap');
+    expect(h.log).toEqual(['cw A']);
+    p.pause();
+    p.resume();
+    await h.flush();
+    expect(h.log).toEqual(['cw A', 'cw B']);
+  });
+
+  it('Pause during the read-back ends it, without replaying a card', async () => {
+    const h = held();
+    const p = new Player(cards('A', 'B'), { wpm: 14, fwpm: 14, voice: { when: 'end', spell: true, delay: 0 } }, h.deps);
+    p.start();
+    await h.flush();
+    expect(p.state.phase).toBe('recap');
+    p.pause();
+    expect(p.state.phase).toBe('done');
+    p.resume();
+    await h.flush();
+    expect(h.log.filter((l) => l.startsWith('cw'))).toEqual(['cw A', 'cw B']);
+  });
+
+  it('Back and Next do nothing once the run is over', async () => {
+    const h = held();
+    const p = new Player(cards('A', 'B'), { wpm: 14, fwpm: 14 }, h.deps);
+    const seen: string[] = [];
+    const q = new Player(p.cards, p.recipe, h.deps, (s) => seen.push(s.phase));
+    q.start();
+    await h.flush();
+    expect(q.state.phase).toBe('done');
+    const n = seen.length;
+    q.next();
+    q.back();
+    await h.flush();
+    expect(seen.length).toBe(n);
+    expect(h.log).toEqual(['cw A', 'cw B']);
   });
 });

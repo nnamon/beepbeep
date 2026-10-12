@@ -1,6 +1,7 @@
 <script lang="ts">
-  // A pocket round: learn new items, then 20 quiz items answered on the full
-  // keyboard. A miss plays the right answer and your pick back to back.
+  // A pocket round: learn new characters, then 20 questions answered on the
+  // full keyboard. A miss plays the right answer and your pick back to back.
+  // In LICW strict mode the answers are shown only at the end.
   import { onDestroy } from 'svelte';
   import Button from '../ui/Button.svelte';
   import Icon from '../ui/Icon.svelte';
@@ -16,13 +17,14 @@
   import type { Level } from '../lib/train/courses';
   import { pickNext, type ItemStat } from '../lib/train/srs';
   import { items, type Material } from '../lib/train/generate';
-  import { CHUNKS, COMMON_WORDS, QSO_WORDS, wordsFromKnown } from '../lib/train/words';
+  import { CHUNKS, COMMON_WORDS, QSO_WORDS, usesOnly, wordsFromKnown } from '../lib/train/words';
   import { buildSchedule } from '../lib/morse/schedule';
   import { displayToken } from '../lib/morse/code';
   import { textTokens } from '../lib/util/text';
-  import { mulberry32, randomSeed } from '../lib/util/random';
+  import { mulberry32, pick, randomSeed } from '../lib/util/random';
   import { keepAwake } from '../lib/util/wakelock';
   import { getKv } from '../lib/state/db';
+  import { forControl } from '../lib/util/keys';
 
   let { stage, customSet: initialSet }: { stage: string; customSet: { chars: string[]; words: string[] } } = $props();
   // A round is keyed by stage in the parent, so capturing initial props is intended.
@@ -46,7 +48,6 @@
   let last = $state<{ item: string; got: string; ok: boolean; rows: RhythmRow[] } | null>(null);
   let log = $state<{ item: string; got: string; ok: boolean; ms: number; replays: number }[]>([]);
   let replays = 0;
-  let holding = $state(false);
   // LICW learn: tap each time the new character plays.
   let learnTaps = $state(0);
   let learnPlays = $state(0);
@@ -57,6 +58,12 @@
   let recent: string[] = [];
   let endPerf = 0;
   let firstKey = 0;
+  /**
+   * Bumped for each new question, each new round and on leaving. Anything
+   * still waiting from an earlier question (a reveal, the next question)
+   * checks it and stops, so nothing plays after you have moved on.
+   */
+  let turn = 0;
   const startedAt = Date.now();
   // svelte-ignore state_referenced_locally
   const prefix = stage === 'characters' ? 'rx:' : `pk:${stage}:`;
@@ -71,6 +78,10 @@
         return wordsFromKnown([...QSO_WORDS, ...COMMON_WORDS], known);
       case 'custom':
         return [...customSet.chars, ...customSet.words];
+      // Generated, then kept only if they use the characters you know.
+      case 'callsigns':
+      case 'phrases':
+        return [...new Set(items(rng, stage, known, 80).filter((x) => usesOnly(x, known)))];
       default:
         return [];
     }
@@ -78,6 +89,8 @@
 
 
   async function begin() {
+    const me = ++turn;
+    engine.stopAll();
     level = currentLevel();
     known = new Set(level.known);
     opened = null;
@@ -89,19 +102,20 @@
     if (stage === 'custom' && !customSet.chars.length && !customSet.words.length) {
       customSet = await getKv('pocket.custom', { chars: [], words: [] }).catch(() => customSet);
     }
+    if (me !== turn) return;
     pool = buildPool();
-    const generated = stage === 'callsigns' || stage === 'phrases';
-    if (!generated && pool.length < 2) {
+    if (pool.length < 2) {
       phase = 'empty';
       return;
     }
     void keepAwake(true);
     const fresh = stage === 'characters' ? level.added.filter((c) => !(map.get(`rx:${c}`)?.seen)) : [];
-    if (fresh.length) await learn(fresh);
+    if (fresh.length) await learn(fresh, me);
+    if (me !== turn) return;
     await next();
   }
 
-  async function learn(fresh: string[]) {
+  async function learn(fresh: string[], me: number) {
     phase = 'learn';
     learnTaps = 0;
     learnPlays = 0;
@@ -110,6 +124,7 @@
       learnItem = licw ? '' : c;
       if (!licw) await say(c);
       for (let k = 0; k < (licw ? 5 : 3); k++) {
+        if (me !== turn) return;
         tapOpen = true;
         tapped = false;
         const pb = await playCw(c, { plain: true });
@@ -119,6 +134,7 @@
         tapOpen = false;
         if (licw) learnPlays++;
       }
+      if (me !== turn) return;
       learnItem = c;
       if (settings.track === 'licw') await say(c);
       await wait(700);
@@ -126,7 +142,7 @@
   }
 
   function pickItem(): string {
-    if (stage === 'callsigns' || stage === 'phrases') return items(rng, stage as Material, null, 1)[0];
+    if (stage === 'callsigns' || stage === 'phrases') return pick(rng, pool);
     const keys = pool;
     const m = new Map([...map].map(([k, v]) => [k.slice(prefix.length), v]));
     const it = pickNext(rng, keys, m, recent);
@@ -141,6 +157,8 @@
   }
 
   async function next() {
+    turn++;
+    engine.stopAll();
     if (n >= ROUND) return wrap();
     item = pickItem();
     typed = [];
@@ -152,10 +170,12 @@
 
   async function replay() {
     replays++;
+    engine.stopAll();
     await play();
   }
 
   async function play() {
+    endPerf = Infinity;
     const pb = await playCw(item);
     endPerf = performance.now() + (pb.startTime - engine.now + pb.duration - 0.2) * 1000;
     await pb.done;
@@ -170,22 +190,33 @@
     if (k === 'DEL') return void typed.pop();
     if (k === 'DONE') return void submit();
     if (k === ' ' && single) return;
-    if (!firstKey) firstKey = Math.max(0, performance.now() - endPerf);
+    // Time from the end of the last play; an answer before it ends counts as instant.
+    if (!firstKey) firstKey = Math.max(1, performance.now() - endPerf);
     typed.push(k);
     if (single) void submit();
   }
 
   async function submit() {
+    if (phase !== 'quiz') return;
+    const me = turn;
+    phase = 'reveal';
     const got = typed.join('');
     const ok = textTokens(got).join('') === textTokens(item).join('');
     const slow = single ? 1500 : 2500 + 300 * item.length;
-    // Replays are counted, not penalised: timing runs from the end of the last play.
-    const ms = firstKey || 2000;
+    // Replays don't count against you: timing runs from the end of the last play.
+    const ms = firstKey || slow;
+    log.push({ item, got, ok, ms, replays });
+    n++;
     if (stage !== 'callsigns' && stage !== 'phrases') {
       await answer(map, `${prefix}${item}`, ok, ms, slow, !ok && single ? { want: item, got } : undefined);
     }
-    log.push({ item, got, ok, ms: firstKey || 2000, replays });
-    n++;
+    if (me !== turn) return;
+    // Strict mode: no answer now; they are all shown at the end of the round.
+    if (strict()) {
+      await wait(400);
+      if (me === turn) await next();
+      return;
+    }
     const rows: RhythmRow[] = [];
     if (!ok && single && got) {
       const a = buildSchedule(item, { charWpm: receiveSpeeds().charWpm, leadIn: 0, tail: 0 });
@@ -193,25 +224,23 @@
       rows.push({ label: 'It was', marks: a.marks }, { label: 'Your pick', marks: b.marks, style: 'outline' });
     }
     last = { item, got, ok, rows };
-    // Strict mode: the answer is spoken before it is shown.
-    holding = strict();
-    phase = 'reveal';
-    if (strict()) await say(item);
-    holding = false;
     if (!ok) {
       await (await playCw(item, { plain: true })).done;
+      if (me !== turn) return;
       if (single && got && textTokens(got).length === 1) {
         await wait(250);
+        if (me !== turn) return;
         await (await playCw(got, { plain: true })).done;
       }
     } else {
-      if (!strict()) void say(item);
+      void say(item);
       await wait(800);
-      if (phase === 'reveal' && last?.item === item) await next();
+      if (me === turn) await next();
     }
   }
 
   function wrap() {
+    turn++;
     phase = 'wrap';
     void keepAwake(false);
     const accuracy = log.filter((l) => l.ok).length / Math.max(1, log.length);
@@ -237,6 +266,7 @@
   const threshold = $derived(advanceThreshold());
 
   onDestroy(() => {
+    turn++;
     signal.receiving = false;
     engine.stopAll();
     void keepAwake(false);
@@ -250,19 +280,31 @@
   const right = $derived(log.filter((l) => l.ok).length);
   const avgMs = $derived(log.length ? log.reduce((a, l) => a + l.ms, 0) / log.length : 0);
   const replayed = $derived(log.filter((l) => l.replays > 0));
+  const missed = $derived(log.filter((l) => !l.ok));
   const title = $derived(stage.charAt(0).toUpperCase() + stage.slice(1));
 </script>
 
 <svelte:window
   onkeydown={(e) => {
-    if (phase === 'learn' && e.code === 'Space' && !e.repeat) {
+    if (e.key === 'Escape') {
+      go('pocket');
+      return;
+    }
+    if (forControl(e) || e.repeat) return;
+    if (phase === 'learn' && e.code === 'Space') {
       e.preventDefault();
       learnTap();
-    } else if (e.key === 'Escape') {
-      go('pocket');
-    } else if (e.key === 'Enter' && (phase === 'ready' || phase === 'wrap') && !(e.target instanceof HTMLButtonElement)) {
+    } else if (e.key === 'Enter' && phase === 'ready') {
       e.preventDefault();
       void begin();
+    } else if (e.key === 'Enter' && phase === 'wrap') {
+      // Enter does what the first button does.
+      e.preventDefault();
+      if (opened) nextLesson();
+      else void begin();
+    } else if (e.key === 'Enter' && phase === 'reveal' && last && !last.ok) {
+      e.preventDefault();
+      void next();
     }
   }}
 />
@@ -281,8 +323,14 @@
       <button type="button" class="play" onclick={begin} aria-label="Start the round"><Icon name="play" size={40} /></button>
       <span class="muted">Start</span>
     </div>
+  {:else if phase === 'loading'}
+    <div class="center" aria-busy="true"></div>
   {:else if phase === 'empty'}
-    <p class="muted">There aren't enough of these yet that use only the characters in {level.name}. Pick another stage, or add your own to the custom set.</p>
+    {#if stage === 'custom'}
+      <p class="muted">Your custom set needs at least two characters or words. Add them on the Pocket screen.</p>
+    {:else}
+      <p class="muted">There aren't enough {title.toLowerCase()} yet that use only the characters in {level.name}. Choose another round, or add your own to the custom set.</p>
+    {/if}
   {:else if phase === 'learn'}
     <div class="center">
       <span class="label">New</span>
@@ -299,9 +347,17 @@
       <div><dt class="label">Replayed</dt><dd class="num big">{replayed.length}</dd></div>
     </dl>
     {#if opened}
-      <p class="opened">You scored over {Math.round(threshold * 100)}%, so {opened.name} is open. It adds <span class="mono">{opened.added.map(displayToken).join(' ')}</span>.</p>
+      <p class="opened">You scored {Math.round(threshold * 100)}% or more. Press Next lesson to move on to {opened.name}, which adds <span class="mono">{opened.added.map(displayToken).join(' ')}</span>.</p>
     {:else if stage === 'characters'}
-      <p class="muted">Score {Math.round(threshold * 100)}% or more in a round to open the next lesson.</p>
+      <p class="muted">Score {Math.round(threshold * 100)}% or more in a round to move on to the next lesson.</p>
+    {/if}
+    {#if missed.length}
+      <h3>Missed</h3>
+      <ul class="missed">
+        {#each missed as l, k (k)}
+          <li><span class="mono">{l.item}</span> <span class="muted">you typed {l.got || 'nothing'}</span></li>
+        {/each}
+      </ul>
     {/if}
     {#if replayed.length}
       <p class="muted">Replayed: <span class="mono">{[...new Set(replayed.map((l) => l.item))].join(' ')}</span></p>
@@ -317,16 +373,14 @@
     <div class="actions">
       {#if opened}<Button kind="primary" onclick={nextLesson}>Next lesson</Button>{/if}
       <Button kind={opened ? 'secondary' : 'primary'} onclick={begin}>{opened ? `Stay on ${level.name}` : 'Another round'}</Button>
-      <Button href={href('pocket')}>Stages</Button>
+      <Button href={href('pocket')}>All rounds</Button>
     </div>
   {:else}
-    <div class="center">
+    <div class="center" aria-live="polite">
       <button type="button" class="play" onclick={replay} aria-label="Play again" disabled={phase !== 'quiz'}>
         <Icon name="play" size={40} />
       </button>
-      {#if phase === 'reveal' && holding}
-        <span class="muted">Listen</span>
-      {:else if phase === 'reveal' && last}
+      {#if phase === 'reveal' && last && !strict()}
         <span class="label">It was</span>
         <TokenText tokens={textTokens(last.item).map((t) => ({ t }))} size="xl" />
         {#if !last.ok}<span class="muted">You typed {last.got || 'nothing'}</span>{/if}
@@ -366,8 +420,8 @@
 
   .back {
     color: var(--muted);
-    min-width: 40px;
-    min-height: 40px;
+    min-width: var(--target-min);
+    min-height: var(--target-min);
     display: inline-flex;
     align-items: center;
   }
@@ -448,10 +502,17 @@
     margin: 0;
   }
 
-  .pairs {
+  .pairs,
+  .missed {
     list-style: none;
     padding: 0;
     margin: 0;
+  }
+
+  .missed {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-half) var(--s-3);
   }
 
   .actions {
@@ -461,13 +522,73 @@
   }
 
   /* On phones the answer keys stay on screen just above the tab bar, whatever the screen height. */
-  @media (max-width: 760px) {
+  @media (max-width: 760px) and (min-height: 501px) {
     .kb {
       position: sticky;
       bottom: calc(var(--tabbar) + var(--s-1));
       background: var(--bg);
       padding-top: var(--s-1);
       z-index: 5;
+    }
+
+    /*
+     * After a miss the keys are off until Next, and on most phones they would cover the answer.
+     * Next takes their place at the bottom, and the keys come back with the next one.
+     */
+    .kb:has(> :global(.btn)) > :global(.kb) {
+      display: none;
+    }
+  }
+
+  /* Short phones (an iPhone SE in Safari): a smaller play button and tighter spacing, so the answer still fits. */
+  @media (max-width: 760px) and (min-height: 501px) and (max-height: 600px) {
+    .round {
+      gap: var(--s-1);
+    }
+
+    .center {
+      padding: var(--s-1) 0;
+    }
+
+    .play {
+      width: 72px;
+      height: 72px;
+    }
+  }
+
+  /* A phone on its side: the answer keys go beside the round instead of below the fold. */
+  @media (orientation: landscape) and (max-height: 500px) {
+    .round {
+      min-height: 0;
+      gap: var(--s-1);
+    }
+
+    .round:has(> .kb) {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      grid-template-rows: auto auto 1fr;
+      gap: var(--s-1) var(--s-4);
+      align-items: start;
+      max-width: 1000px;
+    }
+
+    .round:has(> .kb) > * {
+      grid-column: 1;
+    }
+
+    .round > .kb {
+      grid-column: 2;
+      grid-row: 1 / -1;
+      margin-top: 0;
+    }
+
+    .center {
+      padding: 0;
+    }
+
+    .play {
+      width: 72px;
+      height: 72px;
     }
   }
 </style>

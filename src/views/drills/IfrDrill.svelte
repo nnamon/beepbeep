@@ -1,7 +1,8 @@
 <script lang="ts">
-  // Sound surfing: a continuous stream at natural spacing, typed as it plays.
-  // No pauses, no replay, nothing marked until the end. The score is how many
-  // characters it took to get back in step after each miss.
+  // Sound surfing: a continuous stream with no extra space between characters,
+  // typed as it plays. No pauses, no replay, nothing marked until the end. The
+  // score is how many characters in a row you missed each time you fell behind.
+  // Stopping early scores only what had played.
   import { onDestroy } from 'svelte';
   import DrillFrame from '../../ui/DrillFrame.svelte';
   import Button from '../../ui/Button.svelte';
@@ -18,6 +19,8 @@
   import { scheduleDuration } from '../../lib/morse/schedule';
   import { mulberry32, randomSeed } from '../../lib/util/random';
   import { keepAwake } from '../../lib/util/wakelock';
+  import { forControl } from '../../lib/util/keys';
+  import type { Playback } from '../../lib/audio/engine';
 
   const level = currentLevel();
   const rng = mulberry32(randomSeed());
@@ -31,6 +34,9 @@
   let text = '';
   let result = $state<CopyResult | null>(null);
   let startedAt = 0;
+  let playback: Playback | null = null;
+  /** Bumped on each start and on leaving, so an earlier stream can't finish this one. */
+  let run = 0;
 
   function build(seconds: number): string {
     const known = new Set(level.known);
@@ -46,6 +52,8 @@
   }
 
   async function start() {
+    if (stage === 'playing') return;
+    const me = ++run;
     text = build(Number(length));
     typed = [];
     result = null;
@@ -53,9 +61,25 @@
     startedAt = Date.now();
     void keepAwake(true);
     const sp = receiveSpeeds();
+    playback = null;
     const pb = await playCw(text, { charWpm: sp.charWpm, effectiveWpm: sp.charWpm });
+    if (me !== run) return;
+    playback = pb;
     await pb.done;
-    if (stage === 'playing') setTimeout(finish, 1500);
+    if (me === run && stage === 'playing') setTimeout(() => me === run && finish(), 1500);
+  }
+
+  /** The part of the stream that has played so far: all of it once it has ended. */
+  function heard(): string {
+    const pb = playback;
+    if (!pb?.schedule) return '';
+    const t = engine.now - pb.startTime;
+    if (t >= pb.duration) return text;
+    return pb.schedule.chars
+      .filter((c) => c.start <= t)
+      .map((c) => c.token)
+      .join('')
+      .trim();
   }
 
   function onkey(k: string) {
@@ -67,9 +91,16 @@
 
   function finish() {
     if (stage !== 'playing') return;
+    const played = heard();
     engine.stopAll();
-    stage = 'done';
     void keepAwake(false);
+    // Stopped before anything much played: nothing to score.
+    if (textTokens(played).filter((t) => t !== ' ').length < 5) {
+      stage = 'ready';
+      return;
+    }
+    text = played;
+    stage = 'done';
     result = compareCopy(text, typed.join(''));
     void saveSession({
       mode: 'ifr',
@@ -84,6 +115,7 @@
   }
 
   onDestroy(() => {
+    run++;
     signal.receiving = false;
     engine.stopAll();
     void keepAwake(false);
@@ -98,7 +130,7 @@
   const rec = $derived(result ? recoveryLength(result) : null);
 </script>
 
-<DrillFrame title="Sound surfing" eyebrow="{level.name} · {receiveSpeeds().charWpm} wpm, natural spacing">
+<DrillFrame title="Sound surfing" eyebrow="{level.name} · {receiveSpeeds().charWpm} wpm">
   {#if stage === 'ready'}
     <div class="intro">
       <Segmented
@@ -106,32 +138,49 @@
         bind:value={length}
         options={[{ value: '45', label: '45 s' }, { value: '90', label: '90 s' }, { value: '180', label: '3 min' }]}
       />
-      <p class="muted">Type what you hear as it plays. If you miss one, skip it and keep going. You see how you did at the end.</p>
+      <p class="muted">
+        A continuous stream plays, with no extra space between characters. Type what you hear as it plays. If you miss
+        one, skip it and keep going. You see how you did at the end.
+      </p>
     </div>
   {:else if stage === 'playing'}
     <p class="typed mono" aria-live="off">{typed.slice(-40).join('') || ' '}</p>
     <Keyboard {onkey} />
   {:else if result}
     <dl class="facts">
-      <div><dt class="label">Recovery</dt><dd class="num big">{rec === null ? 'No misses' : `${rec.toFixed(1)} chars`}</dd></div>
       <div><dt class="label">Copied</dt><dd class="num big">{Math.round(result.accuracy * 100)}%</dd></div>
-      <div><dt class="label">Miss runs</dt><dd class="num big">{result.missRuns.length}</dd></div>
+      <div><dt class="label">Times you fell behind</dt><dd class="num big">{result.missRuns.length}</dd></div>
+      <div><dt class="label">Missed in a row</dt><dd class="num big">{rec === null ? 'No misses' : `${rec.toFixed(1)} on average`}</dd></div>
     </dl>
-    <p class="muted">Recovery: after a miss, how many more characters you miss on average before you catch up. Lower is better.</p>
-    {#if tapered}<p>Effective speed raised to {tapered} wpm.</p>{/if}
+    <p class="muted">
+      Missed in a row: each time you fell behind, how many characters in a row you missed before you caught up again.
+      1.0 means you lost only the one you missed. Lower is better.
+    </p>
+    {#if tapered}<p>Overall speed raised to {tapered} wpm: a little less space between characters.</p>{/if}
     <TokenText tokens={marked} size="m" label="Sent text, misses underlined" />
   {/if}
 
   {#snippet footer()}
     {#if stage === 'playing'}
-      <Button kind="primary" onclick={finish}>Stop</Button>
+      <Button kind="primary" onclick={finish} hint="Esc">Stop</Button>
     {:else}
       <Button kind="primary" onclick={start} hint="Enter">{stage === 'done' ? 'Again' : 'Start'}</Button>
     {/if}
   {/snippet}
 </DrillFrame>
 
-<svelte:window onkeydown={(e) => { if (e.key === 'Enter' && stage !== 'playing') { e.preventDefault(); void start(); } }} />
+<svelte:window
+  onkeydown={(e) => {
+    if (e.key === 'Escape' && stage === 'playing') {
+      // Esc presses Stop, as in the other drills with a Stop button.
+      e.preventDefault();
+      finish();
+    } else if (e.key === 'Enter' && stage !== 'playing' && !forControl(e)) {
+      e.preventDefault();
+      void start();
+    }
+  }}
+/>
 
 <style>
   .intro {
