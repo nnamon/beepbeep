@@ -143,20 +143,75 @@ const KEY = 'beepbeep.settings.v1';
 const obj = (v: unknown) => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 const str = (v: unknown) => (typeof v === 'string' ? v : '');
 
+/** The words each choice can take: what the Settings and Setup screens offer. */
+const CHOICES: Partial<Record<keyof Settings, readonly string[]>> = {
+  theme: ['system', 'dark', 'light', 'paper'],
+  track: ['koch', 'licw'],
+  input: ['mic', 'touch', 'straight', 'iambicA', 'iambicB'],
+  voice: ['builtin', 'system', 'recorded', 'off'],
+  sendTolerance: ['tight', 'normal', 'loose'],
+  qsoHelp: ['text', 'outline', 'none'],
+  qsoInput: ['key', 'type'],
+  stationMix: ['auto', 'asia', 'europe', 'americas', 'world'],
+  licwClass: ['bc1', 'bc2', 'bc3', 'int1', 'int2', 'int3', 'adv1', 'adv2', 'adv3', 'ttrplus', 'overlearn'] satisfies ClassId[],
+};
+
+/**
+ * The range of each number: the Settings sliders' (the TTR drill's for its
+ * delay, calibration's for the squelch, Setup's for a pinned pitch). With a
+ * step, the number is rounded to it.
+ */
+const RANGES: Partial<Record<keyof Settings, [min: number, max: number, step?: number]>> = {
+  charWpm: [5, 45, 1],
+  effectiveWpm: [3, 45, 1],
+  sendWpm: [5, 45, 1],
+  sessionMinutes: [5, 45, 5],
+  comfortWpm: [5, 45, 1],
+  stretchWpm: [5, 50, 1],
+  pitch: [400, 1000, 10],
+  volume: [0, 1],
+  noise: [0, 3, 1],
+  qsb: [0, 3, 1],
+  qrm: [0, 2, 1],
+  qrn: [0, 3, 1],
+  overTimeout: [1.5, 6, 0.5],
+  ttrDelay: [0.3, 3],
+  pinnedHz: [300, 1200, 1],
+  squelchDb: [9, 20, 1],
+};
+
+/** A number brought into its range and onto its step; anything that isn't a number gets the default. */
+function inRange(v: unknown, [min, max, step]: [number, number, number?], fallback: number): number {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return fallback;
+  const n = step ? Math.round(v / step) * step : v;
+  return Math.min(max, Math.max(min, n));
+}
+
 /**
  * Saved or imported settings made whole: defaults for anything missing, nested
- * parts merged, wrong types dropped, old lesson ids moved to the new ones.
+ * parts merged, wrong types dropped, choices kept to the ones the app offers,
+ * numbers kept to the ranges Settings allows, old lesson ids moved to the new
+ * ones. Hand-edited values out of range made drills throw when they played.
  */
 function normalize(raw: unknown): Settings {
   const s = obj(raw);
   const out: Settings = { ...structuredClone(DEFAULTS) };
+  const set = out as unknown as Record<string, unknown>;
   for (const k of Object.keys(DEFAULTS) as (keyof Settings)[]) {
     const v = s[k];
     const d = DEFAULTS[k];
     if (v === undefined || v === null) continue;
     if (typeof d === 'object' && d !== null) continue; // nested parts below
-    if (typeof v === typeof d || (d === null && typeof v === 'number')) (out as unknown as Record<string, unknown>)[k] = v;
+    const range = RANGES[k];
+    if (range) set[k] = inRange(v, range, (d as number | null) ?? NaN);
+    else if (CHOICES[k]) set[k] = CHOICES[k].includes(v as string) ? v : d;
+    else if (typeof v === typeof d) set[k] = v;
   }
+  // A number with no default (pinned pitch, squelch) that wasn't one stays off.
+  if (Number.isNaN(out.pinnedHz)) out.pinnedHz = null;
+  if (Number.isNaN(out.squelchDb)) out.squelchDb = null;
+  // The overall speed is never above the character speed (its slider stops there).
+  out.effectiveWpm = Math.min(out.effectiveWpm, out.charWpm);
   const level = { ...DEFAULTS.level, ...obj(s.level) } as Settings['level'];
   level.koch = str(level.koch) || DEFAULTS.level.koch;
   level.licw = migrateLevelId(str(level.licw) || DEFAULTS.level.licw);

@@ -199,6 +199,29 @@ test('strict mode with paddles saved, on a BC lesson: Setup and the signal bar s
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('beepbeep.settings.v1')!).input)).toBe('iambicA');
 });
 
+// Before: charWpm 0 was kept, and these drills threw when they played; unknown words were kept too.
+test('hand-edited settings out of range still let the drills play', async ({ page }) => {
+  test.setTimeout(90_000);
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(`${page.url().split('#')[1]}: ${e.message}`));
+  await instrument(page);
+  await settings(page, { ...BASE, charWpm: 0, effectiveWpm: 0, track: 'morse', input: 'keyboard', level: { koch: 'koch-5', licw: 'licw-bc1-REA' } });
+  for (const [path, start] of [
+    ['practice/copy/groups', /^Start/],
+    ['practice/ttr', /^Start/],
+    ['pocket/round/characters', /^Start the round/],
+    ['practice/head-copy', /^Play/],
+  ] as const) {
+    await page.goto(`./#/${path}`);
+    const before = (await played(page)).filter((p) => p.kind === 'cw').length;
+    await page.getByRole('button', { name: start }).first().click();
+    await expect.poll(async () => (await played(page)).filter((p) => p.kind === 'cw').length, { message: `${path} plays` }).toBeGreaterThan(before);
+  }
+  expect(errors).toEqual([]);
+  const s = await page.evaluate(() => JSON.parse(localStorage.getItem('beepbeep.settings.v1')!));
+  expect(s).toMatchObject({ charWpm: 5, effectiveWpm: 3, track: 'koch', input: 'mic' });
+});
+
 // Before: the keyed step said how the microphone listens, but not that it was blocked.
 test('Learn QSOs with a blocked microphone says so and offers the touch key', async ({ page }) => {
   await instrument(page, { gumFail: 'NotAllowedError' });
