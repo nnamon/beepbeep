@@ -49,7 +49,8 @@ export function renderSchedule(schedule: Schedule, opts: RenderOptions): Float32
     });
     const qAmp = amp * Math.pow(10, q.relativeDb / 20);
     const qOut = new Float32Array(n);
-    addTone(qOut, { ...other, duration: Math.min(other.duration, schedule.duration) }, opts.pitch + q.offsetHz, qAmp, { ...opts, chirp: undefined, qsb: undefined }, fs, rng);
+    // Marks past the end of the signal fall outside qOut and are cut there.
+    addTone(qOut, other, opts.pitch + q.offsetHz, qAmp, { ...opts, chirp: undefined, qsb: undefined }, fs, rng);
     for (let i = 0; i < n; i++) out[i] += qOut[i];
   }
 
@@ -83,9 +84,14 @@ export function renderSchedule(schedule: Schedule, opts: RenderOptions): Float32
   return out;
 }
 
-function addTone(
+/**
+ * Adds one keyed tone to `out`: raised-cosine edges, fading, chirp and drift
+ * from `opts` (drift counts from the start of `out`). The radio tests' band
+ * audio mixes several stations with it (radio/band.ts).
+ */
+export function addTone(
   out: Float32Array,
-  schedule: Schedule,
+  schedule: { marks: readonly { start: number; end: number }[] },
   pitch: number,
   amp: number,
   opts: RenderOptions,
