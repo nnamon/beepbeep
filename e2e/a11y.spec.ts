@@ -159,6 +159,20 @@ test('Pocket: the answer after a miss is announced', async ({ page }) => {
   expect(texts.some((t) => t && /It was/.test(t) && /You typed Q/.test(t))).toBe(true);
 });
 
+test('Sprint: each result is announced', async ({ page }) => {
+  await open(page, 'practice/sprint');
+  await page.getByRole('button', { name: /^Start/ }).click();
+  const kb = page.getByRole('group', { name: 'Answer keyboard' });
+  await expect(kb).toBeVisible();
+  const live = await page.locator('main [aria-live="polite"]').elementHandles();
+  expect(live.length, 'a live region is there before the result').toBeGreaterThan(0);
+  await kb.getByRole('button', { name: 'Q', exact: true }).click();
+  await kb.getByRole('button', { name: 'Done', exact: true }).click();
+  await expect(page.getByText(/^Typed Q/)).toBeVisible();
+  const texts = await Promise.all(live.map((h) => h.evaluate((e) => e.isConnected && (e as HTMLElement).innerText)));
+  expect(texts.some((t) => t && /Typed Q/.test(t))).toBe(true);
+});
+
 test('Practice: the pointer to the guide reads as one line of text', async ({ page }) => {
   await open(page, 'practice', { guideSeen: false });
   const p = page.getByText(/shows where to start/);

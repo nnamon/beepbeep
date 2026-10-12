@@ -279,7 +279,7 @@ const TARGETS: { route: string; settings?: Record<string, unknown>; targets: (p:
   },
   { route: 'practice/copy', targets: (p) => [p.getByRole('link', { name: 'Back' }), p.getByRole('radio', { name: 'Words' })] },
   { route: 'practice/live', settings: { input: 'mic' }, targets: (p) => [p.getByRole('button', { name: 'Use the touch key' })] },
-  { route: 'pocket', targets: (p) => [p.getByRole('button', { name: 'Next lesson' })] },
+  { route: 'pocket', targets: (p) => [p.getByRole('button', { name: 'Next lesson' }), p.getByRole('link', { name: 'Edit custom set' })] },
   { route: 'pocket/round/characters', targets: (p) => [p.getByRole('link', { name: 'Back to Pocket' })] },
   { route: 'settings', targets: (p) => [p.getByRole('slider').first(), p.getByRole('radiogroup', { name: 'Theme' }).getByRole('radio', { name: 'Light' })] },
 ];
