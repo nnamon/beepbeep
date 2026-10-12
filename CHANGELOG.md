@@ -2,6 +2,11 @@
 
 What changed in each version of BeepBeep. The version shows at the top of the app, beside the build.
 
+## 0.2.2 (12 October 2026)
+
+- The timing panel beside the Send drill and Live decoder puts each aim on its own line under its name ("Gap between words", then "aim 7 units"), so a narrow panel no longer breaks a label in two.
+- The README's preview images show the app as it is now, with captions in plain words.
+
 ## 0.2.1 (12 October 2026)
 
 A way to get the latest version on a phone, and fixes from a second, independent check of the layout and accessibility work.
