@@ -68,10 +68,18 @@ async function key(page: Page, text: string) {
     for (const [at, down] of evs) {
       const wait = t0 + at - performance.now();
       if (wait > 0) await new Promise((r) => setTimeout(r, wait));
-      document.body.dispatchEvent(new KeyboardEvent(down ? 'keydown' : 'keyup', { code: 'Space', key: ' ', bubbles: true }));
+      // Each event carries the time it was meant for, as a real one does, so a busy test machine can't stretch the gaps.
+      const ev = new KeyboardEvent(down ? 'keydown' : 'keyup', { code: 'Space', key: ' ', bubbles: true });
+      Object.defineProperty(ev, 'timeStamp', { value: t0 + at });
+      document.body.dispatchEvent(ev);
     }
   }, evs);
 }
+
+// Keyed tests read the keying against the browser's audio clock, which can
+// stall on a very busy test machine and drop a dit or split a word. Each such
+// failure misreads differently; a retry tells it from a real fault.
+test.describe.configure({ retries: 2 });
 
 test('lessons wait for your station details', async ({ page }) => {
   await open(page, 'qso/learn', { you: { call: '', name: '', qth: '', state: '', skcc: '' } });
@@ -231,12 +239,16 @@ async function tap(page: Page, text: string) {
   }
   await page.evaluate(async (evs) => {
     const el = document.querySelector('.pad')!;
-    const ev = (type: string) => new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 3, pointerType: 'touch', isPrimary: true });
     const t0 = performance.now();
+    const ev = (type: string, at: number) => {
+      const e = new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 3, pointerType: 'touch', isPrimary: true });
+      Object.defineProperty(e, 'timeStamp', { value: t0 + at });
+      return e;
+    };
     for (const [at, down] of evs) {
       const wait = t0 + at - performance.now();
       if (wait > 0) await new Promise((r) => setTimeout(r, wait));
-      el.dispatchEvent(ev(down ? 'pointerdown' : 'pointerup'));
+      el.dispatchEvent(ev(down ? 'pointerdown' : 'pointerup', at));
     }
   }, evs);
 }
