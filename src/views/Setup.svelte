@@ -261,9 +261,11 @@
   </div>
 
   <div class="row">
+    <!-- The input in use: on a BC lesson in strict mode, saved paddles key as the straight key. -->
     <Segmented
       label="Input"
-      bind:value={settings.input}
+      value={sendInput()}
+      onchange={(v) => (settings.input = v)}
       options={[
         { value: 'mic' as InputSource, label: 'Microphone' },
         { value: 'touch' as InputSource, label: 'Touch key' },

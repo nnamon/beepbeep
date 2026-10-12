@@ -185,6 +185,36 @@ test('strict mode keeps the straight key to BC lessons only', async ({ page }) =
   await expect(page.getByRole('radio', { name: 'Paddles A' })).toBeVisible();
 });
 
+// Before: Setup's Input row had no choice selected (the paddle choices are
+// taken away on a BC lesson) and the signal bar said Paddles A.
+test('strict mode with paddles saved, on a BC lesson: Setup and the signal bar show the straight key in use', async ({ page }) => {
+  await settings(page, { ...BASE, track: 'licw', licwStrict: true, licwClass: 'bc1', input: 'iambicA', level: { koch: 'koch-1', licw: 'licw-bc1-REA' } });
+  await page.goto('./#/setup');
+  const input = page.getByRole('radiogroup', { name: 'Input' });
+  await expect(input.getByRole('radio', { name: 'Straight key' })).toHaveAttribute('aria-checked', 'true');
+  await expect(input.locator('[aria-checked="true"]')).toHaveCount(1);
+  await expect(page.getByRole('link', { name: /^Straight key\b.*Open input setup/ }).first()).toBeVisible();
+  await expect(page.getByRole('link', { name: /^Paddles A/ })).toHaveCount(0);
+  // The paddles stay chosen for the later stages.
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('beepbeep.settings.v1')!).input)).toBe('iambicA');
+});
+
+// Before: the keyed step said how the microphone listens, but not that it was blocked.
+test('Learn QSOs with a blocked microphone says so and offers the touch key', async ({ page }) => {
+  await instrument(page, { gumFail: 'NotAllowedError' });
+  await settings(page, { ...BASE, input: 'mic', qsoInput: 'key', qsoHelp: 'text', charWpm: 40, effectiveWpm: 40, you: { call: '9V1NE', name: 'AMON', qth: 'SINGAPORE', state: '', skcc: '' } });
+  await page.goto('./#/qso/learn/answer-cq');
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await page.getByRole('button', { name: 'Check' }).click();
+  await page.getByRole('button', { name: 'Show what they sent' }).click();
+  await page.getByRole('button', { name: 'Next' }).click();
+  await expect(page.getByText(/^The microphone is blocked\. Allow it in the browser's site settings, then try again\./)).toBeVisible();
+  await page.getByRole('button', { name: 'use the touch key' }).click();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('beepbeep.settings.v1')!).input)).toBe('touch');
+  await expect(page.locator('.pad')).toBeVisible();
+});
+
 test('TTR in strict mode shows no answer after each character, and the misses at the end', async ({ page }) => {
   await instrument(page);
   await settings(page, { ...BASE, track: 'licw', licwStrict: true, level: { koch: 'koch-1', licw: 'licw-bc1-TIN' } });

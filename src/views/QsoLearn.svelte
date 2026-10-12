@@ -541,7 +541,8 @@
               <span class="label">Key with</span>
               <Segmented label="Key with" bind:value={settings.input} options={KEY_WITH} />
             </div>
-            {#if settings.input === 'mic'}
+            <!-- A blocked or missing microphone: InputHelp says so and offers the touch key. -->
+            {#if settings.input === 'mic' && !signal.error}
               <p class="muted small">
                 The microphone listens for your key's tone. If nothing shows when you send, key with the touch key instead, or
                 calibrate in <a href={href('setup')}>Setup</a>; you come back to this step.
