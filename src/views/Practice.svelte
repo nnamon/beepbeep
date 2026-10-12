@@ -199,7 +199,7 @@
 
       {#if !settings.guideSeen}
         <p class="first">
-          The <a href={href('guide')}>guide</a> shows where to start, with or without a key.
+          <span class="first-text">The <a href={href('guide')}>guide</a> shows where to start, with or without a key.</span>
           <button type="button" class="dismiss" onclick={() => (settings.guideSeen = true)}>Dismiss</button>
         </p>
       {/if}
@@ -371,32 +371,27 @@
     flex-wrap: wrap;
   }
 
+  /* The sentence stays one piece of text; Dismiss is its own item beside it, or below it on a narrow screen. */
   .first {
     border-left: 2px solid var(--signal);
     padding-left: var(--s-1);
     max-width: var(--reading);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: var(--s-2);
   }
 
-  /* Follows the sentence on its line; its tap target is full height without pushing the lines apart. */
+  /* Its own full-height tap target, so it can never cover the guide link. */
   .dismiss {
-    position: relative;
-    margin-left: var(--s-1);
+    min-height: var(--target);
     border: 0;
     background: none;
-    padding: 0;
+    padding: 0 var(--s-1);
+    margin-left: calc(-1 * var(--s-1));
     color: var(--muted);
     text-decoration: underline;
     font-size: var(--size-s);
-  }
-
-  .dismiss::after {
-    content: '';
-    position: absolute;
-    left: calc(-1 * var(--s-1));
-    right: calc(-1 * var(--s-1));
-    top: 50%;
-    height: var(--target);
-    transform: translateY(-50%);
   }
 
   .ask {
@@ -523,6 +518,8 @@
   .steps a {
     display: flex;
     flex-direction: column;
+    justify-content: center;
+    min-height: var(--target-min);
     text-decoration: none;
     min-width: 0;
   }

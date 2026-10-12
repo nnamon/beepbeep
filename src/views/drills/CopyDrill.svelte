@@ -239,7 +239,14 @@
     <div class="done">
       <p class="big">{Math.round(result.accuracy * 100)}% of characters</p>
       {#if result.confusions.length}
-        <p class="muted">Mixed up: {result.confusions.slice(0, 6).map((c) => `${c.want} heard as ${c.got}`).join(', ')}</p>
+        <p class="muted">
+          Mixed up:
+          {[...result.confusions.reduce((m, c) => m.set(`${c.want} heard as ${c.got}`, (m.get(`${c.want} heard as ${c.got}`) ?? 0) + 1), new Map<string, number>())]
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 6)
+            .map(([pair, n]) => (n > 1 ? `${pair} (${n} times)` : pair))
+            .join(', ')}.
+        </p>
       {/if}
       <ul class="list">
         {#each log as l, k (k)}

@@ -398,7 +398,7 @@
         {:else}
           <Button kind="primary" onclick={() => player?.pause()} hint="Space">Pause</Button>
         {/if}
-        <Button onclick={() => player?.back()} hint="←">Back</Button>
+        <Button onclick={() => player?.back()} hint="←">Previous</Button>
         <Button onclick={() => player?.next()} hint="→">Next</Button>
         <Button kind="quiet" onclick={() => { stop(); st = null; }}>Stop</Button>
       {/if}

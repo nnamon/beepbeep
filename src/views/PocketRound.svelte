@@ -188,7 +188,8 @@
     }
     if (phase !== 'quiz') return;
     if (k === 'DEL') return void typed.pop();
-    if (k === 'DONE') return void submit();
+    // Enter with nothing typed before the question has played is a stray press, not an answer.
+    if (k === 'DONE') return void (typed.length || performance.now() >= endPerf ? submit() : undefined);
     if (k === ' ' && single) return;
     // Time from the end of the last play; an answer before it ends counts as instant.
     if (!firstKey) firstKey = Math.max(1, performance.now() - endPerf);

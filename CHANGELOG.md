@@ -2,6 +2,18 @@
 
 What changed in each version of BeepBeep. The version shows at the top of the app, beside the build.
 
+## 0.2.1 (12 October 2026)
+
+A way to get the latest version on a phone, and fixes from a second, independent check of the layout and accessibility work.
+
+- Settings, Version: **Reload the latest version** loads the app fresh from the internet, skipping the copy saved on your device. Use it when the app on your home screen seems out of date, since you can't force a refresh there. Your progress and settings are kept.
+- Pocket: pressing Enter after a miss no longer counts the next question as a miss.
+- Practice on a phone: tapping "guide" opens the Guide; it used to hit Dismiss.
+- LICW exercises: the button that goes back one item is called Previous, so it isn't confused with Back, which leaves the exercise.
+- Bigger tap targets: the header links on a phone on its side, the Today list, and the links in the Guide and Learn QSOs.
+- Copy drill: a mix-up you made more than once shows once, with how many times ("E heard as Q (3 times)").
+- Screen readers: the signal bar reads as one sentence, and the skip link points at the page's content.
+
 ## 0.2.0 (12 October 2026)
 
 An independent audit of the whole app found about 80 problems, from lost progress to confusing wording. This version fixes almost all of them. The few left are listed in [docs/HANDOFF.md](docs/HANDOFF.md).

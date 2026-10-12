@@ -103,7 +103,7 @@
 
 <a
   class="skip"
-  href={href(...route.path)}
+  href="#main-content"
   onclick={(e) => {
     e.preventDefault();
     focusContent(true);
@@ -129,7 +129,7 @@
   <SoundGate />
   {#if top !== 'pocket'}<div class="signal-strip"><SignalBar compact /></div>{/if}
 
-  <main class="main">
+  <main class="main" id="main-content">
     {#if top === 'practice'}
       <Practice />
     {:else if top === 'pocket'}
@@ -213,6 +213,7 @@
     align-items: center;
     gap: var(--s-1);
     min-height: var(--target-min);
+    min-width: var(--target-min);
     font-size: var(--size-m);
     font-weight: var(--weight-strong);
     text-decoration: none;
@@ -242,7 +243,9 @@
   .nav a {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     min-height: var(--target-min);
+    min-width: var(--target-min);
     border-top: 2px solid transparent;
   }
 

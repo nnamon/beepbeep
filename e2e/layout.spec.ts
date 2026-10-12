@@ -220,6 +220,20 @@ test('the header fits from 600 to 1280 px wide', async ({ page }) => {
   expect(bad).toEqual([]);
 });
 
+// On a phone the sentence wraps; Dismiss must not cover the guide link.
+test('Practice: tapping the guide link on a phone opens the Guide', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('beepbeep.settings.v1', JSON.stringify({ voice: 'off', guideSeen: false })));
+  for (const width of [360, 375, 390]) {
+    await page.setViewportSize({ width, height: 740 });
+    await page.goto('./#/practice');
+    const box = (await page.locator('p.first a').boundingBox())!;
+    const hit = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest('a, button')?.textContent?.trim(), [box.x + box.width / 2, box.y + box.height / 2]);
+    expect(hit, `${width} px`).toBe('guide');
+  }
+  await page.locator('p.first a').tap();
+  await expect(page).toHaveURL(/#\/guide$/);
+});
+
 // The visual cue light (Settings, Visual cue) sits clear of every control, upright, on its side and wide.
 test('the visual cue light covers no control', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('beepbeep.settings.v1', JSON.stringify({ voice: 'off', guideSeen: true, visualCue: true })));

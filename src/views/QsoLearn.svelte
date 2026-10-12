@@ -407,7 +407,7 @@
   <section class="list">
     <div class="head">
       <h1>Learn QSOs</h1>
-      <a href={href('qso')}>On the air: the QSO simulator</a>
+      <a class="sim" href={href('qso')}>Go to the QSO simulator</a>
     </div>
     <p class="lead">
       A QSO is a contact between two stations. They take turns to send, and one station's turn is called an over. These
@@ -601,6 +601,12 @@
 {/if}
 
 <style>
+  .sim {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--target-min);
+  }
+
   .list {
     display: flex;
     flex-direction: column;

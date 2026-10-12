@@ -176,7 +176,7 @@ test('Sprint: each result is announced', async ({ page }) => {
 
 test('Practice: the pointer to the guide reads as one line of text', async ({ page }) => {
   await open(page, 'practice', { guideSeen: false });
-  const p = page.getByText(/shows where to start/);
+  const p = page.locator('p.first .first-text');
   await expect(p).toBeVisible();
   const parts = await p.evaluate((el) => {
     const range = document.createRange();
@@ -191,15 +191,16 @@ test('Practice: the pointer to the guide reads as one line of text', async ({ pa
         return { text: n.textContent!.trim(), top: Math.round(r.top), bottom: Math.round(r.bottom), left: r.left, right: r.right };
       });
   });
-  // "The", "guide", "shows where to start…", Dismiss: one line, a space apart.
-  expect(parts.map((x) => x.text)).toEqual(['The', 'guide', expect.stringMatching(/^shows where to start/), 'Dismiss']);
+  // "The", "guide", "shows where to start…": one line, a space apart.
+  expect(parts.map((x) => x.text)).toEqual(['The', 'guide', expect.stringMatching(/^shows where to start/)]);
   for (let i = 1; i < 3; i++) {
     expect(Math.abs(parts[i].top - parts[0].top), `"${parts[i].text}" on the first line`).toBeLessThanOrEqual(2);
     expect(parts[i].left - parts[i - 1].right, `space before "${parts[i].text}"`).toBeLessThan(9);
   }
-  // Dismiss follows the sentence on the same line.
-  expect(parts[3].top).toBeLessThan(parts[2].bottom);
-  expect(parts[3].left).toBeGreaterThan(parts[2].right);
+  // Dismiss follows the sentence on the same line on a wide screen.
+  const dismiss = await page.getByRole('button', { name: 'Dismiss' }).boundingBox();
+  expect(dismiss!.y).toBeLessThan(parts[2].bottom);
+  expect(dismiss!.x).toBeGreaterThan(parts[2].right);
 });
 
 test('a prosign overline sits just above its letters', async ({ page }) => {

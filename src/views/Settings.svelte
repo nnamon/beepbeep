@@ -13,6 +13,7 @@
   import { clearAll, exportAll, importAll, readExport } from '../lib/state/db';
   import type { TrackId } from '../lib/train/courses';
   import { courseSpeedsInUse } from '../lib/train/session';
+  import { reloadFresh } from '../lib/state/update';
 
   let voiceList = $state<SpeechSynthesisVoice[]>([]);
   let showRecorder = $state(false);
@@ -85,6 +86,12 @@
     } catch {
       dataNote = "Nothing was deleted: the browser's storage isn't available.";
     }
+  }
+
+  let versionNote = $state('');
+  async function freshReload() {
+    versionNote = 'Loading the latest version.';
+    if ((await reloadFresh()) === 'offline') versionNote = "You're offline. Connect to the internet first: without its saved copy the app couldn't load.";
   }
 
   function resetAll() {
@@ -343,9 +350,19 @@
     {#if dataNote}<p class="small">{dataNote}</p>{/if}
   </div>
 
-  <p class="muted small">
-    BeepBeep {__APP_VERSION__} ({__APP_BUILD__}). <a href={href('changes')}>What's new</a> lists the changes in each version.
-  </p>
+  <div class="group">
+    <h2>Version</h2>
+    <p class="small">
+      This is BeepBeep {__APP_VERSION__} ({__APP_BUILD__}). <a href={href('changes')}>What's new</a> lists the changes in each version.
+    </p>
+    <div><Button onclick={freshReload}>Reload the latest version</Button></div>
+    <p class="muted small">
+      If the app seems out of date, this loads the latest version from the internet instead of the copy saved on this
+      device. It works when the app is on your home screen, where you can't force a refresh. Your progress and settings
+      are kept.
+    </p>
+    {#if versionNote}<p class="small" role="status">{versionNote}</p>{/if}
+  </div>
   <p class="muted small">LICW is a trademark of the Long Island CW Club; BeepBeep is not affiliated with it.</p>
 </section>
 
