@@ -8,6 +8,8 @@ import { Decoder, markTuning, type DecoderOutput } from './decoder';
 import { outputsToText } from './pipeline';
 import { FISTS, keyText, type Fist } from './fists';
 import { StableReading } from './stable';
+import { buildSchedule } from '../morse/schedule';
+import { cer } from '../util/text';
 
 type Marks = { start: number; end: number }[];
 
@@ -127,4 +129,61 @@ describe('the speed setting against the first marks', () => {
       markTuning.slowFirst = was;
     }
   });
+});
+
+// Practice groups of a Koch lesson's few characters (K M at lesson 1, then
+// R, S, U; dah-heavy and all-dah ones such as T M O), read as the screen
+// shows them. No language model expects them: before, the end-of-over search
+// cut their letters into familiar words or ran them into digits (KKKMM MKMK
+// KKMM as K K K MM MK MK K K MM, TTMT MMT as OM TMM, KSMKM as K3KM), and
+// all-dah groups keyed faster than the setting read as dits (OTOOT as SESSE).
+describe('practice groups of a few characters', () => {
+  const GROUPS = [
+    'KKKMM MKMK KKMM',
+    'KMMMK KKMM MMKMM',
+    'MKKM KMM MMK',
+    'MKKK KKKM MMRM',
+    'RMMKR KMMMM KKRK',
+    'SKRR SKSK RSMR',
+    'KRKK KSMKM MKMR',
+    'TTMT MMT',
+    'OTOOT OTOO TOOOO',
+    'MTTTM TMTOM OTMTM',
+    'TTOM MOMT TMTO',
+    'OMOM TOOT MOMO',
+  ];
+  const textbookMarks = (text: string, wpm: number) => buildSchedule(text, { charWpm: wpm, leadIn: 0, tail: 0 }).marks.map((m) => ({ start: m.start, end: m.end }));
+
+  // Before: 23 of 60 right.
+  it('reads them with textbook timing, the setting at 15 wpm', { timeout: 180_000 }, async () => {
+    const wrong: string[] = [];
+    for (const text of GROUPS) {
+      for (const wpm of [12, 15, 18, 20, 25]) {
+        const got = await shown(textbookMarks(text, wpm), 15);
+        if (got !== text) wrong.push(`${text} at ${wpm} wpm: ${got}`);
+      }
+    }
+    expect(wrong, wrong.join('; ')).toEqual([]);
+  });
+
+  // Letters only: a beginner's word gaps are their own. The speed setting is
+  // 20% under the sender's or 25% over. Before: 55.8% letter error, now
+  // 35.2%. Groups of K, M and R read far better than all-dah ones (T M O),
+  // whose dits and dahs only the gaps can tell apart. Some sends stay hard
+  // for any listener (rushed letters run K and M together), so the bound is
+  // on the average.
+  it('reads them from beginner fists', async () => {
+    let err = 0;
+    let n = 0;
+    for (const [i, text] of GROUPS.entries()) {
+      for (const [j, f] of FISTS.entries()) {
+        const setting = (i + j) % 2 ? 1.25 : 0.8;
+        const got = await shown(keyText(text, f, 300 + text.length + 10 * setting), f.wpm * setting);
+        err += cer(text.replace(/ /g, ''), got.replace(/ /g, ''));
+        n++;
+      }
+    }
+    console.log(`Groups from beginner fists: letter error ${((err / n) * 100).toFixed(1)}%`);
+    expect(err / n).toBeLessThanOrEqual(0.38);
+  }, 180_000);
 });

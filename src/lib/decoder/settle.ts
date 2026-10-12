@@ -6,13 +6,15 @@
 //    down on unfamiliar letters), drawn from a tempo curve across the over
 //    (they speed up or tire), with robust tails for hesitations;
 //  - a light character language model, which settles what the timing leaves
-//    open and never outweighs a clearly sent letter;
+//    open and never outweighs a clearly sent letter; or, for practice groups
+//    of a lesson's few characters (KKKMM MKMK KKMM), which no language model
+//    expects, a model of groups: few characters, about five to a group;
 //
 // and the best reading wins (beam search). The fist itself (dah ratio, gaps,
 // tempo drift, spread) is re-estimated from that reading and the over decoded
 // again, a few rounds, from a start given by the live decoder's model.
 
-import { tokenOf } from '../morse/code';
+import { ALL_TOKENS, tokenOf } from '../morse/code';
 import type { DecodedChar, DecodedMark, DecoderModel, DecoderOutput } from './decoder';
 import { languageModel, wordEvidence } from './lm';
 import { kmeans2 } from './kmeans';
@@ -40,8 +42,14 @@ export interface FistParams {
   sdTempo: number;
 }
 
-/** Search settings; tests sweep them. */
-export const tuning = { rewrite: 3, lmWeight: 1, unknown: -12, beam: 600, fitBeam: 80, rounds: 2, sdTempo: 0.15, sdMark: 0.22, wordBonus: 1.2, repeatBonus: 0.9, outlier: 0.05, markOutlier: 0.03, minWord: 1, drift: true, sdInter: 0.35, sdGap: 0.3 };
+/** The least spread of gaps the search allows (log units), for the most regular fist. */
+const REGULAR_SD = 0.12;
+
+/**
+ * Search settings; tests sweep them. `groups`: how often an over is practice
+ * groups of a few characters (KKKMM MKMK) rather than language.
+ */
+export const tuning = { groups: 0.02, rewrite: 3, lmWeight: 1, unknown: -12, beam: 600, fitBeam: 80, rounds: 2, sdTempo: 0.15, sdMark: 0.22, wordBonus: 1.2, repeatBonus: 0.9, outlier: 0.05, markOutlier: 0.03, minWord: 1, drift: true, sdInter: 0.35, sdGap: 0.3 };
 const MAX_PATTERN = 9;
 /** Where timing cannot tell letter gaps from word gaps, both classes sit this factor either side of the gaps. */
 const OPEN = 1.35;
@@ -101,6 +109,37 @@ interface Hyp {
   /** Letters of the word so far, and the last few words (for repeats). */
   word: string;
   recent: string[];
+  /** Timing and the rest, without the text's own probability. */
+  rest: number;
+  /** The text's log probability as language (character model and word evidence), and as groups of practice characters. */
+  lang: number;
+  grp: number;
+  /** How often each character has been read so far in this reading (by `TOKEN_INDEX`), and in all. */
+  seen: Uint16Array | null;
+  nSeen: number;
+  /** The characters read so far, as a set (for keeping readings with different ones apart). */
+  sig: string;
+}
+
+const TOKEN_INDEX = new Map(ALL_TOKENS.map((t, i) => [t, i]));
+
+/**
+ * The text's log probability: as language (the character model and word
+ * evidence) or as practice groups, whichever explains it, weighted by how
+ * often an over is groups (`tuning.groups`).
+ */
+function textScore(lang: number, grp: number): number {
+  if (!(tuning.groups > 0)) return lang;
+  const a = lang + Math.log(1 - tuning.groups);
+  const b = grp + Math.log(tuning.groups);
+  const m = Math.max(a, b);
+  return m + Math.log(Math.exp(a - m) + Math.exp(b - m));
+}
+
+/** Groups use few characters: one already read is as likely as its share so far; a new one is any of them. */
+function groupLetter(seen: Uint16Array | null, n: number, i: number): number {
+  const c = seen ? seen[i] : 0;
+  return c ? Math.log(c / (n + 1)) : Math.log(1 / (n + 1) / ALL_TOKENS.length);
 }
 
 const tempoAt = (p: FistParams, t: number) => p.logDit + p.drift * (t - p.t0);
@@ -163,16 +202,33 @@ export function decodeOnce(marks: Mark[], p: FistParams, beam = tuning.beam, fix
     }
     return v;
   };
-  let hyps: Hyp[] = [{ base: 0, score: 0, pattern: '', from: 0, open: null, ctx: [' ', ' '], chain: null, lastTempo: null, word: '', recent: [] }];
+  let hyps: Hyp[] = [{ base: 0, score: 0, pattern: '', from: 0, open: null, ctx: [' ', ' '], chain: null, lastTempo: null, word: '', recent: [], rest: 0, lang: 0, grp: 0, seen: null, nSeen: 0, sig: '' }];
 
   /** Closes the open letter; `gap` (if any) is the silence after it, as a letter or word gap. */
   const close = (h: Hyp, to: number, space: boolean, gap: number | null): Hyp => {
     const token = tokenOf(h.pattern) ?? null;
     const ls = h.open!;
-    let base = h.base + ls.score;
-    base += token ? tuning.lmWeight * lm.logp(h.ctx, token) : tuning.unknown;
+    let rest = h.rest + ls.score;
+    let lang = h.lang;
+    let grp = h.grp;
+    let seen = h.seen;
+    let nSeen = h.nSeen;
+    let sig = h.sig;
+    if (token) {
+      lang += tuning.lmWeight * lm.logp(h.ctx, token);
+      const ti = TOKEN_INDEX.get(token);
+      if (ti !== undefined) {
+        grp += groupLetter(seen, nSeen, ti);
+        if (!seen?.[ti]) sig = [...sig, String.fromCharCode(65 + ti)].sort().join('');
+        seen = seen ? new Uint16Array(seen) : new Uint16Array(ALL_TOKENS.length);
+        seen[ti]++;
+        nSeen++;
+      }
+    } else rest += tuning.unknown;
+    // Groups of about five: a space after one letter in five.
+    if (gap !== null) grp += Math.log(space ? 0.2 : 0.8);
     const ctx = [...h.ctx, token ?? '?'].slice(-2);
-    if (gap !== null) base += gapScore(gap, space ? 'word' : 'char', { ...h, lastTempo: ls.tempo }, marks[to].end, p);
+    if (gap !== null) rest += gapScore(gap, space ? 'word' : 'char', { ...h, lastTempo: ls.tempo }, marks[to].end, p);
     let word = h.word + (token ?? '?');
     let recent = h.recent;
     // A finished word: real words, callsigns and numbers, and repeats, are evidence.
@@ -182,23 +238,26 @@ export function decodeOnce(marks: Mark[], p: FistParams, beam = tuning.beam, fix
       const letters = word.replace(/<[A-Z]+>/g, '#').length;
       // Short words form by accident when an unfamiliar word is cut up (FEB as
       // FE DE); they are left to the letter-level model, which knows them well.
-      if (letters >= tuning.minWord) base += letters * (ev.known * tuning.wordBonus + ev.repeat * tuning.repeatBonus);
+      if (letters >= tuning.minWord) lang += letters * (ev.known * tuning.wordBonus + ev.repeat * tuning.repeatBonus);
       recent = [...recent, word].slice(-4);
       word = '';
     }
     if (space) {
-      base += tuning.lmWeight * lm.logp(ctx, ' ');
+      lang += tuning.lmWeight * lm.logp(ctx, ' ');
       ctx.push(' ');
     }
+    const base = rest + textScore(lang, grp);
     const item: Item = { token, pattern: h.pattern, from: h.from, to, tempo: ls.tempo, space };
-    return { base, score: base, pattern: '', from: to + 1, open: null, ctx: ctx.slice(-2), chain: { item, prev: h.chain }, lastTempo: ls.tempo, word, recent };
+    return { base, score: base, pattern: '', from: to + 1, open: null, ctx: ctx.slice(-2), chain: { item, prev: h.chain }, lastTempo: ls.tempo, word, recent, rest, lang, grp, seen, nSeen, sig };
   };
 
   const prune = (list: Hyp[]): Hyp[] => {
     const best = new Map<string, Hyp>();
     for (const h of list) {
-      // What shapes the rest: the open letter, the language-model context and the word so far.
-      const key = `${h.pattern}|${h.ctx.join('')}|${h.word}`;
+      // What shapes the rest: the open letter, the language-model context and
+      // the word so far; for a reading that reads as groups, its characters too.
+      const groupLike = tuning.groups > 0 && h.grp + Math.log(tuning.groups) > h.lang + Math.log(1 - tuning.groups);
+      const key = `${h.pattern}|${h.ctx.join('')}|${h.word}${groupLike ? `|${h.sig}` : ''}`;
       const b = best.get(key);
       if (!b || h.score > b.score) best.set(key, h);
     }
@@ -264,6 +323,7 @@ export function initialParams(model: DecoderModel, marks: Mark[]): FistParams {
   const logs = marks.map((m) => Math.log(m.end - m.start));
   let dit = model.dit;
   let dahRatio = model.dah / model.dit;
+  let split = false;
   if (logs.length >= 4) {
     // Seeded at the shortest and longest marks, except one far from the rest
     // (1.6 times shorter or longer than its neighbour) when the rest still
@@ -284,13 +344,29 @@ export function initialParams(model: DecoderModel, marks: Mark[]): FistParams {
     if (k.nLow >= 1 && k.nHigh >= 1 && k.high - k.low >= Math.log(1.6)) {
       dit = Math.exp(k.low);
       dahRatio = Math.exp(k.high - k.low);
+      split = true;
+    }
+  }
+  const gaps = marks.slice(1).map((m, i) => Math.log(m.start - marks[i].end)).filter((g) => Number.isFinite(g));
+  // Marks of one length only (T, M, O): dits or dahs? The gaps inside letters
+  // tell: after a dit they are about as long as it or longer (two thirds with
+  // heavy weighting), after a dah a third of it (a beginner's, 0.4 to 0.75).
+  // Gaps under 0.6 of the marks make them dahs, whatever speed the live
+  // decoder assumed (OTOOT keyed at 25 wpm with the setting at 15 read as
+  // SESSE).
+  if (!split && logs.length >= 2 && gaps.length >= 1) {
+    const m = median(logs);
+    const g0 = gaps.length >= 3 ? gapClasses(gaps).modes[0] : Math.min(...gaps);
+    const asDits = Math.abs(m - Math.log(model.dit)) <= Math.abs(m - Math.log(model.dah));
+    if (asDits && g0 - m < Math.log(0.6)) {
+      dahRatio = 3;
+      dit = Math.exp(m) / dahRatio;
     }
   }
   const dah = clamp(Math.log(dahRatio), Math.log(1.8), Math.log(4.5));
   let elem = Math.log(model.elemGap / dit);
   let char = Math.log(model.charGap / dit);
   let word = Math.log((model.wordBoundaryEst * 1.4) / dit);
-  const gaps = marks.slice(1).map((m, i) => Math.log(m.start - marks[i].end)).filter((g) => Number.isFinite(g));
   if (gaps.length >= 3) {
     const raw = gapClasses(gaps);
     // As the live decoder reads them (a few hurried gaps are not a class),
@@ -320,7 +396,28 @@ export function initialParams(model: DecoderModel, marks: Mark[]): FistParams {
   elem = clamp(elem, Math.log(0.5), Math.log(4));
   char = Math.max(char, elem + Math.log(1.6));
   word = Math.max(word, char + Math.log(1.8));
-  return { t0: marks[0]?.start ?? 0, logDit: Math.log(dit), drift: 0, dah, elem, char, word, sdMark: tuning.sdMark, sdGap: tuning.sdGap, sdInter: tuning.sdInter, sdTempo: tuning.sdTempo };
+  // A regular fist: every gap sits close to its class (within 10%, median
+  // deviation, inside letters and between them). Its gaps are trusted from
+  // the first reading, as the refit would trust them, so a letter gap is not
+  // read as a word gap or a pause inside a letter to make a familiar word
+  // (KKKMM MKMK as K K K MM MK MK, TTMT MMT as MO MO). A beginner's gaps
+  // spread two or three times as far and keep the loose start.
+  let sdGap = tuning.sdGap;
+  let sdInter = tuning.sdInter;
+  if (gaps.length >= 8) {
+    const c = settledClasses(gapClasses(gaps));
+    if (c.modes.length >= 2) {
+      const inside: number[] = [];
+      const between: number[] = [];
+      for (const g of gaps) {
+        let k = 0;
+        while (k < c.valleys.length && g > c.valleys[k]) k++;
+        (k === 0 ? inside : between).push(g - c.modes[Math.min(k, c.modes.length - 1)]);
+      }
+      if (inside.length >= 3 && between.length >= 3 && mad(inside) < 0.1 && mad(between) < 0.1) sdGap = sdInter = REGULAR_SD;
+    }
+  }
+  return { t0: marks[0]?.start ?? 0, logDit: Math.log(dit), drift: 0, dah, elem, char, word, sdMark: tuning.sdMark, sdGap, sdInter, sdTempo: tuning.sdTempo };
 }
 
 /** Re-estimates the fist from a reading. */
@@ -365,7 +462,7 @@ export function refit(marks: Mark[], items: Item[], p: FistParams): FistParams {
   if (words.length >= 1) q.word = Math.max(median(words), q.char + Math.log(1.5));
   const marksRes = [...dits.map((x) => x - (dits.length ? median(dits) : 0)), ...dahs.map((x) => x - median(dahs))];
   if (marksRes.length >= 6) q.sdMark = clamp(mad(marksRes), 0.1, 0.4);
-  if (elems.length >= 6) q.sdGap = clamp(mad(elems), 0.12, 0.45);
+  if (elems.length >= 6) q.sdGap = clamp(mad(elems), REGULAR_SD, 0.45);
   // One hand keys every gap: letter and word gaps spread about as much as the
   // gaps inside letters (hesitations have their own allowance). A few gaps
   // between letters, some of them misread, must not loosen this.
