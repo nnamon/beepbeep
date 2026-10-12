@@ -343,7 +343,10 @@
     {#if dataNote}<p class="small">{dataNote}</p>{/if}
   </div>
 
-  <p class="muted small">BeepBeep {__APP_VERSION__} ({__APP_BUILD__}). LICW is a trademark of the Long Island CW Club; BeepBeep is not affiliated with it.</p>
+  <p class="muted small">
+    BeepBeep {__APP_VERSION__} ({__APP_BUILD__}). <a href={href('changes')}>What's new</a> lists the changes in each version.
+  </p>
+  <p class="muted small">LICW is a trademark of the Long Island CW Club; BeepBeep is not affiliated with it.</p>
 </section>
 
 <style>

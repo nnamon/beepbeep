@@ -1,0 +1,83 @@
+# Changelog
+
+What changed in each version of BeepBeep. The version shows at the top of the app, beside the build.
+
+## 0.2.0 (12 October 2026)
+
+An independent audit of the whole app found about 80 problems, from lost progress to confusing wording. This version fixes almost all of them. The few left are listed in [docs/HANDOFF.md](docs/HANDOFF.md).
+
+### Your progress
+
+- Send drill and Live decoder sessions are saved again, so they show in Progress and tick Today.
+- Importing a damaged file no longer wipes your progress, and a good file asks before it replaces anything.
+- Delete progress says what it deletes, and keeps your saved texts and Pocket custom set. Reset settings asks first.
+
+### Practice and Today
+
+- Today ticks a step as soon as you come back from it, and starts a new list after midnight.
+- "Work down the list from the top" replaces an order sentence that didn't match the list.
+- Choosing Stage BC3 or later shows that stage and its speed. Your carousel lesson is kept for when you go back.
+- Back from a drill returns to where you were on Practice.
+- Koch lessons are called Lesson 1, Lesson 2 and so on.
+
+### Drills
+
+- Copy drill: extra typed characters count against you; a round is scored answer by answer; Next lesson really moves on; Replay after the answer doesn't take a second answer; a stray Enter doesn't submit an empty one.
+- Quiz order with only 2 to 4 characters is no longer a fixed cycle, and weak characters come up more often.
+- Sound stops when you leave or pause: Pocket, Spot the new character, TTR, Learn QSOs and spelled answers.
+- Sound surfing scores only what had played when you stop.
+- Head copy no longer counts one letter as a copy of a longer answer.
+- Hear it, send it plays at the lesson's speed on the LICW track.
+- Callsigns, words and phrases use only your lesson's characters, and drills say when the lesson can't make them yet.
+- Enter and Space on a button or link you reached with Tab press that control instead of starting a drill.
+
+### LICW strict mode
+
+- It now does what it says: no rhythm bars, answers only at the end (including Pocket and TTR), and the straight key only in BC lessons.
+
+### LICW exercises
+
+- "Your text" shows the paste and file controls even before you have saved a text.
+- A text deleted in one exercise no longer breaks another.
+- Early BC1 lessons no longer play the same phrase or word over and over.
+- Exercise descriptions match what plays (OverLearn sending, TTR+, Speed Racing speeds).
+- An exercise you leave part-way, timed ones included, offers to carry on.
+
+### Learn QSOs and the QSO simulator
+
+- Your turn ends only when it really ends: not at HW?, 73 or a leading BK, and not at a region such as VA.
+- Typing in a copy box no longer cuts the station off, and the station's last transmission is scored.
+- The Learn QSOs checker gives one note per slip, names spacing slips as spacing, and accepts natural orders (QTH before name, 73 after SK) and AR in place of K.
+- Stations outside the USA, regions instead of states, and a city-state like Singapore sent once, not repeated.
+- A QSO you leave pauses and can carry on. QSOs count in Progress.
+- Learn QSOs works on an iPhone after a reload: tap the key to start.
+
+### The decoder
+
+- One-letter words keep their spaces: V V V no longer reads as VVV.
+- With no pitch pinned, it finds your keyed tone instead of locking onto room rumble.
+- Fewer stray letters from talking near the microphone, and better copy under it.
+- A pinned pitch slightly off your tone moves to the tone instead of going silent.
+- EE sent slowly no longer reads as T T; holding the key down reads nothing instead of T.
+- Keyboard and touch key timing stays right when the phone is busy.
+- The microphone is released about 10 seconds after you leave the screens that use it.
+
+### Phones and accessibility
+
+- Words no longer break in the middle on phones.
+- The Pocket answer stays in view after a miss on smaller iPhones.
+- Phones on their side get a layout that fits, clear of the notch.
+- Tap targets of at least 44 px, arrow keys in choice rows, a skip link, a window title and focus for each screen, and screen reader announcements for results and notices.
+
+### Wording
+
+- All the text in the app was rewritten in plain whole sentences, following the rules in [AGENTS.md](AGENTS.md): no fragments, jargon explained where you first meet it, one name for each thing, no dashes as empty values.
+- Timing notes show only what was measured and say where a spacing slip happened.
+
+### Updates
+
+- After an update the app reloads into the new version at a safe moment, never in the middle of a drill or a QSO.
+
+## 0.1.0 (11 October 2026)
+
+The first version: the microphone decoder, the touch key and keyboard keys, Practice with the Koch and LICW tracks, the Copy, Send and other drills, Pocket rounds, the QSO simulator, Learn QSOs, the LICW exercises, Progress and Settings.

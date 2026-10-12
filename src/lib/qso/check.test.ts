@@ -34,13 +34,57 @@ describe('spacing slips are spacing, not missing parts', () => {
   it('one word split in two', () => {
     const call = checkSend('W1AW DE 9V1 NE 9V1 NE K', step('answer-cq', 0).slots);
     expect(call.result).toBe('almost');
-    expect(call.notes).toEqual(['9V1NE came out as 9V1 NE: a gap inside it was as long as a word space, so keep its letters closer together.']);
+    expect(call.notes).toEqual(['9V1NE came out as 9V1 NE: a gap inside it was as long as a word space, so keep its characters closer together.']);
     const report = checkSend('UR RST 5 79 5 79', step('send-over', 2).slots);
     expect(report.result).toBe('almost');
-    expect(report.notes).toEqual(['579 came out as 5 79: a gap inside it was as long as a word space, so keep its letters closer together.']);
+    expect(report.notes).toEqual(['579 came out as 5 79: a gap inside it was as long as a word space, so keep its characters closer together.']);
     const sk = checkSend('TNX BOB 73 W1AW DE 9V1NE S K', step('sign-off', 0).slots);
     expect(sk.result).toBe('almost');
     expect(sk.notes).toEqual(['SK came out as S K: send it as one character, with no gap inside.']);
+  });
+});
+
+describe('natural input gives no false notes', () => {
+  const whole = () => step('whole', 1);
+  it('the report, name and QTH parts may come in any order', () => {
+    for (const middle of ['UR RST 579 579 = QTH SINGAPORE = NAME AMON AMON', 'NAME AMON AMON = QTH SINGAPORE = UR RST 579 579', 'QTH SINGAPORE = UR 579 579 = NAME AMON'])
+      expect(checkSend(`W1AW DE 9V1NE R TNX BOB = ${middle} = HW? W1AW DE 9V1NE K`, whole().slots), middle).toMatchObject({ result: 'pass', notes: [] });
+    // A part left out is still named, once.
+    const noQth = checkSend('W1AW DE 9V1NE R TNX BOB = NAME AMON AMON = UR RST 579 579 = HW? W1AW DE 9V1NE K', whole().slots);
+    expect(noQth.result).toBe('try');
+    expect(noQth.notes).toEqual(['Say QTH before where you are.', 'Send where you are, SINGAPORE.']);
+  });
+  it('your call twice with no gap, in a step that takes it once, is a spacing slip', () => {
+    for (const [s, text] of [[step('send-over', 0), 'W1AW DE 9V1NE9V1NE'], [step('send-over', 5), 'HW? W1AW DE 9V1NE9V1NE K']] as const) {
+      const v = checkSend(text, s.slots);
+      expect(v, text).toMatchObject({ result: 'almost', notes: ['9V1NE and 9V1NE ran together: leave a word space between them.'] });
+    }
+  });
+  it('73 after SK is still 73', () => {
+    expect(checkSend('TNX BOB W1AW DE 9V1NE SK 73', step('sign-off', 0).slots)).toMatchObject({ result: 'pass', notes: [] });
+    expect(checkSend('TNX BOB W1AW DE 9V1NE <SK> 73 EE', step('sign-off', 0).slots)).toMatchObject({ result: 'pass', notes: [] });
+    // With no 73 at all, it is asked for.
+    expect(checkSend('TNX BOB W1AW DE 9V1NE <SK>', step('sign-off', 0).slots).notes).toEqual(["Send 73: 'best regards'."]);
+  });
+  it('a stray E on the optional BK is named as a slip', () => {
+    const v = checkSend('BKE TU 5NN SINGAPORE SINGAPORE BK', step('pota', 1).slots);
+    expect(v).toMatchObject({ result: 'almost', notes: ['BK: you sent BKE; it is BK.'], extras: [] });
+  });
+  it('AR ends an over where K does', () => {
+    expect(checkSend('W1AW DE 9V1NE 9V1NE AR', step('answer-cq', 0).slots)).toMatchObject({ result: 'pass', notes: [] });
+    expect(checkSend('W1AW DE 9V1NE 9V1NE <AR> K', step('answer-cq', 0).slots)).toMatchObject({ result: 'pass', notes: [], extras: [] });
+    expect(checkSend('HW? W1AW DE 9V1NE AR', step('send-over', 5).slots)).toMatchObject({ result: 'pass', notes: [] });
+  });
+  it('a report with a digit out of range says which digit and why', () => {
+    const r = step('send-over', 2).slots;
+    expect(checkSend('UR RST 679 679', r)).toMatchObject({ result: 'almost', notes: ['Your report: you sent 679, but the first digit, readability, goes from 1 to 5.'], extras: [] });
+    expect(checkSend('UR RST 509 509', r).notes).toEqual(['Your report: you sent 509, but the second digit, strength, goes from 1 to 9.']);
+    expect(checkSend('UR RST 570 570', r).notes).toEqual(['Your report: you sent 570, but the third digit, tone, goes from 1 to 9.']);
+    expect(checkSend('BK TU 6NN SINGAPORE SINGAPORE BK', step('pota', 1).slots).notes).toEqual(['Report: you sent 6NN, but the first digit, readability, goes from 1 to 5.']);
+  });
+  it('a split number or callsign says characters; a split word says letters', () => {
+    expect(checkSend('UR RST 5 79 5 79', step('send-over', 2).slots).notes).toEqual(['579 came out as 5 79: a gap inside it was as long as a word space, so keep its characters closer together.']);
+    expect(checkSend('C Q CQ CQ DE 9V1NE 9V1NE K', step('call-cq', 0).slots).notes).toEqual(['CQ came out as C Q: a gap inside it was as long as a word space, so keep its letters closer together.']);
   });
 });
 

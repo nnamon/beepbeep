@@ -16,6 +16,7 @@
   import Settings from './views/Settings.svelte';
   import Setup from './views/Setup.svelte';
   import Reference from './views/Reference.svelte';
+  import Changes from './views/Changes.svelte';
   import Specimen from './views/Specimen.svelte';
   import { effectiveMix, settings } from './lib/state/settings.svelte';
   import { setMix } from './lib/train/world';
@@ -143,6 +144,8 @@
       <Setup />
     {:else if top === 'reference'}
       <Reference />
+    {:else if top === 'changes'}
+      <Changes />
     {:else if top === 'specimen'}
       <Specimen />
     {:else if top === 'guide'}

@@ -9,6 +9,7 @@
   import Segmented from '../ui/Segmented.svelte';
   import TokenText, { type Tok } from '../ui/TokenText.svelte';
   import InputHelp from '../ui/InputHelp.svelte';
+  import { touchPad } from '../ui/TouchKey.svelte';
   import { LiveDecoder, keyTime } from '../lib/audio/live';
   import { engine, type Playback } from '../lib/audio/engine';
   import { href, route } from '../lib/state/router.svelte';
@@ -164,6 +165,7 @@
   async function finish() {
     finished = true;
     clearRun();
+    silence();
     stopListening();
     void keepAwake(false);
     if (lesson) {
@@ -256,7 +258,16 @@
 
   async function startListening() {
     if (settings.input === 'mic' && !signal.micOn && !(await startMic())) return;
-    await engine.ensure();
+    // After a reload the browser keeps sound off until a tap. If it hasn't
+    // started in a moment, the touch key says a tap starts it.
+    let on = false;
+    const sound = engine.ensure().finally(() => {
+      on = true;
+      touchPad.soundOff = false;
+    });
+    await Promise.race([sound, new Promise((r) => setTimeout(r, 300))]);
+    if (!on && !gone && keyingStep()) touchPad.soundOff = true;
+    await sound;
     if (gone || !keyingStep()) return;
     if (live) return live.resetOver();
     const l = new LiveDecoder({
@@ -289,6 +300,7 @@
     live = null;
     early = null;
     holding = false;
+    touchPad.soundOff = false;
   }
 
   // After a reload the browser keeps sound off until a tap or a key press, and
