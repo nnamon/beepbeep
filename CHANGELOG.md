@@ -2,6 +2,10 @@
 
 What changed in each version of BeepBeep. The version shows at the top of the app, beside the build.
 
+## 0.2.4 (13 October 2026)
+
+- The decoder's second ear works as intended. When your tone has a harmonic (a buzzer or a square-wave oscillator) and talking covers the tone itself, BeepBeep listens to the harmonic instead. It was listening at the wrong pitch and could start false letters from the echo after each mark. On your own recordings three takes now read better (wrong letters 17% to 0%, 83% to 67%, 70% to 40%) and none read worse; stray letters in a quiet room are unchanged.
+
 ## 0.2.3 (12 October 2026)
 
 - The decoder reads practice groups made from a lesson's few characters, such as KKKMM MKMK KKMM at Koch lesson 1, the way you sent them. Before, the reading at the end of your sending cut them into short words (K K K MM) or ran letters into digits. With textbook timing every test group now reads right (60 of 60, up from 23); from beginner hand keying, wrong letters fell from 56% to 35%.
