@@ -4,6 +4,7 @@
 // mains hum).
 
 import { gaussian, mulberry32 } from '../util/random';
+import { LowPass } from './biquad';
 
 export type RoomSound = 'typing' | 'speech' | 'fan';
 
@@ -71,6 +72,35 @@ export function roomNoise(kind: RoomSound, seconds: number, fs: number, level: n
   }
   const rms = Math.sqrt(sum / Math.max(1, count));
   if (rms > 0) for (let i = 0; i < n; i++) out[i] *= level / rms;
+  return out;
+}
+
+/**
+ * Low-frequency room rumble that swells and fades by 10 dB a few times a
+ * second, like a laptop microphone's on a desk. 'slope': everything below
+ * `hz`, so it rises toward the bottom of the search band; 'hump': a broad
+ * band from `hz`/2 to `hz`. `level` is its RMS.
+ */
+export function rumble(seconds: number, fs: number, shape: 'slope' | 'hump', hz: number, level: number, seed = 1): Float32Array {
+  const rng = mulberry32(seed);
+  const n = Math.round(seconds * fs);
+  const out = new Float32Array(n);
+  const below = [new LowPass(fs, hz, 0.54), new LowPass(fs, hz, 1.31)];
+  const under = [new LowPass(fs, hz / 2, 0.54), new LowPass(fs, hz / 2, 1.31)];
+  let phase = 0;
+  let sum = 0;
+  for (let i = 0; i < n; i++) {
+    const x = gaussian(rng);
+    let a = x;
+    for (const f of below) a = f.step(a);
+    let b = x;
+    for (const f of under) b = f.step(b);
+    phase += (2 * Math.PI * (1.3 + 0.7 * Math.sin(i / fs))) / fs;
+    out[i] = (shape === 'slope' ? a : a - b) * Math.pow(10, Math.sin(phase) / 2);
+    sum += out[i] * out[i];
+  }
+  const rms = Math.sqrt(sum / Math.max(1, n));
+  for (let i = 0; i < n; i++) out[i] *= level / rms;
   return out;
 }
 
