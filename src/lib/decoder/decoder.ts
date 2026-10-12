@@ -64,6 +64,18 @@ export interface DecoderModel {
   gaps: number[];
 }
 
+/**
+ * Until the marks show dits and dahs apart, each mark goes to the class it is
+ * nearer, in log time, with the boundary `slowFirst` of the way from the dit
+ * to the dah (a half would be the middle). Beginners key slower than their
+ * speed setting far more often than faster: two 150 ms marks with the setting
+ * at 15 wpm (dit 80 ms, dah 240 ms) are dits at 8 wpm (EE), not dahs at 24
+ * wpm (T T), though 150 ms is a little nearer the dah. At 2/3, a mark counts
+ * a speed twice as far below the setting (in log terms) as one above it: dahs
+ * keyed at 20 wpm with the setting at 15 stay dahs. Tests sweep it.
+ */
+export const markTuning = { slowFirst: 2 / 3 };
+
 const MARK_WINDOW = 20;
 const GAP_WINDOW = 40;
 /** Minimum ratio between class means for gaps to count as separate classes. */
@@ -360,11 +372,11 @@ export class Decoder {
       }
     }
     if (!done) {
-      // One class only: nudge whichever class it is nearer, keep the ratio.
+      // One class only: nudge whichever class it is nearer (leaning slow), keep the ratio.
       const ratio = this.dah / this.dit;
       // Trust the first marks more: the starting guess may be far off.
       const rate = this.marks.length <= 2 ? 0.8 : 0.3;
-      const nearDit = Math.abs(l - Math.log(this.dit)) <= Math.abs(l - Math.log(this.dah));
+      const nearDit = l <= Math.log(this.dit) + markTuning.slowFirst * (Math.log(this.dah) - Math.log(this.dit));
       if (nearDit) {
         this.dit = Math.exp(Math.log(this.dit) + (l - Math.log(this.dit)) * rate);
         this.dah = this.dit * ratio;

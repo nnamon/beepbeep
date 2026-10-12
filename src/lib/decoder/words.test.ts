@@ -4,7 +4,7 @@
 // Joined letters (VVV, RR) must stay joined.
 
 import { describe, expect, it } from 'vitest';
-import { Decoder, type DecoderOutput } from './decoder';
+import { Decoder, markTuning, type DecoderOutput } from './decoder';
 import { outputsToText } from './pipeline';
 import { FISTS, keyText, type Fist } from './fists';
 import { StableReading } from './stable';
@@ -92,5 +92,39 @@ describe('words of one letter', () => {
     }
     console.log(`V V V from beginner fists: ${right}/${n} (${rows.join(', ')})`);
     expect(right / n, rows.join(', ')).toBeGreaterThanOrEqual(0.58);
+  });
+});
+
+// A beginner keys slower than the speed setting far more often than faster.
+// EE keyed at 8 wpm with the setting at 15 read as T T: its 150 ms marks sit
+// between that setting's dit (80 ms) and dah (240 ms), a little nearer the dah.
+describe('the speed setting against the first marks', () => {
+  const read = async (text: string, wpm: number, setting: number) => {
+    const wrong: string[] = [];
+    for (const seed of [1, 2, 3]) {
+      const got = await shown(keyText(text, textbook(wpm, 7), 40 + seed), setting);
+      if (got !== text) wrong.push(`${text} at ${wpm} wpm, set ${setting}: ${got}`);
+    }
+    return wrong;
+  };
+
+  it('reads slow dits as dits: EE at 8 wpm, the setting at 15', async () => {
+    const wrong = await read('EE', 8, 15);
+    expect(wrong, wrong.join('; ')).toEqual([]);
+  });
+
+  it('still reads quick dahs as dahs: TT and MM at 20 wpm, the setting at 15', async () => {
+    const wrong = [...(await read('TT', 20, 15)), ...(await read('MM', 20, 15))];
+    expect(wrong, wrong.join('; ')).toEqual([]);
+  });
+
+  it('the old even split read them as T T', async () => {
+    const was = markTuning.slowFirst;
+    markTuning.slowFirst = 0.5;
+    try {
+      expect((await read('EE', 8, 15)).length).toBe(3);
+    } finally {
+      markTuning.slowFirst = was;
+    }
   });
 });
