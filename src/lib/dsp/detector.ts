@@ -219,8 +219,22 @@ export const earTuning = { overtone: true, silence: 6 };
  * A pitch must lead for `runs` frames (about 0.85 s) before the first lock:
  * a voice's harmonics lead for moments at a time. Another pitch takes over a
  * lock once it scores `relock` times as much for `relockSec`.
+ *
+ * A pin is where the user says their tone is, but a buzzer or an oscillator
+ * can sit tens of hertz off it, and a lock-in 30 Hz off the tone hears
+ * nothing. Within `pinWindow` Hz of the pin the search goes on: a keyed tone
+ * that leads there for `runs` frames, `pinMove` Hz or more from the lock,
+ * scoring `pinRelock` times what the lock's own pitch scores and starting
+ * again and again (`pinOnsets`, fading like the scores: a held vowel starts
+ * once) takes the lock. In the owner's recordings a keyed tone pinned 25 to
+ * 60 Hz off scores 9 to 30 times what the lock scores; talking near a right
+ * pin, 4 to 5 times. Sounds further from the pin are still ignored.
+ * A pin 10 to 20 Hz off still hears the marks, at the wrong pitch: when
+ * steady ones agree on a pitch (the stray rule in `verifyMark`), the lock
+ * moves there too. Either way the buffered audio is heard again at the new
+ * pitch, so the marks keyed before the move are not lost.
  */
-export const searchTuning = { base: 12, tau: 4, least: 40, near: 3, far: 10, runs: 20, relock: 4, relockSec: 1 };
+export const searchTuning = { base: 12, tau: 4, least: 40, near: 3, far: 10, runs: 20, relock: 4, relockSec: 1, pinWindow: 75, pinMove: 12, pinRelock: 8, pinOnsets: 2 };
 export const markTuning = { lag: 10, tol: 3, wide: 8, pinned: 4, learn: 3, coherence: 0.5, leave: 0.6, short: 120, glide: 6, glideShort: 150 };
 
 export class Detector {
@@ -242,6 +256,10 @@ export class Detector {
   private readonly minHold: Float64Array;
   /** Per bin: how often and how far it has stood out as a narrow peak lately (dB above `searchTuning.base`, summed, fading). */
   private readonly toneScore: Float64Array;
+  /** Per bin: how often it has started to stand out lately (fading like `toneScore`): a keyed tone starts every mark. */
+  private readonly onsets: Float64Array;
+  private readonly wasHere: Uint8Array;
+  private readonly here: Uint8Array;
   private readonly power: Float64Array;
   private readonly fftBuf: Float32Array;
   private fftFill = 0;
@@ -302,6 +320,8 @@ export class Detector {
   private innerT0 = 0;
   private ears = { a: Detector.ear(), b: Detector.ear() };
   private lastFusedUp = -1;
+  /** The end of the last joined mark passed on with a length (not withdrawn). */
+  private lastMarkUp = -1;
   private fusedDown = false;
   private fusedStart = 0;
   private fusedEnd = -1;
@@ -342,6 +362,8 @@ export class Detector {
   private onPitchT = 0;
   /** Steady marks withdrawn for their pitch: if they agree, the pin is off and that is the tone. */
   private strays: number[] = [];
+  /** A pinned lock found off the tone by its marks: where to lock next. */
+  private moveTo: number | null = null;
   private downT = 0;
   /**
    * The last 200 ms of envelope, to time a mark's start once its level is
@@ -380,6 +402,9 @@ export class Detector {
     this.maxHold = new Float64Array(this.fftSize / 2);
     this.minHold = new Float64Array(this.fftSize / 2).fill(Infinity);
     this.toneScore = new Float64Array(this.fftSize / 2);
+    this.onsets = new Float64Array(this.fftSize / 2);
+    this.wasHere = new Uint8Array(this.fftSize / 2);
+    this.here = new Uint8Array(this.fftSize / 2);
     this.power = new Float64Array(this.fftSize / 2);
     this.fftBuf = new Float32Array(this.fftSize);
     this.history = new Float32Array(Math.round(sampleRate * 2.5));
@@ -415,7 +440,11 @@ export class Detector {
 
   setPinned(hz: number | null, out: DetectorEvent[] = []) {
     this.pinned = hz;
-    if (hz) this.lock(hz, false, out);
+    this.candidateRuns = 0;
+    if (hz) {
+      this.lock(hz, false, out);
+      this.joinRelocked(out);
+    }
     return out;
   }
 
@@ -453,14 +482,41 @@ export class Detector {
       this.innerT0 = this.time;
     }
     const joined: DetectorEvent[] = [];
+    // After a new lock, marks replayed from before the end of the last mark passed on are dropped.
+    let passed = -Infinity;
+    let skip = false;
     for (const e of out) {
-      if (e.type === 'key') this.join('a', e.down, e.t, joined);
-      else if (e.type === 'status') joined.push({ ...e, keyDown: this.fusedDown });
-      else joined.push(e);
+      if (e.type === 'key') {
+        if (e.down) skip = e.t < passed;
+        if (!skip) this.join('a', e.down, e.t, joined);
+      } else if (e.type === 'status') joined.push({ ...e, keyDown: this.fusedDown });
+      else {
+        if (e.type === 'lock') passed = this.joinRelocked(joined);
+        joined.push(e);
+      }
     }
     for (const e of this.inner?.process(input) ?? []) if (e.type === 'key') this.join('b', e.down, e.t + this.innerT0, joined);
     this.releaseUps(joined);
     return joined;
+  }
+
+  /**
+   * A new lock: both ears start again. A joined mark that has ended is passed
+   * on; one still open is withdrawn, and the replay at the new pitch hears it
+   * again (with the marks the old lock withdrew). Returns the end of the last
+   * mark passed on: the replay adds only what came after.
+   */
+  private joinRelocked(out: DetectorEvent[]): number {
+    if (this.fusedDown) {
+      const ended = !this.ears.a.down && !this.ears.b.down && this.fusedEnd >= 0;
+      const t = ended ? this.fusedEnd : this.fusedStart;
+      if (ended) this.lastMarkUp = t;
+      out.push({ type: 'key', down: false, t });
+    }
+    this.lastFusedUp = this.lastMarkUp;
+    this.fusedDown = false;
+    this.ears = { a: Detector.ear(), b: Detector.ear() };
+    return this.lastMarkUp;
   }
 
   private static ear() {
@@ -502,7 +558,7 @@ export class Detector {
         if (!other.down) {
           this.fusedDown = false;
           this.ears.a.upAt = this.ears.b.upAt = null;
-          this.lastFusedUp = this.fusedEnd;
+          this.lastFusedUp = this.lastMarkUp = this.fusedEnd;
           out.push({ type: 'key', down: false, t: this.fusedEnd });
         }
       }
@@ -536,6 +592,7 @@ export class Detector {
     this.ears.a.upAt = this.ears.b.upAt = null;
     const t = this.fusedEnd >= 0 ? this.fusedEnd : this.fusedStart;
     this.lastFusedUp = t;
+    if (this.fusedEnd >= 0) this.lastMarkUp = t;
     out.push({ type: 'key', down: false, t });
   }
 
@@ -559,6 +616,11 @@ export class Detector {
       }
 
       if (this.lockedHz !== null) this.iqStep(x, this.sample, out);
+      if (this.moveTo !== null) {
+        const hz = this.moveTo;
+        this.moveTo = null;
+        this.lock(hz, true, out);
+      }
       this.sample++;
 
       if (this.time >= this.nextStatus) {
@@ -627,17 +689,27 @@ export class Detector {
       if (db > searchTuning.base) found.push(k, db - searchTuning.base);
     }
     for (let i = 0; i < found.length; i += 2) this.toneScore[found[i]] += found[i + 1];
+    // Onsets: a bin (give or take one) that stands out now and did not in the last frame.
+    const here = this.here.fill(0);
+    for (let i = 0; i < found.length; i += 2) for (let d = -1; d <= 1; d++) here[found[i] + d] = 1;
+    for (let k = lo; k <= hi; k++) {
+      this.onsets[k] = this.onsets[k] * keep + (here[k] && !this.wasHere[k] ? 1 : 0);
+      this.wasHere[k] = here[k];
+    }
     const score = (k: number) => this.toneScore[k - 1] + this.toneScore[k] + this.toneScore[k + 1];
     let best = -1;
     let bestS = 0;
-    for (let k = lo; k <= hi; k++) {
+    // Pinned: only near the pin.
+    const from = this.pinned ? Math.max(lo, Math.ceil((this.pinned - searchTuning.pinWindow) / binHz)) : lo;
+    const to = this.pinned ? Math.min(hi, Math.floor((this.pinned + searchTuning.pinWindow) / binHz)) : hi;
+    for (let k = from; k <= to; k++) {
       const sc = score(k);
       if (sc > bestS) {
         bestS = sc;
         best = k;
       }
     }
-    if (this.pinned || best < 0 || bestS < searchTuning.least) {
+    if (best < 0 || bestS < searchTuning.least) {
       this.candidateRuns = Math.max(0, this.candidateRuns - 2);
       return;
     }
@@ -657,11 +729,22 @@ export class Detector {
     const median = band[Math.floor(band.length / 2)] + 1e-20;
     const prominent = bestP / median > 10;
     const keyed = bestP / (this.minHold[best] + 1e-20) > 4;
-    if (!prominent || !keyed) {
+    // Pinned, the max-hold tests are left out: typing's clicks lift the whole
+    // band's max-hold for seconds. The lock's own score and the onsets do the work.
+    const pinnedLock = this.pinned !== null && this.lockedHz !== null;
+    if (!pinnedLock && (!prominent || !keyed)) {
       this.candidateRuns = Math.max(0, this.candidateRuns - 2);
       return;
     }
-    if (this.lockedHz === null) {
+    if (pinnedLock) {
+      // The lock already hears it, or hears as much at its own pitch, or it does not start and stop like a key: stay.
+      const lockedBin = Math.round(this.lockedHz! / binHz);
+      if (Math.abs(hz - this.lockedHz!) < searchTuning.pinMove || bestS < searchTuning.pinRelock * score(lockedBin) || this.onsets[best] < searchTuning.pinOnsets) {
+        this.candidateRuns = Math.max(0, this.candidateRuns - 2);
+        return;
+      }
+    }
+    if (this.lockedHz === null || this.pinned) {
       // The same pitch must lead for a while (the lock replays the audio
       // before it, so waiting costs nothing); a stray frame only sets it back.
       if (Math.abs(hz - this.candidateHz) < 2 * binHz) {
@@ -672,7 +755,10 @@ export class Detector {
         this.candidateRuns = 1;
         this.candidateHz = hz;
       }
-      if (this.candidateRuns >= searchTuning.runs) this.lock(hz, true, out);
+      if (this.candidateRuns >= searchTuning.runs) {
+        this.candidateRuns = 0;
+        this.lock(hz, true, out);
+      }
       return;
     }
 
@@ -717,9 +803,6 @@ export class Detector {
     for (const r of this.refs) r.reset();
     this.overtone.reset();
     this.inner = null;
-    if (this.fusedDown) out.push({ type: 'key', down: false, t: this.time });
-    this.fusedDown = false;
-    this.ears = { a: Detector.ear(), b: Detector.ear() };
     this.harmonicGap = 0;
     this.harmonicRise = 0;
     this.harmonicMarks = 0;
@@ -837,7 +920,7 @@ export class Detector {
     const coherence = Math.hypot(this.mRe, this.mIm) / this.mMag;
     const offset = Math.atan2(this.mIm, this.mRe) / ((2 * Math.PI * markTuning.lag * this.decim) / this.fs);
     // A short mark's pitch is known less exactly: more allowance (8.7 Hz with 21 ms of steady tone, 3.5 Hz for a dah).
-    const base = this.offsetMarks >= markTuning.learn ? markTuning.tol : this.pinned ? markTuning.pinned : markTuning.wide;
+    const base = this.offsetMarks >= markTuning.learn ? markTuning.tol : this.pinned === this.lockedHz ? markTuning.pinned : markTuning.wide;
     const tol = base + markTuning.short / this.mN;
     const gap = this.mGapN ? this.mGap / this.mGapN : -60;
     const rise = this.mGapN ? this.mRise / this.mGapN : 0;
@@ -884,6 +967,9 @@ export class Detector {
         this.toneOffset = sorted[1];
         this.offsetMarks = 1;
         this.strays = [];
+        // Pinned: lock there (near the pin), and hear the marks just withdrawn again.
+        const hz = this.lockedHz! - sorted[1];
+        if (this.pinned && !this.isOvertone && Math.abs(hz - this.pinned) <= searchTuning.pinWindow) this.moveTo = hz;
       }
     }
     return false;

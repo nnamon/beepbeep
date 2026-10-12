@@ -26,7 +26,6 @@ Decoder results recorded in the decoder commits (fists.ts beginner fists and you
 
 ### Decoder (`src/lib/dsp`, `src/lib/decoder`)
 
-1. **A pin 25 to 50 Hz off the real tone makes decoding go silent.** It must keep decoding, or move to the real tone. Test with the pin set off the tone of a recording.
 2. **"EE" keyed at 8 wpm decodes as "T T" when the speed setting is 15.** The decoder trusts the setting too much when the first marks disagree with it.
 3. **Holding the key down for several seconds prints "T".** A very long mark should print nothing.
 4. **Stray letters from talking are halved, not gone.** `samples.test.ts` take `154427-noise-t4` (talking, no keying, pinned) reads 4 stray letters where `samples/best.json` has 3; the decoder agent left it as a known difference.
