@@ -211,6 +211,34 @@ test('the header fits from 600 to 1280 px wide', async ({ page }) => {
   expect(bad).toEqual([]);
 });
 
+// The visual cue light (Settings, Visual cue) sits clear of every control, upright, on its side and wide.
+test('the visual cue light covers no control', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('beepbeep.settings.v1', JSON.stringify({ voice: 'off', guideSeen: true, visualCue: true })));
+  const bad: string[] = [];
+  for (const [width, height] of [[360, 740], [390, 664], [844, 390], [1280, 860]]) {
+    await page.setViewportSize({ width, height });
+    for (const route of ['practice', 'practice/live', 'pocket/round/characters']) {
+      await page.goto(`./#/${route}`);
+      await page.waitForTimeout(200);
+      const hits = await page.evaluate(() => {
+        const cue = document.querySelector('.cue');
+        if (!cue) return ['no cue light'];
+        const c = cue.getBoundingClientRect();
+        const out: string[] = [];
+        for (const el of document.querySelectorAll('a[href], button, [role="radio"], input, select')) {
+          const r = el.getBoundingClientRect();
+          if (!r.width || !r.height) continue;
+          if (Math.min(r.right, c.right) - Math.max(r.left, c.left) > 0 && Math.min(r.bottom, c.bottom) - Math.max(r.top, c.top) > 0)
+            out.push((el as HTMLElement).innerText.trim() || el.getAttribute('aria-label') || el.tagName);
+        }
+        return out;
+      });
+      for (const h of hits) bad.push(`${width} x ${height}, ${route}: ${h}`);
+    }
+  }
+  expect(bad).toEqual([]);
+});
+
 // The narrowest phones show the whole version and build, not "v0.1.0 · lo…".
 test('360 px: the version and build are shown in full', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 740 });
