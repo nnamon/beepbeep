@@ -205,7 +205,15 @@ class AudioEngine {
     return this.play(samples, { schedule });
   }
 
+  private stopHooks: (() => void)[] = [];
+
+  /** Runs `fn` on every stopAll(), e.g. so speech stops with the code. */
+  onStopAll(fn: () => void) {
+    this.stopHooks.push(fn);
+  }
+
   stopAll() {
+    for (const fn of this.stopHooks) fn();
     for (const s of this.active) {
       try {
         s.stop();

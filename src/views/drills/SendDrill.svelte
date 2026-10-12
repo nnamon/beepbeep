@@ -1,6 +1,7 @@
 <script lang="ts">
-  // Send prompted text. After the over: what a listener received comes first,
-  // then what you meant, one note, and your rhythm beside the standard.
+  // Send prompted text. When you finish: what a listener received comes first,
+  // then what you meant, one note, and your rhythm beside the standard (not in
+  // LICW strict mode).
   import { onDestroy } from 'svelte';
   import DrillFrame from '../../ui/DrillFrame.svelte';
   import Button from '../../ui/Button.svelte';
@@ -23,6 +24,7 @@
   import { textTokens, align } from '../../lib/util/text';
   import { mulberry32, randomSeed } from '../../lib/util/random';
   import { keepAwake } from '../../lib/util/wakelock';
+  import { forControl } from '../../lib/util/keys';
   import type { DecodedChar } from '../../lib/decoder/decoder';
 
   // The touch key pad stays in place while this screen is open.
@@ -71,11 +73,27 @@
     prompt = list.length ? list.join(' ') : items(rng, 'groups', known, 3).join(' ');
   }
 
-  async function begin() {
-    if (settings.input === 'mic' && !signal.micOn) {
-      if (!(await startMic())) return;
+  let starting = false;
+  /** Set on leaving: a start still waiting for the microphone gives up. */
+  let gone = false;
+
+  async function begin(fresh = true) {
+    if (starting || (stage === 'sending' && fresh)) return;
+    starting = true;
+    try {
+      if (settings.input === 'mic' && !signal.micOn) {
+        if (!(await startMic()) || gone) return;
+      }
+      await listen(fresh);
+    } finally {
+      starting = false;
     }
-    nextPrompt();
+  }
+
+  /** Starts the decoder; with fresh, on a new prompt. */
+  async function listen(fresh: boolean) {
+    if (fresh) nextPrompt();
+    lastKey = 0;
     liveTokens = [];
     liveRows = [];
     inspecting = null;
@@ -104,12 +122,24 @@
       },
     });
     await live.start();
+    if (gone) return void live.stop();
     lastKey = 0;
     void keepAwake(true);
     if (timer) clearInterval(timer);
     timer = setInterval(() => {
-      if (stage === 'sending' && lastKey && liveTokens.length && performance.now() - lastKey > settings.overTimeout * 1000) finish();
+      if (stage !== 'sending' || !lastKey || performance.now() - lastKey <= settings.overTimeout * 1000) return;
+      // A pause after real sending ends the attempt. A few stray marks (a knock,
+      // a voice near the mic) are not an attempt: start listening again.
+      if (attempted()) finish();
+      else void listen(false);
     }, 200);
+  }
+
+  /** Enough decoded to be an attempt at the prompt, not room noise. */
+  function attempted(): boolean {
+    const want = textTokens(prompt).filter((t) => t !== ' ').length;
+    const got = liveTokens.filter((t) => t.t !== ' ').length;
+    return got >= Math.min(2, want) && (live?.marks.length ?? 0) >= 3;
   }
 
   let liveReq = 0;
@@ -126,8 +156,11 @@
     chars = live.chars;
     received = live.text;
     const r = compareCopy(prompt, received);
-    correctTotal += r.correct;
-    tokenTotal += r.total;
+    // Nothing decoded is shown, but isn't counted as an attempt.
+    if (received.trim()) {
+      correctTotal += r.correct;
+      tokenTotal += r.total + r.extra;
+    }
     issues = spacingIssues(prompt, received);
     report = analyseFist(live.outputs);
     lastFist = report ?? lastFist;
@@ -136,7 +169,7 @@
     void keepSend(received, live.marks);
     receivedTokens = markReceived(prompt, received);
     rhythm = buildRhythm();
-    n++;
+    if (received.trim()) n++;
     stage = 'review';
   }
 
@@ -217,9 +250,13 @@
     }
   }
 
-  onDestroy(end);
+  onDestroy(() => {
+    gone = true;
+    end();
+  });
 
   function onKey(e: KeyboardEvent) {
+    if (forControl(e)) return;
     if (e.key === 'Enter') {
       e.preventDefault();
       if (stage === 'sending') finish();
@@ -242,7 +279,7 @@
         label="Material"
         bind:value={material}
         options={[
-          { value: 'characters', label: 'Characters' },
+          { value: 'characters', label: 'Groups' },
           { value: 'words', label: 'Words' },
           { value: 'callsigns', label: 'Callsigns' },
           { value: 'phrases', label: 'Phrases' },
@@ -271,14 +308,14 @@
     <div class="block">
       <span class="label">Received</span>
       {#if receivedTokens.length}<TokenText tokens={receivedTokens} size="xl" />{:else}<p class="muted">Nothing decoded.</p>{/if}
-      {#each issues as i (i.at + i.kind)}<p class="issue muted">{describeIssue(i)}</p>{/each}
+      {#each [...new Set(issues.map(describeIssue))] as text (text)}<p class="issue muted">{text}</p>{/each}
     </div>
     <div class="block">
       <span class="label">Intended</span>
       <TokenText tokens={textTokens(prompt).map((t) => ({ t }))} size="m" />
     </div>
     {#if inspecting}<Inspect marks={inspecting} onclose={() => (inspecting = null)} />{/if}
-    {#if rhythm.length}
+    {#if rhythm.length && !strict()}
       <div class="block">
         <span class="label">Rhythm</span>
         <RhythmView rows={rhythm} />
@@ -292,11 +329,11 @@
 
   {#snippet footer()}
     {#if stage === 'ready'}
-      <Button kind="primary" onclick={begin} hint="Enter">Start</Button>
+      <Button kind="primary" onclick={() => begin()} hint="Enter">Start</Button>
     {:else if stage === 'sending'}
       <Button kind="primary" onclick={finish} hint="Enter">Done</Button>
     {:else}
-      <Button kind="primary" onclick={begin} hint="Enter">Next</Button>
+      <Button kind="primary" onclick={() => begin()} hint="Enter">Next</Button>
       <Button onclick={replayMine} hint="R">Replay mine</Button>
       <Button onclick={hearStandard} hint="S">Play standard</Button>
     {/if}

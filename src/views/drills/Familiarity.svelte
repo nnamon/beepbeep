@@ -1,7 +1,7 @@
 <script lang="ts">
-  // Spot the new character: one of the group's new characters plays alone three
-  // times, unnamed, then mixed in with others; tap each time it plays. Its name
-  // is revealed once the taps land reliably.
+  // Spot the new character: one of the lesson's new characters plays alone
+  // three times, unnamed, then mixed in with others; tap each time it plays.
+  // Its name is revealed once the taps land reliably.
   import { onDestroy } from 'svelte';
   import DrillFrame from '../../ui/DrillFrame.svelte';
   import Button from '../../ui/Button.svelte';
@@ -12,6 +12,7 @@
   import { currentLevel, playCw, receiveSpeeds, saveSession, wait } from '../../lib/train/session';
   import { mulberry32, pick, randomSeed, shuffle } from '../../lib/util/random';
   import { keepAwake } from '../../lib/util/wakelock';
+  import { forControl } from '../../lib/util/keys';
 
   const level = currentLevel();
   const targets = level.added;
@@ -27,6 +28,8 @@
   let taps: number[] = [];
   let startTime = 0;
   let rounds = 0;
+  /** Bumped on each play and on leaving, so a stream still to come doesn't start. */
+  let run = 0;
   const target = $derived(targets[idx]);
 
   function stream(t: string): string[] {
@@ -41,6 +44,8 @@
   }
 
   async function play() {
+    if (stage === 'intro' || stage === 'playing') return;
+    const me = ++run;
     const seq = stream(target);
     taps = [];
     void keepAwake(true);
@@ -50,11 +55,12 @@
     const intro = await playCw(`${target} ${target} ${target}`, { charWpm: sp.charWpm, effectiveWpm: sp.effectiveWpm, plain: true });
     await intro.done;
     await wait(1500);
-    if (stage !== 'intro') return;
+    if (me !== run) return;
     stage = 'playing';
     const pb = await playCw(seq.join(' '), { charWpm: sp.charWpm, effectiveWpm: sp.effectiveWpm, plain: true });
     startTime = pb.startTime;
     await pb.done;
+    if (me !== run) return;
     score(pb.schedule!.chars.filter((c) => c.token !== ' '));
   }
 
@@ -102,12 +108,15 @@
   }
 
   onDestroy(() => {
+    run++;
     signal.receiving = false;
     engine.stopAll();
     void keepAwake(false);
   });
 
   function onKey(e: KeyboardEvent) {
+    // Space on the Tap button itself is a tap too.
+    if (forControl(e) && !(e.target as HTMLElement).classList.contains('tap')) return;
     if (e.code === 'Space') {
       e.preventDefault();
       tap();
@@ -123,7 +132,7 @@
 
 <DrillFrame title="Spot the new character" eyebrow="{level.name} · new character {idx + 1} of {targets.length}">
   {#if stage === 'ready'}
-    <p class="lead">One of this group's new characters plays alone three times, without its name. That is the one to catch.</p>
+    <p class="lead">One of this lesson's new characters plays three times on its own, without its name. That is the one to catch.</p>
     <p class="muted lead">Then it plays mixed in with other characters. Tap each time you hear it. Its name comes once you catch most of them.</p>
   {:else if stage === 'intro'}
     <p class="big">Listen: this is the one to catch.</p>
@@ -132,15 +141,15 @@
     <p class="muted">Tap each time you hear it.</p>
     <button type="button" class="tap" onpointerdown={tap}>Tap<span class="muted">Space</span></button>
   {:else if stage === 'scored'}
-    <p class="big">{hits} of {occurrences} caught{extra ? `, ${extra} extra taps` : ''}</p>
-    <p class="muted">Catch 8 in 10, with no more than 2 taps on other characters, to hear its name. Again plays it alone first.</p>
+    <p class="big">You caught {hits} of {occurrences}{extra ? `, with ${extra} ${extra === 1 ? 'tap' : 'taps'} on other characters` : ''}.</p>
+    <p class="muted">Catch 8 in 10, with no more than 2 taps on other characters, to hear its name. Press Again to hear it on its own first, then try again.</p>
   {:else if stage === 'revealed'}
     <span class="label">It was</span>
     <TokenText tokens={[{ t: target }]} size="xl" />
-    <p class="muted">{hits} of {occurrences} caught.</p>
+    <p class="muted">You caught {hits} of {occurrences}.</p>
   {:else}
     <p class="big">You found and heard the names of all {targets.length} new characters.</p>
-    <p class="muted">Next: Copy drill or TTR drill with this lesson.</p>
+    <p class="muted">Next, try the Copy drill or the Time to recognise (TTR) drill with this lesson.</p>
   {/if}
 
   {#snippet footer()}
@@ -153,7 +162,7 @@
       <Button onclick={() => say(target)}>Say it again</Button>
     {:else if stage === 'done'}
       <Button kind="primary" href="#/practice/copy">Copy drill</Button>
-      <Button href="#/practice/ttr">TTR drill</Button>
+      <Button href="#/practice/ttr">Time to recognise (TTR)</Button>
     {/if}
   {/snippet}
 </DrillFrame>

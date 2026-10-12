@@ -3,10 +3,7 @@
 
 import { type Rng, pick, shuffle } from '../util/random';
 import { callFrom, currentMix, pickCountry, type Mix } from './world';
-import {
-  ANTENNAS, CHUNKS, COMMON_WORDS, JOBS, NAMES, PHRASES, QSO_WORDS, RIGS, STATES, STATE_CITIES,
-  WEATHER, usesOnly,
-} from './words';
+import { ANTENNAS, CHUNKS, COMMON_WORDS, JOBS, NAMES, PHRASES, QSO_WORDS, RIGS, WEATHER, usesOnly } from './words';
 
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 
@@ -25,6 +22,21 @@ export function callsign(rng: Rng, opts: CallOptions = {}): string {
     if (!opts.known || usesOnly(c, opts.known)) return c;
   }
   return callFrom(rng, pickCountry(rng, mix));
+}
+
+/**
+ * A station's callsign and the region it sends (a US state, a Canadian
+ * province, otherwise its country), from the same country.
+ */
+export function stationAndRegion(rng: Rng, known?: Set<string>): { call: string; region: string } {
+  const mix = currentMix();
+  let last = { call: '', region: '' };
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const c = pickCountry(rng, mix);
+    last = { call: callFrom(rng, c), region: pick(rng, c.places).region };
+    if (!known || usesOnly(`${last.call} ${last.region}`, known)) return last;
+  }
+  return last;
 }
 
 /** Your station, as set in Settings. */
@@ -79,17 +91,22 @@ export function groups(rng: Rng, known: readonly string[], count: number, size: 
 export interface Fillers {
   call?: string;
   name?: string;
+  /** Region sent after the town: a US state, a province or a country. */
   state?: string;
 }
 
+/**
+ * Fills a phrase template with a station from around the world (weighted to
+ * the areas you hear most): its call, a local name, its town and region.
+ */
 export function fillPhrase(rng: Rng, template: string, f: Fillers = {}): string {
-  const state = f.state ?? pick(rng, STATES);
-  const cities = STATE_CITIES[state];
+  const country = pickCountry(rng, currentMix());
+  const place = pick(rng, country.places);
   return template
-    .replaceAll('{CALL}', f.call ?? callsign(rng))
-    .replaceAll('{NAME}', f.name ?? pick(rng, NAMES))
-    .replaceAll('{QTH}', cities ? pick(rng, cities) : state)
-    .replaceAll('{STATE}', state)
+    .replaceAll('{CALL}', f.call ?? callFrom(rng, country))
+    .replaceAll('{NAME}', f.name ?? pick(rng, country.names.length ? country.names : NAMES))
+    .replaceAll('{QTH}', place.city)
+    .replaceAll('{STATE}', f.state ?? place.region)
     .replaceAll('{RIG}', pick(rng, RIGS))
     .replaceAll('{ANT}', pick(rng, ANTENNAS))
     .replaceAll('{WX}', pick(rng, WEATHER))

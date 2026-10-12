@@ -1,5 +1,5 @@
 <script lang="ts">
-  // Time To Recognize: a character plays, then its name is spoken after a
+  // Time to recognise: a character plays, then its name is spoken after a
   // delay. Type it before the voice. The delay tightens or relaxes to keep you
   // recognising about two-thirds, down to 0.3 s.
   import { onDestroy } from 'svelte';
@@ -15,6 +15,7 @@
   import { pickNext, type ItemStat } from '../../lib/train/srs';
   import { mulberry32, randomSeed } from '../../lib/util/random';
   import { keepAwake } from '../../lib/util/wakelock';
+  import { forControl } from '../../lib/util/keys';
 
   const MAX = 40;
   const level = currentLevel();
@@ -27,6 +28,7 @@
   let delay = $state(Math.min(3, Math.max(0.3, settings.ttrDelay)));
   let shown = $state('');
   let outcome = $state<'' | 'before' | 'late' | 'wrong'>('');
+  let pressed = $state('');
   let recent: number[] = [];
   let got = 0;
   let stopFlag = false;
@@ -35,9 +37,11 @@
   let last: string[] = [];
 
   async function run() {
-    map = await stats('rx:');
+    if (running) return;
     running = true;
     stopFlag = false;
+    map = await stats('rx:');
+    if (stopFlag) return finish();
     void keepAwake(true);
     for (n = 0; n < MAX && !stopFlag; n++) {
       const ch = pickNext(rng, level.known, new Map([...map].map(([k, v]) => [k.slice(3), v])), last);
@@ -57,9 +61,12 @@
         })(),
       ]);
       pending = null;
+      // Stopped or left: this one wasn't answered, so it isn't scored.
+      if (stopFlag) break;
       const ms = key ? Math.max(0, performance.now() - endPerf) : delay * 1000;
       const right = key === ch;
       outcome = !key ? 'late' : right ? 'before' : 'wrong';
+      pressed = key;
       shown = ch;
       if (right) got++;
       await answer(map, `rx:${ch}`, right, ms, delay * 1000, key && !right ? { want: ch, got: key } : undefined);
@@ -82,6 +89,7 @@
     running = false;
     void keepAwake(false);
     settings.ttrDelay = delay;
+    if (!n) return;
     void saveSession({
       mode: 'ttr',
       seconds: Math.round((Date.now() - startedAt) / 1000),
@@ -105,25 +113,27 @@
 
   onDestroy(() => {
     stopFlag = true;
+    pending?.('');
+    engine.stopAll();
     signal.receiving = false;
     void keepAwake(false);
   });
 </script>
 
 <DrillFrame
-  title="TTR drill"
+  title="Time to recognise (TTR)"
   eyebrow="{level.name} · {receiveSpeeds().charWpm} wpm characters"
   count={running ? `${n + 1} / ${MAX}` : ''}
 >
   <div class="row">
     <div>
-      <span class="label">Voice delay</span>
+      <span class="label">Time before the voice</span>
       <p class="delay num">{delay.toFixed(2)} s</p>
     </div>
     <div class="answer" aria-live="polite">
       {#if shown}
         <TokenText tokens={[{ t: shown }]} size="xl" />
-        <span class="muted">{outcome === 'before' ? 'Before the voice' : outcome === 'late' ? 'After the voice' : 'Different key'}</span>
+        <span class="muted">{outcome === 'before' ? 'Before the voice' : outcome === 'late' ? 'After the voice' : `You typed ${pressed}`}</span>
       {:else if running}
         <span class="muted big">Listen</span>
       {:else}
@@ -147,7 +157,7 @@
     if (e.key === 'Escape' && running) {
       e.preventDefault();
       stop();
-    } else if (e.key === 'Enter' && !running) {
+    } else if (e.key === 'Enter' && !running && !forControl(e)) {
       e.preventDefault();
       void run();
     }

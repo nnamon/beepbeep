@@ -104,3 +104,149 @@ test('Today ticks a step when you come back from it, without a reload', async ({
   await page.locator('a.back').click();
   await expect(step.getByRole('checkbox')).toHaveAttribute('aria-checked', 'true');
 });
+
+
+/** Marks characters as seen, so a Pocket round starts with the quiz, not the new-character intro. */
+async function seen(page: Page, chars: string) {
+  await page.goto('./#/progress');
+  await page.evaluate(async (chars) => {
+    const db: IDBDatabase = await new Promise((res, rej) => {
+      const r = indexedDB.open('beepbeep', 1);
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    });
+    const tx = db.transaction(['items'], 'readwrite');
+    for (const c of chars) tx.objectStore('items').put({ key: `rx:${c}`, heat: 3, seen: 20, correct: 18, avgMs: 900, recent: [1, 1, 1], lastSeen: Date.now() });
+    await new Promise((r) => (tx.oncomplete = r));
+    db.close();
+  }, chars);
+}
+
+const cwOn = async (page: Page, notHash: RegExp) => (await played(page)).filter((p) => p.kind === 'cw' && !notHash.test(p.hash));
+
+test('Pocket: nothing plays after you leave a round', async ({ page }) => {
+  await instrument(page);
+  await settings(page, { ...BASE, track: 'koch', level: { koch: 'koch-5', licw: 'licw-bc1-REA' } });
+  await page.goto('./#/pocket/round/characters');
+  await page.getByRole('button', { name: 'Start the round' }).click();
+  await nextAudio(page, 0);
+  await page.keyboard.press('Q');
+  await page.waitForTimeout(150);
+  await page.keyboard.press('Escape');
+  await expect(page).toHaveURL(/#\/pocket$/);
+  await page.waitForTimeout(3000);
+  expect(await cwOn(page, /round/)).toEqual([]);
+});
+
+test('Pocket: Enter after a miss goes to the next one', async ({ page }) => {
+  await instrument(page);
+  await settings(page, { ...BASE, track: 'koch', level: { koch: 'koch-5', licw: 'licw-bc1-REA' } });
+  await seen(page, 'KMRSUA');
+  await page.goto('./#/pocket/round/characters');
+  await page.getByRole('button', { name: 'Start the round' }).click();
+  const item = await nextAudio(page, 0);
+  await page.waitForTimeout(400);
+  await page.keyboard.press(item === 'Q' ? 'Z' : 'Q');
+  await expect(page.getByText(/^You typed/)).toBeVisible();
+  await page.keyboard.press('Enter');
+  await expect(page.getByText('2 / 20')).toBeVisible();
+});
+
+test('Pocket in strict mode: no answer after each one; the misses are listed at the end', async ({ page }) => {
+  test.setTimeout(120_000);
+  await instrument(page);
+  await settings(page, { ...BASE, track: 'licw', licwStrict: true, level: { koch: 'koch-1', licw: 'licw-bc1-REA' } });
+  await seen(page, 'REA');
+  await page.goto('./#/pocket/round/characters');
+  await page.getByRole('button', { name: 'Start the round' }).click();
+  for (let k = 0; k < 20; k++) {
+    await nextAudio(page, k);
+    await page.waitForTimeout(200);
+    await page.keyboard.press('Q');
+    await expect(page.getByText('It was')).toHaveCount(0);
+  }
+  await expect(page.getByRole('heading', { name: 'Missed' })).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText('you typed Q').first()).toBeVisible();
+});
+
+test('Spot the new character: leaving just after Play plays nothing on the next screen', async ({ page }) => {
+  await instrument(page);
+  await settings(page, { ...BASE, track: 'koch', level: { koch: 'koch-5', licw: 'licw-bc1-REA' } });
+  await page.goto('./#/practice/familiarity');
+  await page.getByRole('button', { name: /Play/ }).click();
+  await nextAudio(page, 0);
+  await page.getByRole('link', { name: 'Back' }).click();
+  await expect(page).toHaveURL(/#\/practice$/);
+  await page.waitForTimeout(4000);
+  expect(await cwOn(page, /familiarity/)).toEqual([]);
+});
+
+test('TTR: Stop says nothing more and records no miss', async ({ page }) => {
+  await instrument(page);
+  await settings(page, { ...BASE, voice: 'builtin', track: 'koch', level: { koch: 'koch-5', licw: 'licw-bc1-REA' } });
+  await page.goto('./#/practice/ttr');
+  await page.getByRole('button', { name: /Start/ }).click();
+  await nextAudio(page, 0);
+  await page.getByRole('button', { name: /Stop/ }).click();
+  const voices = (await played(page)).filter((p) => p.kind === 'voice').length;
+  await page.waitForTimeout(3000);
+  expect((await played(page)).filter((p) => p.kind === 'voice').length).toBe(voices);
+  const rx = await page.evaluate(async () => {
+    const db: IDBDatabase = await new Promise((res, rej) => {
+      const r = indexedDB.open('beepbeep', 1);
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    });
+    const all: { key: string; seen: number }[] = await new Promise((res) => {
+      const q = db.transaction('items').objectStore('items').getAll();
+      q.onsuccess = () => res(q.result);
+    });
+    db.close();
+    return all.filter((s) => s.key.startsWith('rx:')).length;
+  });
+  expect(rx).toBe(0);
+});
+
+test('Sound surfing: stopping before much has played saves nothing', async ({ page }) => {
+  await instrument(page);
+  await settings(page, { ...BASE, track: 'koch', level: { koch: 'koch-5', licw: 'licw-bc1-REA' } });
+  await page.goto('./#/practice/ifr');
+  await page.getByRole('button', { name: /Start/ }).click();
+  await nextAudio(page, 0);
+  await page.getByRole('button', { name: /Stop/ }).click();
+  await expect(page.getByRole('button', { name: /Start/ })).toBeVisible();
+  expect((await sessions(page)).filter((s) => s.mode === 'ifr')).toEqual([]);
+});
+
+test('Sprint: callsigns use only the lesson\'s characters', async ({ page }) => {
+  await settings(page, { ...BASE, track: 'koch', level: { koch: 'koch-1', licw: 'licw-bc1-REA' } });
+  await page.goto('./#/practice/sprint');
+  await page.getByRole('button', { name: /Start/ }).click();
+  await expect(page.getByText(/There aren't enough callsigns yet that use only the characters in Lesson 1/)).toBeVisible();
+});
+
+test('Head copy: one letter is not a copy of a name', async ({ page }) => {
+  await instrument(page);
+  await settings(page, { ...BASE, track: 'koch', charWpm: 40, effectiveWpm: 40 });
+  await page.goto('./#/practice/head-copy');
+  await page.getByRole('button', { name: 'Play' }).click();
+  await expect(page.getByRole('button', { name: 'Check' })).toBeVisible({ timeout: 60_000 });
+  const sent = (await played(page)).filter((p) => p.kind === 'cw')[0].text;
+  const name = /NAME HR IS (\S+)/.exec(sent)?.[1] ?? '';
+  expect(name.length).toBeGreaterThan(1);
+  await page.getByLabel('Name').fill(name[0]);
+  await page.getByRole('button', { name: 'Check' }).click();
+  await expect(page.getByLabel('Name').locator('..').getByText('Missed')).toBeVisible();
+});
+
+test('LICW exercise: Your text with nothing saved shows how to add one', async ({ page }) => {
+  await settings(page, { ...BASE, track: 'licw', level: { koch: 'koch-1', licw: 'licw-bc1-REA' } });
+  await page.goto('./#/practice/class/bc1/phrases');
+  await page.getByRole('radio', { name: 'Your text' }).click();
+  await expect(page.getByRole('radio', { name: 'Your text' })).toHaveAttribute('aria-checked', 'true');
+  await expect(page.getByRole('button', { name: 'Paste text' })).toBeVisible();
+  await page.getByRole('button', { name: 'Paste text' }).click();
+  await page.getByLabel('Text', { exact: true }).fill('CQ CQ DE 9V1NE\nTNX FER CALL');
+  await page.getByRole('button', { name: 'Save text' }).click();
+  await expect(page.getByRole('button', { name: /Start/ })).toBeEnabled();
+});

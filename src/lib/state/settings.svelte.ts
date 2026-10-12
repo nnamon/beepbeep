@@ -8,7 +8,9 @@ import type { ClassId } from '../train/classes';
 export interface ExercisePrefs {
   /** Chosen speed, where the exercise offers several. */
   speed?: number;
-  /** Your saved text to play instead of lesson material; null for the lesson. */
+  /** Play lesson material or your own text. Older saves only have `text`. */
+  source?: 'lesson' | 'text';
+  /** Which of your saved texts to play. */
   text?: string | null;
   /** Show each card once it has played. */
   show?: boolean;
@@ -162,7 +164,9 @@ function normalize(raw: unknown): Settings {
   out.carousel = { bc1: str(obj(s.carousel).bc1) || DEFAULT_CAROUSEL.bc1, bc2: str(obj(s.carousel).bc2) || DEFAULT_CAROUSEL.bc2 };
   const you = obj(s.you);
   out.you = { call: str(you.call), name: str(you.name), qth: str(you.qth), state: str(you.state), skcc: str(you.skcc) };
-  out.exercisePrefs = obj(s.exercisePrefs) as Settings['exercisePrefs'];
+  out.exercisePrefs = Object.fromEntries(
+    Object.entries(obj(s.exercisePrefs)).filter(([, v]) => v && typeof v === 'object' && !Array.isArray(v)),
+  ) as Settings['exercisePrefs'];
   return out;
 }
 

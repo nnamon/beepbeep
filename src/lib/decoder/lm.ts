@@ -6,7 +6,7 @@
 
 import { ALL_TOKENS, tokenize } from '../morse/code';
 import { CHUNKS, COMMON_WORDS, JOBS, NAMES, PHRASES, QSO_WORDS, STATES, STATE_CITIES, RIGS, ANTENNAS, WEATHER } from '../train/words';
-import { callsign, fillPhrase } from '../train/generate';
+import { callsign } from '../train/generate';
 import { ENGLISH } from '../train/english';
 import { COUNTRIES, WORLD_REGIONS, station } from '../train/world';
 import { mulberry32, pick } from '../util/random';
@@ -19,6 +19,28 @@ export interface LanguageModel {
   logp(prev: readonly string[], token: string): number;
 }
 
+/**
+ * The practice-phrase filler as it was when the decoder was tuned (US towns
+ * and states). The app's own phrases now come from around the world; the
+ * corpus keeps this one, draw for draw, so the model doesn't change with it.
+ */
+function tunedPhrase(rng: ReturnType<typeof mulberry32>, template: string): string {
+  const state = pick(rng, STATES);
+  const cities = STATE_CITIES[state];
+  return template
+    .replaceAll('{CALL}', callsign(rng))
+    .replaceAll('{NAME}', pick(rng, NAMES))
+    .replaceAll('{QTH}', cities ? pick(rng, cities) : state)
+    .replaceAll('{STATE}', state)
+    .replaceAll('{RIG}', pick(rng, RIGS))
+    .replaceAll('{ANT}', pick(rng, ANTENNAS))
+    .replaceAll('{WX}', pick(rng, WEATHER))
+    .replaceAll('{PWR}', pick(rng, ['5', '10', '50', '100']))
+    .replaceAll('{RST}', pick(rng, ['599', '579', '569', '559', '449', '339']))
+    .replaceAll('{AGE}', String(30 + Math.floor(rng() * 50)))
+    .replaceAll('{JOB}', pick(rng, JOBS));
+}
+
 function corpus(): string[] {
   const rng = mulberry32(73);
   const lines: string[] = [];
@@ -27,7 +49,7 @@ function corpus(): string[] {
   const rst = () => pick(rng, ['599', '579', '559', '449', '5NN', '339', '569']);
 
   const num = (n: number) => Array.from({ length: n }, () => Math.floor(rng() * 10)).join('');
-  for (let i = 0; i < 400; i++) lines.push(fillPhrase(rng, pick(rng, PHRASES)));
+  for (let i = 0; i < 400; i++) lines.push(tunedPhrase(rng, pick(rng, PHRASES)));
   for (let i = 0; i < 400; i++) {
     // Stations from everywhere: call, local name, city and region together.
     const st = station(rng, 'world');

@@ -116,7 +116,7 @@
       stage: cls.id,
       fresh: fresh.map(displayToken),
       weak: weak.map(displayToken),
-      added: level.added.map(displayToken),
+      added: [...level.added, ...(level.addedWords ?? [])].map(displayToken),
       sessionMinutes: settings.sessionMinutes,
       day,
     }),

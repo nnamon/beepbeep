@@ -13,6 +13,8 @@ export interface Level {
   known: string[];
   /** Letter pairs practised as one unit from this level on, e.g. BK. */
   words?: string[];
+  /** Letter pairs this lesson adds (BK in 2 8 BK). */
+  addedWords?: string[];
   /** Recommended character / effective speed. */
   charWpm: number;
   effectiveWpm: number;
@@ -112,6 +114,7 @@ export function licwLevels(c: Carousel = DEFAULT_CAROUSEL): Level[] {
       added: group,
       known: known.slice(),
       ...(words.length ? { words: words.slice() } : {}),
+      ...(w.length ? { addedWords: w.slice() } : {}),
       charWpm: 12,
       effectiveWpm: 10,
     });

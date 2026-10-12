@@ -1,6 +1,7 @@
 <script lang="ts">
-  // Head copy: an over plays with nothing on screen and no typing (optionally
-  // three keywords of notes). Afterwards, questions about what was said.
+  // Head copy: a station's turn in a QSO plays with nothing on screen and no
+  // typing (optionally three words of notes). Afterwards, questions about what
+  // was said.
   import { onDestroy } from 'svelte';
   import DrillFrame from '../../ui/DrillFrame.svelte';
   import Button from '../../ui/Button.svelte';
@@ -13,6 +14,7 @@
   import { editDistance, textTokens } from '../../lib/util/text';
   import { mulberry32, pick, randomSeed } from '../../lib/util/random';
   import { keepAwake } from '../../lib/util/wakelock';
+  import { forControl } from '../../lib/util/keys';
 
   const rng = mulberry32(randomSeed());
   signal.receiving = true;
@@ -40,6 +42,7 @@
   }
 
   async function start() {
+    if (stage === 'playing') return;
     id = makeIdentity(rng);
     text = compose(id);
     notes = '';
@@ -54,10 +57,18 @@
     void keepAwake(false);
   }
 
+  /**
+   * Copied: exactly, or one letter off in a longer word, or most of a long
+   * answer (DIPOLE for a DIPOLE ANTENNA). One or two letters alone are not
+   * a copy of a longer word.
+   */
   const near = (a: string, b: string) => {
-    const x = a.trim().toUpperCase();
+    const x = a.trim().toUpperCase().replace(/\s+/g, ' ');
     const y = b.toUpperCase();
-    return !!x && (x === y || y.includes(x) || editDistance([...x], [...y]) <= 1);
+    if (!x) return false;
+    if (x === y) return true;
+    if (y.length >= 4 && editDistance([...x], [...y]) <= 1) return true;
+    return y.includes(x) && x.length >= Math.max(3, Math.ceil(y.length * 0.6));
   };
 
   function check() {
@@ -99,10 +110,13 @@
   const score = $derived(Object.values(marks).filter(Boolean).length);
 </script>
 
-<DrillFrame title="Head copy" eyebrow="{receiveSpeeds().charWpm} wpm · no writing while it plays">
+<DrillFrame title="Head copy" eyebrow="{receiveSpeeds().charWpm} wpm">
   {#if stage === 'ready'}
     <div class="intro">
-      <p class="muted">A station sends one over. Nothing shows on screen and you can't type while it plays. Afterwards you answer questions about it, such as the operator's name and rig.</p>
+      <p class="muted">
+        A station sends a short message, like its turn in a QSO. Nothing shows on screen and you can't type while it
+        plays, unless you allow notes. Afterwards you answer questions about it, such as the operator's name and rig.
+      </p>
       <Toggle bind:checked={notesAllowed} label="Allow notes" detail="Up to three words while it plays" />
     </div>
   {:else if stage === 'playing'}
@@ -150,14 +164,14 @@
     </form>
     {#if stage === 'done'}
       <p class="big">{score} of 6</p>
-      <span class="label">The over</span>
+      <span class="label">What was sent</span>
       <TokenText tokens={textTokens(text).map((t) => ({ t }))} size="m" />
     {/if}
   {/if}
 
   {#snippet footer()}
     {#if stage === 'ready' || stage === 'done'}
-      <Button kind="primary" onclick={start}>{stage === 'done' ? 'Another over' : 'Play'}</Button>
+      <Button kind="primary" onclick={start}>{stage === 'done' ? 'Another one' : 'Play'}</Button>
     {/if}
     {#if stage === 'done'}<Button onclick={() => playCw(text)}>Play it again</Button>{/if}
   {/snippet}
@@ -165,7 +179,7 @@
 
 <svelte:window
   onkeydown={(e) => {
-    if (e.key === 'Enter' && (stage === 'ready' || stage === 'done') && !(e.target instanceof HTMLButtonElement) && !(e.target instanceof HTMLInputElement)) {
+    if (e.key === 'Enter' && (stage === 'ready' || stage === 'done') && !forControl(e)) {
       e.preventDefault();
       void start();
     }

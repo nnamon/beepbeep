@@ -75,7 +75,7 @@ test('a Live decoder session is saved when you stop', async ({ page }) => {
   await open(page, 'practice/live');
   await page.getByRole('button', { name: /Start/ }).click();
   await key(page, 'CQ CQ DE K1ABC K');
-  await page.getByRole('button', { name: 'End over' }).click();
+  await page.getByRole('button', { name: 'Done sending' }).click();
   await page.getByRole('button', { name: /Stop/ }).click();
   await expect.poll(async () => (await all(page, 'sessions')).map((s) => s.mode)).toContain('live');
 });

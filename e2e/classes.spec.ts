@@ -64,7 +64,7 @@ test('your own text, with Morse Browser markup, plays one card per line', async 
   await page.getByText('Show each one after it plays').click();
   await page.getByRole('radio', { name: '30 wpm' }).click();
   await page.getByRole('button', { name: /Start/ }).click();
-  await expect(page.getByText('ADV 1 · 30/30 wpm')).toBeVisible();
+  await expect(page.getByText('ADV 1 · 30 wpm')).toBeVisible();
   await expect(page.locator('.played li').first()).toHaveText('CQ CQ', { timeout: 15_000 });
   await shot(page, 'text', info.project.name);
   // Saved for next time.
@@ -78,7 +78,7 @@ test('VET runs two minutes of groups with the spacing stepping up', async ({ pag
   await expect(page.getByText('Groups of three to copy. The gaps between characters start wide and shrink every 30 seconds.')).toBeVisible();
   await page.getByRole('button', { name: /Start/ }).click();
   await expect(page.getByText(/^[12]:\d\d left$/)).toBeVisible();
-  await expect(page.getByText('BC1 · REA · 12/8 wpm')).toBeVisible();
+  await expect(page.getByText('BC1 · REA · 12 wpm characters, 8 wpm overall')).toBeVisible();
   // Nothing shows while it plays: the groups are read back at the end.
   await page.waitForTimeout(3000);
   await expect(page.locator('.stage .text')).toHaveCount(0);
@@ -87,13 +87,13 @@ test('VET runs two minutes of groups with the spacing stepping up', async ({ pag
 
 test('an exercise with too little material says so and waits', async ({ page }) => {
   await open(page, 'practice/class/bc1/phrases', { level: { koch: 'koch-1', licw: 'licw-bc1-REA' } });
-  await expect(page.getByText(/Too few characters for this exercise yet/)).toBeVisible();
+  await expect(page.getByText(/Your lesson doesn't have enough characters for this exercise yet/)).toBeVisible();
   await expect(page.getByRole('button', { name: /Start/ })).toBeDisabled();
 });
 
 test('a BC2 exercise opened from the Koch track uses your BC2 group', async ({ page }) => {
   await open(page, 'practice/class/bc2/vst', { track: 'koch', level: { koch: 'koch-3', licw: 'licw-bc1-TIN' } });
-  await expect(page.getByText('BC2 · KMY · 24/10 wpm')).toBeVisible();
+  await expect(page.getByText('BC2 · KMY · 24 wpm characters, 10 wpm overall')).toBeVisible();
 });
 
 test('not in a class: stages, no carousel start, no class wording', async ({ page }) => {
