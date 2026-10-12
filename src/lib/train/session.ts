@@ -182,25 +182,6 @@ export function maybeTaper(accuracy: number | null) {
   return settings.effectiveWpm;
 }
 
-/** Days since extra (Farnsworth) spacing was turned on, or null when spacing is natural. */
-export async function farnsworthDays(): Promise<number | null> {
-  try {
-    const wide = settings.effectiveWpm < settings.charWpm && !courseSpeedsInUse();
-    const since = await getKv<number | null>('farnsworthSince', null);
-    if (!wide) {
-      if (since !== null) await setKv('farnsworthSince', null);
-      return null;
-    }
-    if (since === null) {
-      await setKv('farnsworthSince', Date.now());
-      return 0;
-    }
-    return Math.floor((Date.now() - since) / 864e5);
-  } catch {
-    return null;
-  }
-}
-
 export async function stats(prefix: string): Promise<Map<string, ItemStat>> {
   try {
     return await getItems(prefix);

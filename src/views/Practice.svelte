@@ -5,7 +5,7 @@
   import { CLASSES, EXERCISE_GROUPS, classById, groupOf, type ClassId } from '../lib/train/classes';
   import Select from '../ui/Select.svelte';
   import Exercise from './drills/Exercise.svelte';
-  import { currentLevel, farnsworthDays, laterStage, receiveSpeeds, trackLevels } from '../lib/train/session';
+  import { currentLevel, laterStage, receiveSpeeds, trackLevels } from '../lib/train/session';
   import { getItems, getKv, qsos, sessions, setKv } from '../lib/state/db';
   import { localDay, todaySteps, type Step } from '../lib/train/today';
   import { accuracy, windowStats } from '../lib/train/srs';
@@ -81,16 +81,6 @@
     })();
   });
 
-
-  // Flag extra spacing left on for more than two weeks.
-  let wideDays = $state<number | null>(null);
-  $effect(() => {
-    void settings.effectiveWpm;
-    void settings.charWpm;
-    void settings.track;
-    void settings.useCourseSpeeds;
-    void farnsworthDays().then((d) => (wideDays = d));
-  });
 
   // LICW exercises. BC1 and BC2 follow the carousel lesson you are on.
   const cls = $derived.by(() => {
@@ -286,13 +276,6 @@
         <Button href={href('practice', 'copy', 'comfort')}>Comfort session</Button>
         <Button href={href('practice', 'copy', 'stretch')}>Stretch session</Button>
       </div>
-      {#if wideDays !== null && wideDays > 14}
-        <p class="flag">
-          You have practised with extra space between characters ({settings.charWpm} wpm characters, {settings.effectiveWpm} wpm
-          overall) for {wideDays} days. Raise the overall speed in
-          <a href={href('settings')}>Settings</a>.
-        </p>
-      {/if}
     </section>
 
     {#if settings.track === 'licw'}
@@ -548,12 +531,6 @@
     flex-wrap: wrap;
     gap: var(--s-1);
     margin-top: var(--s-1);
-  }
-
-  .flag {
-    border-left: 2px solid var(--signal);
-    padding-left: var(--s-1);
-    max-width: var(--reading);
   }
 
   .bc {

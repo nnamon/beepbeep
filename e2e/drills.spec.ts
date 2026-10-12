@@ -152,6 +152,22 @@ test('Pocket: Enter after a miss goes to the next one', async ({ page }) => {
   await expect(page.getByText('2 / 20')).toBeVisible();
 });
 
+// Before: on the LICW track a new character played 5 times unnamed while you
+// tapped along, and nothing depended on the taps.
+test('Pocket on the LICW track: a new character is named, then played three times', async ({ page }) => {
+  test.setTimeout(60_000);
+  await instrument(page);
+  await settings(page, { ...BASE, voice: 'builtin', track: 'licw', level: { koch: 'koch-1', licw: 'licw-bc1-REA' } });
+  await page.goto('./#/pocket/round/characters');
+  await page.getByRole('button', { name: 'Start the round' }).click();
+  await expect(page.getByText('New', { exact: true })).toBeVisible();
+  await expect(page.locator('.round .center').getByText('R', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Tap when it plays' })).toHaveCount(0);
+  await expect.poll(async () => (await played(page)).length, { timeout: 20_000 }).toBeGreaterThanOrEqual(5);
+  const first = (await played(page)).slice(0, 5).map((p) => (p.kind === 'voice' ? 'name' : p.text));
+  expect(first).toEqual(['name', 'R', 'R', 'R', 'name']);
+});
+
 test('Pocket in strict mode: no answer after each one; the misses are listed at the end', async ({ page }) => {
   test.setTimeout(120_000);
   await instrument(page);

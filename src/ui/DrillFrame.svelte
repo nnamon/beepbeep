@@ -2,9 +2,6 @@
   import type { Snippet } from 'svelte';
   import Icon from './Icon.svelte';
   import { go, href } from '../lib/state/router.svelte';
-  import { clock } from '../lib/state/clock.svelte';
-
-  let dismissed = $state(false);
 
   let {
     title,
@@ -46,12 +43,6 @@
     </div>
     {#if count}<span class="count num">{count}</span>{/if}
   </div>
-  {#if clock.activeMs >= 30 * 60_000 && !dismissed}
-    <p class="nudge">
-      30 minutes of practice. Take a break.
-      <button type="button" onclick={() => (dismissed = true)}>Dismiss</button>
-    </p>
-  {/if}
   <div class="body" class:has-side={!!side}>
     <div class="main">{@render children()}</div>
     {#if side}<aside class="side">{@render side()}</aside>{/if}
@@ -99,24 +90,6 @@
   .count {
     font-size: var(--size-s);
     color: var(--muted);
-  }
-
-  .nudge {
-    border-left: 2px solid var(--signal);
-    padding-left: var(--s-1);
-    display: flex;
-    gap: var(--s-2);
-    align-items: baseline;
-  }
-
-  .nudge button {
-    border: 0;
-    background: none;
-    color: var(--muted);
-    text-decoration: underline;
-    font-size: var(--size-s);
-    min-height: var(--target-min);
-    margin: calc(-1 * var(--s-1)) 0;
   }
 
   .body {

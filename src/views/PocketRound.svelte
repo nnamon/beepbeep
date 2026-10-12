@@ -49,11 +49,6 @@
   let last = $state<{ item: string; got: string; ok: boolean; rows: RhythmRow[] } | null>(null);
   let log = $state<{ item: string; got: string; ok: boolean; ms: number; replays: number }[]>([]);
   let replays = 0;
-  // LICW learn: tap each time the new character plays.
-  let learnTaps = $state(0);
-  let learnPlays = $state(0);
-  let tapOpen = false;
-  let tapped = false;
   let pool: string[] = [];
   let map = new Map<string, ItemStat>();
   let recent: string[] = [];
@@ -116,28 +111,22 @@
     await next();
   }
 
+  // Each new character: its name, then its sound three times. On the LICW
+  // track with the pauses of the LICW Familiarity exercise.
   async function learn(fresh: string[], me: number) {
     phase = 'learn';
-    learnTaps = 0;
-    learnPlays = 0;
     const licw = settings.track === 'licw';
     for (const c of fresh) {
-      learnItem = licw ? '' : c;
-      if (!licw) await say(c);
-      for (let k = 0; k < (licw ? 5 : 3); k++) {
+      learnItem = c;
+      await say(c);
+      if (licw) await wait(1500);
+      for (let k = 0; k < 3; k++) {
         if (me !== turn) return;
-        tapOpen = true;
-        tapped = false;
         const pb = await playCw(c, { plain: true });
         await pb.done;
-        // Uneven gaps in LICW learn, so the tap follows the sound, not a beat.
-        await wait(licw ? 600 + rng() * 1400 : 450);
-        tapOpen = false;
-        if (licw) learnPlays++;
+        await wait(licw ? 2000 : 450);
       }
       if (me !== turn) return;
-      learnItem = c;
-      if (settings.track === 'licw') await say(c);
       await wait(700);
     }
   }
@@ -149,12 +138,6 @@
     const it = pickNext(rng, keys, m, recent);
     recent = [...recent, it].slice(-3);
     return it;
-  }
-
-  function learnTap() {
-    if (!tapOpen || tapped) return;
-    tapped = true;
-    learnTaps++;
   }
 
   async function next() {
@@ -293,10 +276,7 @@
       return;
     }
     if (forControl(e) || e.repeat) return;
-    if (phase === 'learn' && e.code === 'Space') {
-      e.preventDefault();
-      learnTap();
-    } else if (e.key === 'Enter' && phase === 'ready') {
+    if (e.key === 'Enter' && phase === 'ready') {
       e.preventDefault();
       void begin();
     } else if (e.key === 'Enter' && phase === 'wrap') {
@@ -336,11 +316,7 @@
   {:else if phase === 'learn'}
     <div class="center">
       <span class="label">New</span>
-      {#if learnItem}<TokenText tokens={[{ t: learnItem }]} size="xl" />{:else if settings.track === 'licw'}
-        <button type="button" class="play" onclick={learnTap} aria-label="Tap when it plays"><Icon name="key" size={40} /></button>
-        <span class="muted">Tap when it plays</span>
-        <span class="num muted">{learnTaps} of {learnPlays}</span>
-      {:else}<p class="big muted">Listen</p>{/if}
+      {#if learnItem}<TokenText tokens={[{ t: learnItem }]} size="xl" />{/if}
     </div>
   {:else if phase === 'wrap'}
     <dl class="facts">

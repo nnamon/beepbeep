@@ -214,8 +214,6 @@
     </p>
     {#if courseSpeedsInUse()}
       <p class="muted small">On the LICW track with Use lesson speeds on, receive drills use the lesson's speed, not the two receive speeds here.</p>
-    {:else if settings.effectiveWpm < settings.charWpm}
-      <p class="muted small">Extra space between characters is on. LICW treats extra space as temporary: raise the overall speed toward the character speed over time.</p>
     {/if}
     <Toggle
       bind:checked={settings.autoTaper}

@@ -10,6 +10,24 @@ async function open(page: Page, route: string, extra: Record<string, unknown> = 
   await page.goto(`./#/${route}`);
 }
 
+/** The Today steps ticked by hand, as saved. */
+const storedTicks = (page: Page) =>
+  page.evaluate(async () => {
+    const db: IDBDatabase = await new Promise((res, rej) => {
+      const r = indexedDB.open('beepbeep');
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    });
+    const tx = db.transaction(['kv'], 'readonly');
+    const got: { value?: { ids?: string[] } } | undefined = await new Promise((res) => {
+      const r = tx.objectStore('kv').get('today');
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => res(undefined);
+    });
+    db.close();
+    return got?.value?.ids ?? [];
+  });
+
 const shot = (page: Page, name: string, project: string) => page.screenshot({ path: `test-results/screens/${project}-classes-${name}.png`, fullPage: true });
 
 test('in a class, Practice lists the class exercises for your carousel group', async ({ page }, info) => {
@@ -125,6 +143,8 @@ test("Today: the session's steps in order, ticked by hand or by doing them", asy
   // By hand.
   await today.getByRole('checkbox', { name: 'Done: Recognition' }).click();
   await expect(today.getByText(/^1 of \d+ done/)).toBeVisible();
+  // The tick is saved a moment after it shows; a reload sooner than that loses the save.
+  await expect.poll(() => storedTicks(page)).toContain('recognition');
   await page.reload();
   await expect(today.getByRole('checkbox', { name: 'Done: Recognition' })).toBeChecked();
   // By doing it: a Copy drill session recorded today ticks the Copy drill step.

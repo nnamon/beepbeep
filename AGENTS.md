@@ -57,6 +57,7 @@ This covers every string a user can see or hear: labels, hints, notes, notices, 
 - Exclamation marks.
 - Triplets used for rhythm.
 - Internal words: item, card, slot, verdict, mark (for a dit or dah), "counted, not scored".
+- Reminders of what LICW says not to do, or advice the user didn't ask for about following LICW. Users decide for themselves. LICW strict mode, which they turn on, is where LICW's method lives.
 - Raw error text from the browser. Catch it and say what happened and what is left: "That export file is damaged. Nothing was changed."
 - A dash (– or —) as an empty value. Screen readers read it as "en dash". Write "none" or "no data yet".
 

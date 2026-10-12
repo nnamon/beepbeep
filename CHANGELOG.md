@@ -2,6 +2,11 @@
 
 What changed in each version of BeepBeep. The version shows at the top of the app, beside the build.
 
+## 0.2.7 (13 October 2026)
+
+- Pocket on the LICW track: a round that starts with a new character says its name, then plays it three times, as the LICW Familiarity exercise does. Before, it played the character 5 times without its name and asked you to tap each time, and nothing depended on the taps.
+- The app no longer reminds you of LICW's rules or tells you to speed up or take a break. Four notes are removed: the one in Setup about not running the decoder during an LICW class, the one in Settings saying extra space between characters is temporary, the one on Practice asking you to raise the overall speed after 14 days of extra space, and "Take a break" after 30 minutes of practice. LICW strict mode, if you turn it on, still follows LICW's method.
+
 ## 0.2.6 (13 October 2026)
 
 - Tap the version number at the top of any screen to see the version history: what changed in each version, newest first. Back returns you to where you were. Settings links to it too.

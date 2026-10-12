@@ -37,7 +37,9 @@ function all(page: Page, store: string): Promise<Record<string, unknown>[]> {
     (store) =>
       new Promise((res, rej) => {
         const r = indexedDB.open('beepbeep', 1);
-        r.onerror = () => rej(r.error);
+        // Read only: before the app has made its database, don't make an empty one in its place.
+        r.onupgradeneeded = () => r.transaction!.abort();
+        r.onerror = () => (r.error?.name === 'AbortError' ? res([]) : rej(r.error));
         r.onsuccess = () => {
           const g = r.result.transaction(store).objectStore(store).getAll();
           g.onsuccess = () => {

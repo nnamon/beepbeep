@@ -413,7 +413,6 @@
       {:else}
         <li>Microphone audio stays on this device and is never uploaded.</li>
       {/if}
-      <li>LICW classes are private: LICW counts automated transcription as recording. Don't run the decoder during a class.</li>
       <li>On iPhone, keep BeepBeep in the foreground while it listens.</li>
     </ul>
   </div>

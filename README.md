@@ -138,4 +138,4 @@ src/styles        design tokens and base styles
 
 ## Notes
 
-LICW is a trademark of the Long Island CW Club. BeepBeep is not affiliated with LICW and uses its own generated practice material. Don't run the decoder during LICW classes; LICW treats automated transcription of a class as recording.
+LICW is a trademark of the Long Island CW Club. BeepBeep is not affiliated with LICW and uses its own generated practice material.

@@ -186,12 +186,18 @@ export const wake = (page: Page) => page.evaluate(() => (window as unknown as { 
 
 export async function sessions(page: Page): Promise<Record<string, unknown>[]> {
   return page.evaluate(async () => {
-    const db: IDBDatabase = await new Promise((res, rej) => {
+    const db: IDBDatabase | null = await new Promise((res, rej) => {
       const r = indexedDB.open('beepbeep', 1);
+      // Read only: before the app has made its database, don't make an empty one in its place.
+      r.onupgradeneeded = () => r.transaction!.abort();
       r.onsuccess = () => res(r.result);
-      r.onerror = () => rej(r.error);
+      r.onerror = () => (r.error?.name === 'AbortError' ? res(null) : rej(r.error));
     });
-    if (!db.objectStoreNames.contains('sessions')) return [];
+    if (!db) return [];
+    if (!db.objectStoreNames.contains('sessions')) {
+      db.close();
+      return [];
+    }
     const all: Record<string, unknown>[] = await new Promise((res) => {
       const q = db.transaction('sessions').objectStore('sessions').getAll();
       q.onsuccess = () => res(q.result);
