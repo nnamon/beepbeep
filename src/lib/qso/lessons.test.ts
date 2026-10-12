@@ -55,7 +55,8 @@ describe('guided QSO lessons', () => {
     expect(checkSend('UR RST 579 579', report.slots).result).toBe('pass');
     expect(checkSend('UR RST 5NN 5NN', report.slots).result).toBe('pass');
     expect(checkSend('UR RST 579', report.slots).notes).toEqual(['Send your report twice.']);
-    expect(checkSend('UR RST 679 679', report.slots).result).toBe('try');
+    // Three digits, but not a report: it says which digit is out of range.
+    expect(checkSend('UR RST 679 679', report.slots)).toMatchObject({ result: 'almost', notes: ['Your report: you sent 679, but the first digit, readability, goes from 1 to 5.'] });
     const off = LESSONS.find((l) => l.id === 'sign-off')!.steps({ me: ME, them })[1];
     if (off.kind !== 'send') throw new Error();
     expect(checkSend(`TNX 73 ${them.call} DE K1XYZ`, off.slots).notes).toEqual(['End with SK, one character with no gap inside (· · · – · –).']);

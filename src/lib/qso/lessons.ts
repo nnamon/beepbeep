@@ -68,7 +68,8 @@ const myCall = (c: Ctx, min = 1, max = 2, afterDe = true): Slot => ({
   max,
   missing: afterDe ? `Send your call, ${up(c.me.call)}, after DE.` : `Send your call, ${up(c.me.call)}.`,
 });
-const k: Slot = { role: 'K', accept: ['K', 'KN', 'BK'], missing: "End with K. It means 'over to you'." };
+/** K, or KN or BK; AR also hands it over (AR K is often sent when answering a call). */
+const k: Slot = { role: 'K', accept: ['K', 'KN', 'BK', 'AR'], max: 2, missing: "End with K. It means 'over to you'." };
 /** R ('received'), often sent twice. */
 const r: Slot = { role: 'R', accept: ['R', 'RR'], max: 2, optional: true, missing: '' };
 /** HW? ('how do you copy?'), also sent as HW ? or HW. */
@@ -138,13 +139,14 @@ const exchangeSlots = (c: Ctx): Slot[] => [
   r,
   { role: 'thanks', accept: ['TNX', 'THANKS', 'TU', 'TKS'], missing: 'Thank them: TNX.' },
   { role: 'their name', accept: [first(c.them.name)], optional: true, missing: '' },
-  { role: 'UR', accept: ['UR'], optional: true, missing: '' },
-  { role: 'RST', accept: ['RST'], optional: true, missing: '' },
-  { role: 'your report', accept: [], kind: 'rst', min: 1, max: 2, missing: 'Give them a report: three digits, such as 579.' },
-  { role: 'NAME', accept: ['NAME', 'OP'], missing: 'Say NAME before your name.' },
-  { role: 'your name', accept: [first(c.me.name)], max: 2, missing: `Send your name, ${first(c.me.name)}.` },
-  { role: 'QTH', accept: ['QTH'], missing: 'Say QTH before where you are.' },
-  { role: 'where you are', accept: [first(c.me.qth)], max: 2, missing: `Send where you are, ${up(c.me.qth)}.` },
+  // The report, your name and your QTH may come in any order.
+  { role: 'UR', accept: ['UR'], optional: true, missing: '', part: 'report' },
+  { role: 'RST', accept: ['RST'], optional: true, missing: '', part: 'report' },
+  { role: 'your report', accept: [], kind: 'rst', min: 1, max: 2, missing: 'Give them a report: three digits, such as 579.', part: 'report' },
+  { role: 'NAME', accept: ['NAME', 'OP'], missing: 'Say NAME before your name.', part: 'name' },
+  { role: 'your name', accept: [first(c.me.name)], max: 2, missing: `Send your name, ${first(c.me.name)}.`, part: 'name' },
+  { role: 'QTH', accept: ['QTH'], missing: 'Say QTH before where you are.', part: 'qth' },
+  { role: 'where you are', accept: [first(c.me.qth)], max: 2, missing: `Send where you are, ${up(c.me.qth)}.`, part: 'qth' },
   hw,
   theirCall(c),
   de,
@@ -190,14 +192,13 @@ function sendSignoff(c: Ctx): Step {
     ],
     model: `TNX ${first(c.them.name)} 73 ${c.them.call} DE ${up(c.me.call)} <SK> EE`,
     outline: 'TNX and their name · 73 · their call · DE · your call · SK · EE',
+    // Thanks, 73 and the calls with SK may come in any order: 73 is often sent after SK.
     slots: [
-      { role: 'thanks', accept: ['TNX', 'THANKS', 'TU', 'TKS'], missing: 'Thank them: TNX.' },
-      { role: 'their name', accept: [first(c.them.name)], optional: true, missing: '' },
-      { role: '73', accept: ['73'], missing: "Send 73: 'best regards'." },
-      theirCall(c),
-      de,
-      myCall(c, 1, 1),
-      { role: 'SK', accept: ['SK', 'VA'], missing: `End with SK, one character with no gap inside${drawn(c, SK)}.` },
+      { role: 'thanks', accept: ['TNX', 'THANKS', 'TU', 'TKS'], missing: 'Thank them: TNX.', part: 'thanks' },
+      { role: 'their name', accept: [first(c.them.name)], optional: true, missing: '', part: 'thanks' },
+      { role: '73', accept: ['73'], missing: "Send 73: 'best regards'.", part: '73' },
+      ...[theirCall(c), de, myCall(c, 1, 1)].map((s) => ({ ...s, part: 'calls' })),
+      { role: 'SK', accept: ['SK', 'VA'], missing: `End with SK, one character with no gap inside${drawn(c, SK)}.`, part: 'calls' },
       // Two dits, sent as EE or E E, or a few more: it is only a friendly goodbye.
       { role: 'EE', accept: ['EE', 'E', 'EEE', 'EEEE'], max: 2, optional: true, missing: '' },
     ],
@@ -374,8 +375,8 @@ export const LESSONS: Lesson[] = [
           theirCall(c),
           de,
           myCall(c, 1, 1),
-          { role: 'greeting', accept: ['GM', 'GA', 'GE', 'GD'], optional: true, missing: '' },
-          { role: 'thanks', accept: ['TNX', 'THANKS', 'TU', 'TKS'], missing: 'Thank them for the call: TNX FER CALL.' },
+          { role: 'greeting', accept: ['GM', 'GA', 'GE', 'GD'], optional: true, missing: '', part: 'greeting' },
+          { role: 'thanks', accept: ['TNX', 'THANKS', 'TU', 'TKS'], missing: 'Thank them for the call: TNX FER CALL.', part: 'thanks' },
         ],
       },
     ],
@@ -433,7 +434,7 @@ export const LESSONS: Lesson[] = [
           { role: 'TU', accept: ['TU', 'TNX'], optional: true, missing: '' },
           { role: 'report', accept: [], kind: 'rst', missing: 'Send a report: 5NN.' },
           { role: 'your region', accept: [first(region(c.me))], max: 2, missing: `Send your region, ${region(c.me)}.` },
-          { role: 'BK', accept: ['BK', 'K', 'KN'], missing: 'End with BK. It hands the contact back to them.' },
+          { role: 'BK', accept: ['BK', 'K', 'KN', 'AR'], missing: 'End with BK. It hands the contact back to them.' },
         ],
       },
       {
