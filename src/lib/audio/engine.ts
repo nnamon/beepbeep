@@ -1,9 +1,15 @@
 // The one AudioContext: CW playback, sidetone for the keyboard keyer, and the
 // microphone feeding the detector worklet. Browsers only allow audio after a
 // tap, so everything starts from `ensure()` inside a user gesture.
+//
+// The microphone feeds one detector at a time: the one for your own key
+// (detector.worklet.ts), or while Radio listens, the Radio's detector of
+// every signal (radio.worklet.ts).
 
 import workletUrl from './detector.worklet.ts?worker&url';
+import radioWorkletUrl from '../radio/radio.worklet.ts?worker&url';
 import type { WorkletCommand, WorkletMessage } from './detector.worklet';
+import type { RadioBatch, RadioCommand, RadioMessage } from '../radio/batch';
 import type { DetectorEvent } from '../dsp/detector';
 import { renderSchedule, type Conditions } from '../morse/render';
 import { buildSchedule, type FistOptions, type Schedule } from '../morse/schedule';
@@ -41,6 +47,7 @@ export interface PlayTextOptions extends Conditions {
 }
 
 type Listener = (events: DetectorEvent[], time: number) => void;
+type RadioListener = (batch: RadioBatch) => void;
 
 const BLUETOOTH = /bluetooth|airpods|hands-?free|headset|\bbt\b|hfp|buds/i;
 
@@ -72,8 +79,13 @@ class AudioEngine {
   private mic: MediaStream | null = null;
   private micNode: MediaStreamAudioSourceNode | null = null;
   private worklet: AudioWorkletNode | null = null;
-  private workletReady: Promise<void> | null = null;
+  /** Worklet modules loaded or loading, by URL. */
+  private modules = new Map<string, Promise<void>>();
   private listeners = new Set<Listener>();
+  /** The Radio's detector, while Radio listens. */
+  private radio: AudioWorkletNode | null = null;
+  private radioListeners = new Set<RadioListener>();
+  private radioSpectrumWaiters: ((s: { hz: number[]; db: number[] }) => void)[] = [];
   private spectrumWaiters: ((s: { hz: number[]; db: number[] }) => void)[] = [];
   private active = new Set<AudioBufferSourceNode>();
   private unmuteTimer: ReturnType<typeof setTimeout> | null = null;
@@ -294,16 +306,7 @@ class AudioEngine {
       },
     });
     this.mic = stream;
-    if (!this.workletReady) this.workletReady = ctx.audioWorklet.addModule(workletUrl);
-    try {
-      await this.workletReady;
-    } catch (e) {
-      // Try again next time rather than keep a failure. After an update the
-      // old build's worklet is gone: reload into the new build.
-      this.workletReady = null;
-      if (reloadIfUpdated(true)) return new Promise<never>(() => {});
-      throw e;
-    }
+    await this.loadWorklet(ctx, workletUrl);
     this.worklet = new AudioWorkletNode(ctx, 'beepbeep-detector', {
       numberOfInputs: 1,
       numberOfOutputs: 0,
@@ -337,7 +340,28 @@ class AudioEngine {
     };
   }
 
+  /**
+   * Loads a worklet's module once. A failure is not kept, so the next start
+   * tries again. After an update the old build's worklet files are gone from
+   * the server: the page reloads into the new build, and this never resolves.
+   */
+  private async loadWorklet(ctx: AudioContext, url: string): Promise<void> {
+    let ready = this.modules.get(url);
+    if (!ready) {
+      ready = ctx.audioWorklet.addModule(url);
+      this.modules.set(url, ready);
+    }
+    try {
+      await ready;
+    } catch (e) {
+      this.modules.delete(url);
+      if (reloadIfUpdated(true)) return new Promise<never>(() => {});
+      throw e;
+    }
+  }
+
   stopMic() {
+    this.stopRadio();
     this.micNode?.disconnect();
     this.worklet?.disconnect();
     this.worklet?.port.close();
@@ -401,6 +425,81 @@ class AudioEngine {
       this.spectrumWaiters.push(resolve);
       this.command({ type: 'spectrum' });
     });
+  }
+
+  /** Loads the Radio's worklet, so `startRadio` can begin at once. Call from a tap. */
+  async prepareRadio(): Promise<void> {
+    const ctx = await this.ensure();
+    await this.loadWorklet(ctx, radioWorkletUrl);
+  }
+
+  /**
+   * The Radio's detector listens to the microphone, which must be on
+   * (`startMic`); the detector for your own key hears nothing meanwhile. Its
+   * batches go to `onRadio` listeners. Starting again begins a new detector.
+   */
+  async startRadio(): Promise<void> {
+    const ctx = await this.ensure();
+    await this.loadWorklet(ctx, radioWorkletUrl);
+    if (!this.micNode) throw new Error('The microphone is off.');
+    this.stopRadio();
+    const node = new AudioWorkletNode(ctx, 'beepbeep-radio', {
+      numberOfInputs: 1,
+      numberOfOutputs: 0,
+      channelCount: 1,
+      channelCountMode: 'explicit',
+    });
+    node.port.onmessage = (e: MessageEvent<RadioMessage>) => {
+      const m = e.data;
+      if (m.type === 'events') for (const l of this.radioListeners) l(m);
+      else if (m.type === 'spectrum') this.answerSpectrum({ hz: m.hz, db: m.db });
+    };
+    try {
+      if (this.worklet) this.micNode.disconnect(this.worklet);
+    } catch {
+      /* not connected */
+    }
+    this.micNode.connect(node);
+    this.radio = node;
+  }
+
+  /** The Radio's detector stops; the detector for your own key hears the microphone again. */
+  stopRadio() {
+    const node = this.radio;
+    if (!node) return;
+    this.radio = null;
+    try {
+      this.micNode?.disconnect(node);
+    } catch {
+      /* not connected */
+    }
+    node.port.close();
+    if (this.micNode && this.worklet) this.micNode.connect(this.worklet);
+    this.answerSpectrum({ hz: [], db: [] });
+  }
+
+  onRadio(l: RadioListener): () => void {
+    this.radioListeners.add(l);
+    return () => this.radioListeners.delete(l);
+  }
+
+  radioCommand(c: RadioCommand) {
+    this.radio?.port.postMessage(c);
+  }
+
+  /** The Radio detector's spectrum (dB) over the band it searches; empty while it is not listening. */
+  radioSpectrum(): Promise<{ hz: number[]; db: number[] }> {
+    return new Promise((resolve) => {
+      if (!this.radio) return resolve({ hz: [], db: [] });
+      this.radioSpectrumWaiters.push(resolve);
+      this.radioCommand({ type: 'spectrum' });
+    });
+  }
+
+  private answerSpectrum(s: { hz: number[]; db: number[] }) {
+    const waiters = this.radioSpectrumWaiters;
+    this.radioSpectrumWaiters = [];
+    for (const w of waiters) w(s);
   }
 }
 

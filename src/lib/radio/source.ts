@@ -22,12 +22,15 @@ export interface RadioSignal {
   /**
    * Words fixed so far. Kept to the last 20,000 characters. Characters as the
    * decoder writes them: prosigns in angle brackets (<AR>), and ⁇ for a sound
-   * that is no character. A space between words; a line break ends an over.
-   * It only grows at the end, except that the oldest text is dropped and
-   * Clear empties it.
+   * that is no character. A space between words; a new line for each over,
+   * and after a word that hands over (K, KN, SK, BK). It only grows at the
+   * end, except that the oldest text is dropped and Clear empties it.
    */
   text: string;
-  /** The word still being read (may change). */
+  /**
+   * The words still being read (they may change), starting with the space or
+   * line break that puts them after `text`: show `text + pending`.
+   */
   pending: string;
 }
 
@@ -47,6 +50,11 @@ export interface RadioSource {
   stop(): void;
   /** Forgets every signal's text; keeps listening. */
   clear(): void;
-  /** Called with every signal still tracked, newest activity first, a few times a second. */
+  /**
+   * Called with every signal heard since the start or the last Clear, newest
+   * activity first, a few times a second. Signals no longer tracked (silent
+   * for 45 seconds, or listening stopped) stay with their text until Clear:
+   * the 20 most recently heard.
+   */
   subscribe(fn: (signals: RadioSignal[]) => void): () => void;
 }

@@ -28,9 +28,10 @@ test('decodes PARIS and follows it at its pitch and speed', async ({ page }) => 
   await expect(line).toContainText(/\b(19|20|21) wpm/, { timeout: 10_000 });
   // One station: nothing else is listed.
   await expect(page.getByText('No other signals have been heard yet.')).toBeVisible();
-  // The signal bar shows the microphone, with no speed of yours beside it.
-  await expect(page.getByRole('link', { name: /Open input setup/ }).first()).toContainText(/\d+ Hz/);
-  await expect(page.getByRole('link', { name: /Open input setup/ }).first()).not.toContainText('wpm');
+  // The signal bar shows the microphone listening, with no pitch (there may be many signals) and no speed of yours.
+  const bar = page.getByRole('link', { name: /Open input setup/ }).first();
+  await expect(bar).toContainText('Listening');
+  await expect(bar).not.toContainText(/Hz|wpm/);
   // The screen stays on while it listens.
   expect(await wake(page)).toContain('request@#/radio');
   expect(errors).toEqual([]);

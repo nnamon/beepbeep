@@ -21,7 +21,7 @@ const DIR = join(tmpdir(), `beepbeep-newbuild-${process.ppid}`);
 const OLD = join(DIR, 'old');
 const NEW = join(DIR, 'new');
 
-/** Builds the app twice. The new build has another id and another audio worklet, as after a change to the decoder. */
+/** Builds the app twice. The new build has another id and other audio worklets, as after a change to the decoder. */
 async function builds() {
   const done = join(DIR, 'done');
   try {
@@ -35,7 +35,7 @@ async function builds() {
   try {
     for (const [id, out, changed] of [[OLD_ID, OLD, false], [NEW_ID, NEW, true]] as const) {
       process.env.GITHUB_SHA = id;
-      const worklet = { name: 'changed-worklet', transform: (code: string, file: string) => (file.includes('detector.worklet') ? `${code}\nglobalThis.__build = '${id}';` : undefined) };
+      const worklet = { name: 'changed-worklet', transform: (code: string, file: string) => (/(detector|radio)\.worklet/.test(file) ? `${code}\nglobalThis.__build = '${id}';` : undefined) };
       await build({ configFile: 'vite.config.ts', logLevel: 'warn', build: { outDir: out, emptyOutDir: true, sourcemap: false }, worker: changed ? { plugins: () => [worklet] } : {} });
     }
     writeFileSync(done, '');
@@ -63,6 +63,8 @@ const TYPES: Record<string, string> = {
 
 /** The deployed build. Files of any other build are gone (404), as on GitHub Pages after a deploy. */
 let root = OLD;
+/** Paths asked for that the deployed build doesn't have. */
+const missing: string[] = [];
 let server: Server;
 let origin = '';
 
@@ -73,6 +75,7 @@ test.beforeAll(async () => {
     const path = decodeURIComponent(new URL(req.url ?? '/', 'http://x').pathname);
     const file = join(root, normalize(path === '/' ? '/index.html' : path));
     if (!file.startsWith(root) || !existsSync(file) || !statSync(file).isFile()) {
+      missing.push(path);
       res.writeHead(404).end();
       return;
     }
@@ -202,6 +205,29 @@ test('starting the microphone after an update reloads into the new version when 
   await expect(page).toHaveURL(/#\/practice\/live$/);
   expect(await same(page)).toBe(false);
   // The new build's microphone works.
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Stop', exact: true })).toBeVisible();
+});
+
+test("starting Radio after an update reloads into the new version when the old radio worklet's file is gone", async ({ page }) => {
+  test.skip(test.info().project.name !== 'mic', 'needs the fake microphone');
+  test.setTimeout(120_000);
+  await settings(page, { ...BASE, input: 'mic' });
+  await install(page, 'radio');
+  await page.reload();
+  await expect(version(page)).toContainText(OLD_ID);
+  await update(page);
+  await mark(page);
+  missing.length = 0;
+
+  // Radio loads its own worklet first, before it asks for the microphone; the old build's is gone.
+  await reloads(page, () => page.getByRole('button', { name: 'Start', exact: true }).click());
+  await expect(version(page)).toContainText(NEW_ID);
+  await expect(page).toHaveURL(/#\/radio$/);
+  expect(await same(page)).toBe(false);
+  // It was the radio worklet's file that was missing; the old detector for your own key was not asked for.
+  expect(missing.filter((p) => /worklet/.test(p)).map((p) => p.match(/(radio|detector)\.worklet/)?.[1])).toEqual(['radio']);
+  // The new build's Radio listens.
   await page.getByRole('button', { name: 'Start', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Stop', exact: true })).toBeVisible();
 });

@@ -84,7 +84,15 @@
   const followed = $derived(signals.find((s) => s.id === (chosen ?? auto)) ?? null);
   // Listed by pitch, low to high, so rows stay put as signals come and go.
   const others = $derived(signals.filter((s) => s.id !== followed?.id).sort((a, b) => a.pitch - b.pitch));
-  const lines = $derived(followed ? followed.text.split('\n') : []);
+  // The followed signal's text and the words still being read, in lines. The last of those words
+  // may still change, so it is shown fainter. The words still being read start with their own
+  // space or line break.
+  const view = $derived.by(() => {
+    if (!followed) return { lines: [] as string[], last: '' };
+    const p = followed.pending;
+    const cut = Math.max(p.lastIndexOf(' '), p.lastIndexOf('\n')) + 1;
+    return { lines: `${followed.text}${p.slice(0, cut)}`.split('\n'), last: p.slice(cut) };
+  });
 
   const quiet = (s: RadioSignal) => !s.keying && now - s.lastHeard >= QUIET_MS;
   const speed = (s: RadioSignal) => (s.wpm ? `${Math.round(s.wpm)} wpm` : 'measuring speed');
@@ -305,7 +313,10 @@
           the Morse it hears.
         </p>
       {/if}
-      <p class="muted">Each signal shows its pitch (how high its tone is, in Hz) and its speed in wpm (words per minute).</p>
+      <p class="muted">
+        BeepBeep reads all the signals at once, each on its own. Each signal shows its pitch (how high its tone is, in Hz) and its speed in
+        wpm (words per minute).
+      </p>
       {#if devices.length > 1}
         {#if listening && !changing}
           <div><Button kind="quiet" onclick={() => (changing = true)}>Change device</Button></div>
@@ -335,13 +346,12 @@
             {#if !followed.text && !followed.pending}
               <p class="none">Nothing has been read from this signal yet.</p>
             {:else}
-              {#each lines as line, i (i)}
-                {#if i < lines.length - 1}
+              {#each view.lines as line, i (i)}
+                {#if i < view.lines.length - 1}
                   <p class="line">{@render text(line)}</p>
-                {:else if line || followed.pending}
-                  <!-- The over in progress goes on from the last line; its last word is still being read. -->
-                  {@const cut = followed.pending.lastIndexOf(' ') + 1}
-                  <p class="line">{@render text(line)}{@render text(followed.pending.slice(0, cut))}<span class="pending">{@render text(followed.pending.slice(cut))}</span></p>
+                {:else if line || view.last}
+                  <!-- The last line, and the word still being read at its end. -->
+                  <p class="line">{@render text(line)}<span class="pending">{@render text(view.last)}</span></p>
                 {/if}
               {/each}
             {/if}

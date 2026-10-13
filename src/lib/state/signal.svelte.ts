@@ -67,7 +67,7 @@ async function openMic(): Promise<MicInfo | null> {
     if (settings.pinnedHz) engine.command({ type: 'pin', hz: settings.pinnedHz });
     if (settings.squelchDb) engine.command({ type: 'squelch', db: settings.squelchDb });
     unsub?.();
-    unsub = engine.onEvents((events) => {
+    const own = engine.onEvents((events) => {
       for (const e of events) {
         if (e.type === 'status') {
           signal.level = e.level;
@@ -78,6 +78,20 @@ async function openMic(): Promise<MicInfo | null> {
         } else if (e.type === 'lock') signal.pitch = e.hz;
       }
     });
+    // While Radio listens, its detector hears the microphone instead: the bar
+    // shows the level, no pitch (there may be many), and the key light while
+    // any signal keys.
+    const radio = engine.onRadio((b) => {
+      signal.level = b.level;
+      signal.pitch = null;
+      signal.snr = 0;
+      signal.keyDown = b.keying > 0;
+      if (b.keying) signal.lastKeyDown = performance.now();
+    });
+    unsub = () => {
+      own();
+      radio();
+    };
     return info;
   } catch (err) {
     failure = err;
