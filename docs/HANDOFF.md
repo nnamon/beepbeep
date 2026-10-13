@@ -8,13 +8,18 @@ In October 2026 a skeptical audit of the whole app found 3 critical, 16 high and
 
 ## What is left
 
-### The Radio tab (in progress)
+### The Radio tab
 
-The owner asked for a tab that decodes CW straight off a radio, left running. They chose: decode every signal in the audio at once (each station its own decoder, so both sides of a QSO show), follow one in large text with the others listed under it, a fifth tab named Radio, shown in LICW strict mode with no notes about LICW rules.
+Released in 0.3.0 (the screen) and 0.4.0 (every signal at once). The code is in `src/lib/radio/`: `detector.ts` finds each signal and keys it, `channel.ts` turns one channel's keying into continuous text, `multi.ts` joins them behind `source.ts`, `radio.worklet.ts` runs the detector in the browser. Scorecards: `RADIO=all` (detector.test.ts), `RADIO_CHANNEL=1` (channel.score.test.ts), `RADIO_APP=all` (multi.score.test.ts; the app's whole pipeline: 0.8% CER on the 26 scenarios, held-out seeds 2.0% and 0.9%, 0 false characters). All on generated audio.
 
-- Done (on main): test material in `src/lib/radio/` (`band.ts`, 26 scenarios in `scenarios.ts`, `score.ts`; `radio.test.ts` prints today's single-signal pipeline: settled CER 32.6%, 16 of 32 stations under 10%, 0 false characters). The screen, released in 0.3.0 (`src/views/Radio.svelte`; `source.ts` is the `RadioSource` interface; `single.ts` decodes one pitch at a time for now; `create.ts` is where the engine plugs in). Continuous per-channel decoding (`channel.ts`, `ChannelDecoder`; scorecard `RADIO_CHANNEL=1`). Note: its `pending` starts with its own space or line break; show `text + pending` without adding one.
-- Done (on main): the multi-signal detector (`src/lib/radio/detector.ts`, events `signal`, `key` and `gone` per channel; `RADIO=all` scorecard: settled CER 0.8% with a plain Decoder per channel, held-out seeds 1.1%, 0 false characters; generated audio only).
-- In progress on its own branch: the join. A worklet for the detector, `multi.ts` joining it with one `ChannelDecoder` per channel in place of `single.ts`, an end-to-end scorecard, copy without the one-at-a-time limit; release as 0.4.0. Ask the owner for recordings off their radio (the debug sample recorder in Setup works for this).
+Known and left as they are:
+
+- No real radio audio has been tested. Ask the owner for recordings off their radio (the debug sample recorder in Setup works for this) and add them as fixtures.
+- The radio worklet has run only in Chromium, never in Safari or on an iPhone.
+- Heavy static before an over's first mark: `fitSpeed` in `channel.ts` can take static clicks for dits, and half the over reads as dahs (heavy QRN, seed 1: 32.7% against 3.7% with a plain decoder).
+- A QSO 12 Hz apart: the weaker, faster side reads B as G and 7 as Q (2.6% against 0.6%).
+- A voice talking near the station's pitch (10 to 16%) and deep fading (7 to 13%) are the detector's weakest scenarios. Two stations sending at once under 80 Hz apart: at 50 Hz the weaker reads 23.8%.
+- Very slow spacing (18 wpm characters at 5 overall) may split letters into separate overs. "TU" after "SK" starts a new line even from the same station.
 
 ### Decoder (`src/lib/dsp`, `src/lib/decoder`)
 
