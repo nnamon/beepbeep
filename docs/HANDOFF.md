@@ -12,6 +12,8 @@ In October 2026 a skeptical audit of the whole app found 3 critical, 16 high and
 
 Released in 0.3.0 (the screen) and 0.4.0 (every signal at once). The code is in `src/lib/radio/`: `detector.ts` finds each signal and keys it, `channel.ts` turns one channel's keying into continuous text, `multi.ts` joins them behind `source.ts`, `radio.worklet.ts` runs the detector in the browser. Scorecards: `RADIO=all` (detector.test.ts), `RADIO_CHANNEL=1` (channel.score.test.ts), `RADIO_APP=all` (multi.score.test.ts; the app's whole pipeline: 0.8% CER on the 26 scenarios, held-out seeds 2.0% and 0.9%, 0 false characters). All on generated audio.
 
+An independent audit of the Radio work (engine, text pipeline, screen and wording) found confirmed bugs, each with a failing test on its branch: worktree-agent-a4d234012f05515f4 (engine), worktree-agent-af9e279bea74e138f (text pipeline), worktree-agent-a417557abad97f93e (screen and wording). Three fix agents are working from those branches; release the fixes as 0.4.1, and correct the 0.4.0 changelog entry and its GitHub release notes, which overstate what Radio does (it reads up to 8 signals, stations less than 25 Hz apart share one signal, and quiet starts at 30 seconds, not 45).
+
 Known and left as they are:
 
 - No real radio audio has been tested. Ask the owner for recordings off their radio (the debug sample recorder in Setup works for this) and add them as fixtures.
