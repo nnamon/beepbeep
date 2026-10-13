@@ -1,7 +1,9 @@
 // Test helpers that watch the page from inside: every sound it plays (decoded
-// back to text), keyboard listeners, wake locks and microphone streams. Also
+// back to text), keyboard listeners, wake locks and microphone streams, and on
+// Radio the worklet's time per call and the main thread's long tasks. Also
 // keying on the Space bar, the touch key and paddles with exact timing.
 import type { Page } from '@playwright/test';
+import { readFileSync } from 'node:fs';
 import { patternOf, tokenize } from '../src/lib/morse/code';
 
 /** Settings saved before the app first loads (a reload keeps what the app saved since). */
@@ -298,3 +300,73 @@ export function collectErrors(page: Page): string[] {
 }
 
 export const BASE = { voice: 'off', guideSeen: true, licwAsked: true, charWpm: 20, effectiveWpm: 20, humanFist: false };
+
+/**
+ * Radio: keeps the Radio worklet's node, to ask it for its debug counter, and
+ * notes the main thread's long tasks (50 ms or more). Call before the app loads.
+ */
+export async function watchRadio(page: Page) {
+  await page.addInitScript(() => {
+    const w = window as unknown as { __radio: AudioWorkletNode[]; __long: { at: number; ms: number }[] };
+    w.__radio = [];
+    w.__long = [];
+    const Base = AudioWorkletNode;
+    window.AudioWorkletNode = class extends Base {
+      constructor(ctx: BaseAudioContext, name: string, opts?: AudioWorkletNodeOptions) {
+        super(ctx, name, opts);
+        if (name === 'beepbeep-radio') w.__radio.push(this);
+      }
+    } as typeof AudioWorkletNode;
+    try {
+      new PerformanceObserver((list) => {
+        for (const e of list.getEntries()) w.__long.push({ at: e.startTime, ms: e.duration });
+      }).observe({ type: 'longtask', buffered: true });
+    } catch {
+      /* no long task timing */
+    }
+  });
+}
+
+export interface RadioStats {
+  quanta: number;
+  audioSec: number;
+  ms: number;
+  maxMs: number;
+  clock: 'performance' | 'date';
+}
+
+/** The Radio worklet's debug counter: its calls, the input they held, and the time they took. */
+export const radioStats = (page: Page) =>
+  page.evaluate(
+    () =>
+      new Promise<RadioStats>((resolve, reject) => {
+        const node = (window as unknown as { __radio: AudioWorkletNode[] }).__radio.at(-1);
+        if (!node) return reject(new Error('no radio worklet'));
+        const on = (e: MessageEvent) => {
+          if (e.data?.type !== 'stats') return;
+          node.port.removeEventListener('message', on);
+          resolve(e.data as RadioStats);
+        };
+        node.port.addEventListener('message', on);
+        node.port.postMessage({ type: 'stats' });
+      }),
+  );
+
+/** The main thread's long tasks since `from` (performance.now(), ms). */
+export const longTasks = (page: Page, from = 0) =>
+  page.evaluate((from) => (window as unknown as { __long: { at: number; ms: number }[] }).__long.filter((t) => t.at >= from), from);
+
+/** Presses Save on Radio and reads the file: each signal's pitch, speed and text (its lines joined by spaces). */
+export async function savedSignals(page: Page): Promise<{ hz: number; wpm: number | null; text: string }[]> {
+  const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Save' }).click()]);
+  const file = readFileSync((await download.path())!, 'utf8');
+  return file
+    .split('\n\n')
+    .slice(1)
+    .map((block) => {
+      const [head, ...lines] = block.trim().split('\n');
+      const m = head.match(/^Signal at (\d+) Hz, (?:(\d+) wpm|speed not measured)/);
+      return m ? { hz: Number(m[1]), wpm: m[2] ? Number(m[2]) : null, text: lines.map((l) => l.replace(/^\d\d:\d\d {2}/, '')).join(' ') } : null;
+    })
+    .filter((s): s is { hz: number; wpm: number | null; text: string } => s !== null);
+}

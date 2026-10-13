@@ -1,8 +1,10 @@
-// The Radio tab's scorecard: every band scenario (scenarios.ts) decoded and
-// scored (score.ts). For now it holds the "before": today's single-signal
-// pipeline, the one that reads your own keying through the microphone, run
-// as the app runs it (the detector in 128-sample blocks, key events into the
-// decoder as live.ts passes them, glitches and held keys dropped). It locks
+// The Radio tab's first scorecard: every band scenario (scenarios.ts) decoded
+// and scored (score.ts) by the "before", the single-signal pipeline. It is
+// the one that reads your own keying through the microphone, and Radio read
+// with it until 0.4.0 (the app's pipeline now has its own scorecard,
+// multi.score.test.ts). Run as the app runs it (the detector in 128-sample
+// blocks, key events into the decoder as live.ts passes them, glitches and
+// held keys dropped). It locks
 // to one pitch, so on a band it gives one signal, put at the median of the
 // pitches it was locked to as its marks ended. Its overs end, as in the
 // app's strict mode, after 3 seconds without a mark, and each is read again
@@ -47,7 +49,7 @@ interface Reading {
   relocks: number;
 }
 
-/** Today's pipeline over a whole clip, as the AudioWorklet and live.ts run it. */
+/** The single-signal pipeline over a whole clip, as the AudioWorklet and live.ts run it. */
 function today(samples: Float32Array, fs: number): Reading {
   const detector = new Detector(fs, { dit: 1.2 / START_WPM });
   const decoder = new Decoder({ initialWpm: START_WPM });
@@ -158,7 +160,7 @@ function rows(sc: Scenario, seconds: number, truth: StationTruth[], s: BandScore
   });
 }
 
-describe("radio scorecard: today's single-signal pipeline", () => {
+describe('radio scorecard: the single-signal pipeline', () => {
   for (const sc of chosen()) {
     it(sc.name, () => {
       const t0 = performance.now();
@@ -188,7 +190,7 @@ describe("radio scorecard: today's single-signal pipeline", () => {
     const tot = (x: Total) =>
       `CER ${pct(x.errors / x.length)} (${x.errors} edits in ${x.length} characters), ${x.good} of ${x.stations} stations under 10%, ${x.falseChars} false characters`;
     console.log(
-      `\nRadio scorecard: today's single-signal pipeline, ${TOTAL.scenarios} scenarios, ${TOTAL.seconds.toFixed(0)} s of audio, ${(TOTAL.ms / 1000).toFixed(1)} s to render and decode\n` +
+      `\nRadio scorecard: the single-signal pipeline, ${TOTAL.scenarios} scenarios, ${TOTAL.seconds.toFixed(0)} s of audio, ${(TOTAL.ms / 1000).toFixed(1)} s to render and decode\n` +
         `Character error rate per station, settled (each over read again) and live; j: a QSO pair read as one signal, scored against both sides in turn.\n` +
         `false: characters in signals that are no station's.\n\n` +
         `${HEAD}\n${ROWS.join('\n')}\n\n` +

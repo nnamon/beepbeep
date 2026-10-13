@@ -41,8 +41,10 @@ export default defineConfig({
     { name: 'small', use: { ...devices['Pixel 7'], viewport: { width: 360, height: 740 } }, testMatch: /(screens|tokentext)\.spec/ },
     { name: 'mic', testMatch: /(decode|flows|voice|touch|calibrate|station|micrelease|newbuild|radio)\.spec/, use: { ...devices['Desktop Chrome'], ...fakeMic } },
     { name: 'mic-pixel', testMatch: /(decode|touch)\.spec/, use: { ...devices['Pixel 7'], ...fakeMic } },
-    // Radio with three stations in turn: the list of signals.
+    // Radio with three stations sending at the same time: the list of signals.
     { name: 'mic-radio', testMatch: /radioband\.spec/, use: { ...devices['Desktop Chrome'], ...micPlaying('radio-band.wav') } },
+    // Radio with two stations 150 Hz apart sending at the same time.
+    { name: 'mic-radio-pair', testMatch: /radiopair\.spec/, use: { ...devices['Desktop Chrome'], ...micPlaying('radio-pair.wav') } },
     // README images, on demand (README_SHOTS=1; see e2e/readme.spec.ts).
     { name: 'readme', testMatch: /readme\.spec/, use: { ...devices['Desktop Chrome'], ...micPlaying('room-cq.wav') } },
   ],

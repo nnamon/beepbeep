@@ -1,7 +1,7 @@
 {
   "name": "beepbeep",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "A browser CW trainer that listens to your key through the microphone.",
   "type": "module",
   "scripts": {

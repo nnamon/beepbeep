@@ -2,6 +2,14 @@
 
 What changed in each version of BeepBeep. The version shows at the top of the app, beside the build.
 
+## 0.4.0 (13 October 2026)
+
+- Radio reads every signal at the same time, each on its own. When two stations send at once, both are written down, and both sides of a QSO (a contact between two stations) show, each at its own pitch and speed. Before, Radio read one signal at a time.
+- When BeepBeep finds a new signal, it reads the last 6 seconds of audio again, so the first characters are kept.
+- A signal not heard for 45 seconds stays in the list as quiet, with its text, until you press Clear. If a signal comes back at nearly the same pitch, its text goes on there, on a new line. The 20 most recently heard of these are kept.
+- On Radio the signal bar shows the sound level and lights while any signal is keyed. It shows no pitch, since there can be many.
+- Radio was tested on 26 recordings made by BeepBeep's own tests: strong and weak signals, fading, static, a voice nearby, signals close together, QSOs, a busy band, hand keying, drift and chirp. It gets 0.8% of the characters wrong on them, and 2.0% and 0.9% with other random noise, static and fading. It has not been tested on recordings from a real radio yet.
+
 ## 0.3.0 (13 October 2026)
 
 - A new tab, Radio. Leave BeepBeep listening to a radio and it writes down the Morse it hears. Connect the radio's audio to the microphone with a cable, or put the phone near the radio's speaker, and press Start. The signal that is sending shows in large text, and the other signals are listed by pitch; tap one to follow it instead. You can copy the text, or save every signal's text with times as a .txt file. The screen stays on while it listens.

@@ -13,7 +13,7 @@ docker compose run --rm -T dev npm install
 docker compose run --rm -T dev npm run check        # svelte-check: 0 errors, 0 warnings
 docker compose run --rm -T dev npm run lint:css     # stylelint: count the ✖ lines; it must be 0
 docker compose run --rm -T dev npm test             # vitest, including decoder accuracy
-docker compose run --rm -T e2e npx playwright test --project=desktop   # or phone, pixel, small, mic, mic-pixel, mic-radio
+docker compose run --rm -T e2e npx playwright test --project=desktop   # or phone, pixel, small, mic, mic-pixel, mic-radio, mic-radio-pair
 docker compose run --rm -T dev npm run bench        # decoder benchmarks, for decoder changes
 ```
 

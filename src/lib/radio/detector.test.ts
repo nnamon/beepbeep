@@ -6,10 +6,14 @@
 // match no station it holds), and the edge timing error of the marks found.
 //
 // Text: each channel's key events go into a plain Decoder of its own, as the
-// app's single-signal pipeline runs it (radio.test.ts): glitches and held keys
-// dropped, an over ending after 3 seconds without a mark and read again as a
-// whole. Scored with score.ts, beside today's single-signal pipeline
-// (`TODAY`, from radio.test.ts on the commit this detector started from).
+// app's single-signal pipeline runs it (radio.test.ts; `listenPlain` in
+// listen.ts): glitches and held keys dropped, an over ending after 3 seconds
+// without a mark and read again as a whole. Scored with score.ts, beside
+// the single-signal pipeline Radio used until 0.4.0 (`TODAY`, from
+// radio.test.ts on the commit this detector started from). The app reads
+// each channel with its own decoder for the radio instead (join.ts,
+// channel.ts): multi.score.test.ts scores that, the whole pipeline the
+// screen gets, beside this.
 //
 // By default the scorecard runs a few scenarios that cover the detector's
 // parts (`QUICK`) and checks they stay read: every station under 10%, and no
@@ -26,14 +30,11 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { renderBand, type Band, type StationTruth } from './band';
 import { SCENARIOS, type Scenario } from './scenarios';
 import { scoreBand, type BandScore, type Signal } from './score';
-import { RadioDetector, lifeTuning, type RadioEvent } from './detector';
-import { Decoder, isGlitch, isHeld, type DecoderOutput } from '../decoder/decoder';
-import { outputsToText } from '../decoder/pipeline';
+import { RadioDetector, lifeTuning } from './detector';
+import { BLOCK, listenPlain as listen, reseeded, type Heard, type Listening } from './listen';
+import { gaussian, mulberry32 } from '../util/random';
 
 const FS = 48000;
-const OVER_END = 3;
-const START_WPM = 15;
-const BLOCK = 128;
 
 /**
  * Today's single-signal pipeline on each scenario, settled (radio.test.ts at
@@ -69,119 +70,6 @@ const TODAY: Record<string, [string, number, number][]> = {
   'noise and voice only': [],
 };
 const TODAY_JOINED = new Set(['QSO 12 Hz apart', 'QSO 35 Hz apart']);
-
-interface Heard {
-  ch: number;
-  /** Pitch: the median of the channel's pitch as its marks ended. */
-  hz: number;
-  marks: { start: number; end: number }[];
-  settled: string;
-  live: string;
-}
-
-interface Listening {
-  channels: Heard[];
-  events: RadioEvent[];
-  /** Seconds spent in the detector alone. */
-  detectorSec: number;
-  /** For each key event, how far behind the input it came out, seconds. */
-  lags: number[];
-  /** When each channel was passed on (its first signal event), by channel. */
-  liveAt: Map<number, number>;
-}
-
-/** The detector over a whole clip in 128-sample blocks, each channel into a decoder of its own. */
-function listen(samples: Float32Array, fs: number, det = new RadioDetector(fs)): Listening {
-  interface Track {
-    decoder: Decoder;
-    live: DecoderOutput[];
-    settled: string[];
-    over: { start: number; end: number }[];
-    marks: { start: number; end: number }[];
-    pitches: number[];
-    hz: number;
-    down: boolean;
-    downAt: number;
-    lastDit: number;
-    open: boolean;
-  }
-  const tracks = new Map<number, Track>();
-  const events: RadioEvent[] = [];
-  const lags: number[] = [];
-  const liveAt = new Map<number, number>();
-  let detectorSec = 0;
-  const settle = (k: Track) => {
-    if (k.over.length) k.settled.push(outputsToText(Decoder.redecode(k.decoder.model(), k.over)));
-    k.over = [];
-  };
-  for (let i = 0; i < samples.length; i += BLOCK) {
-    const t0 = performance.now();
-    const got = det.process(samples.subarray(i, Math.min(samples.length, i + BLOCK)));
-    detectorSec += (performance.now() - t0) / 1000;
-    for (const e of got) {
-      events.push(e);
-      let k = tracks.get(e.ch);
-      // A new channel's marks so far come out with its first signal event: not counted.
-      if (e.type === 'key' && liveAt.get(e.ch) !== det.time) lags.push(det.time - e.t);
-      if (e.type === 'signal') {
-        if (!liveAt.has(e.ch)) liveAt.set(e.ch, det.time);
-        if (!k) {
-          const decoder = new Decoder({ initialWpm: START_WPM });
-          k = { decoder, live: [], settled: [], over: [], marks: [], pitches: [], hz: e.hz, down: false, downAt: 0, lastDit: decoder.ditEstimate, open: true };
-          tracks.set(e.ch, k);
-        }
-        k.hz = e.hz;
-        continue;
-      }
-      if (!k) throw new Error(`event for channel ${e.ch} before its signal`);
-      if (e.type === 'gone') {
-        if (k.down) throw new Error('channel gone with the key down');
-        k.live.push(...k.decoder.flush(e.t + 10));
-        settle(k);
-        k.open = false;
-        continue;
-      }
-      if (e.down) {
-        if (k.down) throw new Error(`channel ${e.ch}: two key-downs`);
-        k.down = true;
-        k.downAt = e.t;
-        k.live.push(...k.decoder.keyDown(e.t));
-      } else {
-        if (!k.down) throw new Error(`channel ${e.ch}: key-up without key-down`);
-        if (e.t < k.downAt) throw new Error(`channel ${e.ch}: mark ends before it starts`);
-        const d = e.t - k.downAt;
-        if (d > 0) k.marks.push({ start: k.downAt, end: e.t });
-        if (!isGlitch(d, k.decoder.ditEstimate) && !isHeld(d, k.decoder.dahEstimate)) {
-          k.over.push({ start: k.downAt, end: e.t });
-          k.pitches.push(k.hz);
-        }
-        k.down = false;
-        k.live.push(...k.decoder.keyUp(e.t));
-      }
-    }
-    const now = det.time - det.lag;
-    for (const [ch, k] of tracks) {
-      if (!k.open) continue;
-      k.live.push(...k.decoder.tick(now));
-      const dit = k.decoder.ditEstimate;
-      if (Math.abs(dit - k.lastDit) / dit > 0.08) {
-        k.lastDit = dit;
-        det.setDit(ch, dit);
-      }
-      if (!k.down && k.over.length && now - k.over[k.over.length - 1].end >= OVER_END) settle(k);
-    }
-  }
-  const channels: Heard[] = [];
-  for (const [ch, k] of tracks) {
-    if (k.open) {
-      k.live.push(...k.decoder.flush(det.time + 10));
-      settle(k);
-    }
-    const sorted = [...k.pitches].sort((a, b) => a - b);
-    channels.push({ ch, hz: sorted.length ? sorted[sorted.length >> 1] : k.hz, marks: k.marks, settled: k.settled.join(' '), live: outputsToText(k.live) });
-  }
-  return { channels, events, detectorSec, lags, liveAt };
-}
 
 interface StationMarks {
   name: string;
@@ -262,13 +150,7 @@ function scoreMarks(truth: StationTruth[], channels: Heard[]): { stations: Stati
 
 /** The scenario's band, or with other random sounds (RADIO_SEED). */
 function bandOf(sc: Scenario): Band {
-  const k = Number(process.env.RADIO_SEED ?? 0);
-  if (!k) return sc.band;
-  return {
-    ...sc.band,
-    seed: (sc.band.seed ?? 1) + 1000 * k,
-    stations: sc.band.stations.map((s, i) => ((s.keying ?? 'machine') === 'machine' ? { ...s, seed: (s.seed ?? i + 1) + 1000 * k } : s)),
-  };
+  return reseeded(sc.band, Number(process.env.RADIO_SEED ?? 0));
 }
 
 /** The scenarios `npm test` runs: strong, weak, static, two stations close together, a QSO, chirp, and two of the clips with no station. */
@@ -320,6 +202,35 @@ describe('radio detector', () => {
     for (let i = 0; i < 20 * FS; i++) samples[i] += 0.03 * Math.sin((2 * Math.PI * 600 * i) / FS);
     const heard = listen(samples, FS);
     expect(heard.channels.map((c) => [Math.round(c.hz / 10) * 10, c.settled])).toEqual([[900, 'CQ CQ DE 9V1XX K']]);
+  });
+
+  it('hears stations after digital silence: the first moments of a microphone stream, and a muted input', () => {
+    // In the browser a microphone stream begins with exact zeros (about 20 ms in Chrome); a muted input gives seconds of them.
+    const band: Band = { stations: [{ name: 'A', pitch: 650, wpm: 20, sends: [{ text: 'CQ CQ DE 9V1NE K', at: 1 }, { text: 'TEST K', at: 16 }] }], noise: { snrDb: 20 }, passband: [300, 2700], seed: 12 };
+    const { samples, truth } = renderBand(band, FS);
+    // Muted for 3 seconds between the two sends.
+    const muted = truth[0].sends[0].end + 1;
+    expect(truth[0].sends[1].start).toBeGreaterThan(muted + 4);
+    for (let i = 0; i < 0.025 * FS; i++) samples[i] = 0;
+    for (let i = Math.round(muted * FS); i < (muted + 3) * FS; i++) samples[i] = 0;
+    const heard = listen(samples, FS);
+    expect(heard.channels.map((c) => c.settled)).toEqual(['CQ CQ DE 9V1NE K TEST K']);
+    // Passed on within 2 seconds of its first mark.
+    expect(heard.liveAt.get(heard.channels[0].ch)! - truth[0].marks[0].start).toBeLessThan(2);
+  });
+
+  it('hears stations at once when the input gets much louder: the volume turned up after Start', () => {
+    // 10 seconds of a quiet input (-100 dBFS of hiss), then the radio's audio.
+    const band: Band = { stations: [{ name: 'A', pitch: 650, wpm: 20, sends: [{ text: 'CQ CQ DE 9V1NE K', at: 1 }, { text: 'TEST K', at: 12 }] }], noise: { snrDb: 20 }, passband: [300, 2700], seed: 12 };
+    const { samples, truth } = renderBand(band, FS);
+    const rng = mulberry32(3);
+    const lead = 10 * FS;
+    const all = new Float32Array(lead + samples.length);
+    for (let i = 0; i < lead; i++) all[i] = 1e-5 * gaussian(rng);
+    all.set(samples, lead);
+    const heard = listen(all, FS);
+    expect(heard.channels.map((c) => c.settled)).toEqual(['CQ CQ DE 9V1NE K TEST K']);
+    expect(heard.liveAt.get(heard.channels[0].ch)! - (10 + truth[0].marks[0].start)).toBeLessThan(2);
   });
 
   it('drops a channel that has been silent long enough, and only then', () => {
@@ -433,7 +344,7 @@ describe('radio scorecard: the multi-signal detector', () => {
     const a = TOTAL.after;
     console.log(
       `\nRadio scorecard: the multi-signal detector, ${TOTAL.scenarios} scenarios, ${TOTAL.seconds.toFixed(0)} s of audio${process.env.RADIO_SEED ? `, other sounds (RADIO_SEED=${process.env.RADIO_SEED})` : ''}.\n` +
-        `Character error rate per station, settled: today's single-signal pipeline, then this detector with a plain decoder per channel; live after it.\n` +
+        `Character error rate per station, settled: the single-signal pipeline (today: Radio until 0.4.0), then this detector with a plain decoder per channel; live after it.\n` +
         `j: a QSO pair read as one signal. false: characters in signals that are no station's. ch: channels passed on.\n\n` +
         `${HEAD}\n${ROWS.join('\n')}\n\n` +
         `Total, today:  CER ${pct(b.errors / b.length)} (${b.errors} edits in ${b.length}), ${b.good} of ${TOTAL.stations} stations under 10%, 0 false characters\n` +

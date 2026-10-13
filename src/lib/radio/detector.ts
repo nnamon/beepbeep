@@ -201,6 +201,37 @@ export const lifeTuning = { confirm: 6, agree: 5, spread: 3, levelSpread: 6, gli
 /** An amplitude in dB. */
 const dbOf = (amp: number) => (20 / Math.LN10) * Math.log(amp + 1e-9);
 
+/**
+ * Digital silence: exact zeros, as a browser's microphone stream gives for its
+ * first moments and a muted input gives for as long as it is muted. It says
+ * nothing about the noise, so no floor follows it down. A frame with any of
+ * its hops under `power` (mean square, -140 dBFS), so partly silent, and a
+ * channel level under `db`, are left out of every floor and of the broadband
+ * measure.
+ */
+export const silenceTuning = { power: 1e-14, db: -150 };
+
+/**
+ * A step in the input's level: the radio's volume turned up, the radio
+ * switched on after Start, or the band noisier for good. When the spectrum
+ * away from the channels stands over its floors by more than `db` dB for
+ * `sec` seconds, longer than static crashes last, every floor moves up by
+ * that much at once (they rise only 2.5 dB a second on their own), and a new
+ * channel takes its floor only from the audio after the step.
+ */
+export const stepTuning = { db: 6, sec: 1 };
+
+/** Any of the frame's `parts` (its hops) is digital silence. */
+function partlySilent(x: Float32Array, parts: number): boolean {
+  const n = x.length / parts;
+  for (let p = 0; p < parts; p++) {
+    let s = 0;
+    for (let i = p * n; i < (p + 1) * n; i++) s += x[i] * x[i];
+    if (s / n < silenceTuning.power) return true;
+  }
+  return false;
+}
+
 /** Running mean of a complex signal over its last `len` samples (1 to `cap`). */
 class Mean {
   private readonly re: Float64Array;
@@ -305,6 +336,8 @@ interface Shared {
   onMark: ((m: MarkCheck) => void) | null;
   /** Is a mark of this level at this time a stronger channel nearby heard through the filter's skirt? */
   leak: (c: Channel, start: number, end: number, level: number) => boolean;
+  /** Where the input's level last stepped up (`stepTuning`), decimated samples. */
+  stepAt: number;
 }
 
 const ENV_HISTORY = 2048;
@@ -353,6 +386,8 @@ class Channel {
   floor = 0;
   markLevel = 0;
   private ready = false;
+  /** Levels heard in a row that are not digital silence, before the channel has a floor. */
+  private sounding = 0;
   private keyDown = false;
   private pend: { down: boolean; since: number } | null = null;
   /** The current mark: its start, when it was decided, its highest level, and whether its key-down is out. */
@@ -392,7 +427,7 @@ class Channel {
     this.born = t;
     this.lastMarkEnd = -1;
     this.next = from;
-    this.seeding = from < t0 ? { from, to: t0, levels: [] } : null;
+    this.seeding = from < t0 ? { from, to: t0, levels: [], at: [] } : null;
     this.mixRe = new Float64Array(sh.taps.length);
     this.mixIm = new Float64Array(sh.taps.length);
     this.dit = filterTuning.startDit;
@@ -491,7 +526,7 @@ class Channel {
    * floor and mark level (`seeding`), then to decide on its marks.
    */
   next: number;
-  private seeding: { from: number; to: number; levels: number[] } | null;
+  private seeding: { from: number; to: number; levels: number[]; at: number[] } | null;
 
   /** The buffered sample `m`, while catching up. */
   feed(x: number, m: number, out: RadioEvent[]) {
@@ -501,13 +536,20 @@ class Channel {
       this.push(x, m, out);
       return;
     }
-    if (this.lockIn(x, m)) sd.levels.push(dbOf(2 * Math.hypot(this.second.outRe, this.second.outIm)));
+    if (this.lockIn(x, m)) {
+      const level = dbOf(2 * Math.hypot(this.second.outRe, this.second.outIm));
+      if (level >= silenceTuning.db) {
+        sd.levels.push(level);
+        sd.at.push(m);
+      }
+    }
     if (this.next < sd.to) return;
     // Seeded: the 20th percentile of the levels lies in the gaps between marks, the 97th in the marks.
+    // Only the audio after the last step in the input's level counts, and is heard again.
     this.seeding = null;
     this.resetLockIn();
-    this.next = sd.from;
-    const levels = sd.levels.sort((a, b) => a - b);
+    this.next = Math.max(sd.from, this.sh.stepAt);
+    const levels = sd.levels.filter((_, i) => sd.at[i] >= this.sh.stepAt).sort((a, b) => a - b);
     if (levels.length < 50) return;
     this.floor = levels[Math.floor(0.2 * (levels.length - 1))];
     this.markLevel = Math.max(this.floor + floorTuning.median + levelTuning.least, levels[Math.floor(0.97 * (levels.length - 1))]);
@@ -584,9 +626,11 @@ class Channel {
     if (this.envCount < ENV_HISTORY) this.envCount++;
     const dt = 1 / this.sh.fe;
 
+    const silent = env < silenceTuning.db;
     if (!this.ready) {
-      // No buffered audio to seed from: take the first 50 ms as the floor.
-      if (this.envCount >= 50) {
+      // No buffered audio to seed from: take the first 50 ms of sound as the floor.
+      if (silent) this.sounding = 0;
+      else if (++this.sounding >= 50) {
         let s = 0;
         for (let j = 0; j < 50; j++) s += this.envDb[(this.envPos - 1 - j + ENV_HISTORY) % ENV_HISTORY];
         this.floor = s / 50 - floorTuning.median;
@@ -602,7 +646,7 @@ class Channel {
       return;
     }
     // The floor: low in the level between marks, once the last mark has left the filter.
-    if (!this.keyDown && !this.pend && t >= this.floorFrom) this.floor += env > this.floor ? L.floorUp * dt : -L.floorDown * dt;
+    if (!this.keyDown && !this.pend && t >= this.floorFrom && !silent) this.floor += env > this.floor ? L.floorUp * dt : -L.floorDown * dt;
     // A long silence: the next marks may be weaker (fading, the other side of a QSO).
     const relaxTo = this.floor + floorTuning.median + L.relaxTo;
     if (!this.keyDown && t - this.lastMarkEnd > L.relaxAfter && this.markLevel > relaxTo) {
@@ -1057,6 +1101,8 @@ export class RadioDetector {
   private bPos = 0;
   private bCount = 0;
   private cands: { hz: number; runs: number }[] = [];
+  /** When the broadband rise went over `stepTuning.db`, while it stays over (seconds). */
+  private stepFrom: number | null = null;
   private cooldown: { hz: number; until: number }[] = [];
 
   private channels: Channel[] = [];
@@ -1083,6 +1129,7 @@ export class RadioDetector {
       broadband: (from, to) => this.broadband(from, to),
       leak: (c, from, to, level) => this.channels.some((o) => o !== c && o.live && Math.abs(o.hz - c.hz) <= leakTuning.hz && o.louder(from, to, level - c.skirt(Math.abs(o.hz - c.hz)))),
       onMark: opts.onMark ?? null,
+      stepAt: -Infinity,
     };
     this.onChannel = opts.onChannel ?? null;
     this.hist = new Float32Array(Math.round(lifeTuning.history * this.fsd));
@@ -1153,6 +1200,11 @@ export class RadioDetector {
   /** One short frame: how far the spectrum away from the channels stands over its floor. */
   private analyseBroadband() {
     const n = this.bSize;
+    if (partlySilent(this.bFrame, floorTuning.hops)) {
+      // Digital silence: no rise, and the floors wait for sound.
+      this.recordBroadband(1);
+      return;
+    }
     for (let i = 0; i < n; i++) {
       this.bRe[i] = this.bFrame[i] * this.bWin[i];
       this.bIm[i] = 0;
@@ -1178,9 +1230,32 @@ export class RadioDetector {
       rise.sort((x, y) => x - y);
       b = rise[rise.length >> 1];
     }
+    // Over its floors for longer than a crash lasts: the input's level stepped up.
+    const t = (this.m - n / 2) / this.fsd;
+    if (b > stepTuning.db) {
+      this.stepFrom ??= t;
+      if (t - this.stepFrom >= stepTuning.sec) {
+        this.levelStep(b, this.stepFrom);
+        b = 0;
+      }
+    } else this.stepFrom = null;
+    this.recordBroadband(Math.pow(10, b / 10));
+  }
+
+  /** The input's level stepped up by `db` from time `from`: every floor moves up by that much. */
+  private levelStep(db: number, from: number) {
+    for (let k = 0; k < this.bFloor.length; k++) this.bFloor[k] += db;
+    for (let k = 0; k < this.floorDb.length; k++) this.floorDb[k] += db;
+    for (const c of this.channels) c.floor += db;
+    this.sh.stepAt = Math.round(from * this.fsd);
+    this.stepFrom = null;
+  }
+
+  /** The broadband rise of the frame just analysed, as a power ratio, at its centre. */
+  private recordBroadband(pow: number) {
     const p = this.bPos;
-    this.bT[p] = (this.m - n / 2) / this.fsd;
-    this.bPow[p] = Math.pow(10, b / 10);
+    this.bT[p] = (this.m - this.bSize / 2) / this.fsd;
+    this.bPow[p] = pow;
     this.bPos = (p + 1) % this.bT.length;
     if (this.bCount < this.bT.length) this.bCount++;
   }
@@ -1270,15 +1345,27 @@ export class RadioDetector {
 
   private analyse(out: RadioEvent[]) {
     const n = this.size;
+    const now = (this.m * this.D) / this.sampleRate;
+    const hopSec = this.hop / this.fsd;
+    const F = findTuning;
+    const keep = Math.exp(-hopSec / F.tau);
+    if (partlySilent(this.frame, F.hops)) {
+      // Digital silence: scores fade, and the floors and peaks wait for sound.
+      for (let k = this.lo; k <= this.hi; k++) {
+        this.score[k] *= keep;
+        this.onsets[k] *= keep;
+        this.was[k] = 0;
+      }
+      this.peakHz.fill(NaN);
+      this.cooldown = this.cooldown.filter((c) => c.until > now);
+      this.lifecycle(now, out);
+      return;
+    }
     for (let i = 0; i < n; i++) {
       this.re[i] = this.frame[i] * this.win[i];
       this.im[i] = 0;
     }
     this.fft.transform(this.re, this.im);
-    const now = (this.m * this.D) / this.sampleRate;
-    const hopSec = this.hop / this.fsd;
-    const F = findTuning;
-    const keep = Math.exp(-hopSec / F.tau);
     const fall = (10 * hopSec) / 1.5;
     const lo = this.lo;
     const hi = this.hi;

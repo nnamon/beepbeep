@@ -47,7 +47,7 @@ Progress: your speeds over time, and how accurately you copy each character.
 | Receive | Copy drill, Spot the new character, Time to recognise (TTR), Sound surfing, Head copy, Callsign and word sprint |
 | Pocket | Phone quiz rounds by ear: characters, chunks, words, callsigns, phrases, custom sets |
 | QSO | Learn QSOs: guided lessons on each part of a contact, typed or keyed, with each step checked. The QSO simulator: a ragchew (a chat), the LICW QSO protocol, SKCC, K1USN SST, POTA and SOTA (stations in parks and on summits), a contest and a DX pileup |
-| Radio | Leave it listening to a radio: it writes down the Morse it hears, one signal followed in large text and the others listed by pitch. Copy the text, or save it with times as a .txt file |
+| Radio | Leave it listening to a radio: it writes down the Morse it hears, every signal at once, one followed in large text and the others listed by pitch. Copy the text, or save it with times as a .txt file |
 | LICW exercises | The syllabus exercises for BC1 to BC3, INT 1 to 3, ADV 1 to 3, TTR+ and OverLearn: familiarity, recognition, TTR, VET and VST, groups, Speed Racing, CW-voice-CW and more, at each stage's speeds, with notes on how to do each one |
 
 Practice opens with today's session: a checklist for your lesson, worked from the top and sized to your session length. Steps tick themselves as you do them.
@@ -85,6 +85,19 @@ On laptop microphone recordings (`src/lib/decoder/samples.test.ts`), V's and CQs
 Tests run the same code on synthetic audio with noise, fading, interference, static, chirp, drift, room echo and hand-sent timing (`src/lib/decoder/accuracy.test.ts`), on synthetic room sounds (`src/lib/dsp/room.test.ts`), on a tone with a third harmonic under talking and with the harmonic ringing on after key-up (`src/lib/dsp/ear.test.ts`), and on simulated beginner keying with short dahs, rushed letters, hesitations, speeding up and touch-key pauses (`src/lib/decoder/newbie.test.ts`, which prints a scorecard for the end of the over and for what is shown while keying).
 
 A character is shown once the silence after it is longer than a gap inside a character, about 1.7 dits. Latency from key-up (90th percentile, `src/lib/decoder/latency.test.ts`): 184 ms at 12 wpm, 153 ms at 15, 115 ms at 20, 84 ms at 30.
+
+### Radio (`src/lib/radio/`, the detector runs in an AudioWorklet of its own)
+
+The Radio screen reads every signal in a radio's audio at once. While it listens, the tone detection above does not run: the microphone feeds this detector instead (`detector.ts`, in `radio.worklet.ts`).
+
+1. **Finding signals.** The input is low-passed and reduced to about 8 kHz. A spectrum search (64 ms frames, every 16 ms) scores narrow peaks that hold their pitch from one frame to the next and keep starting and stopping, as a keyed tone does. A voice's harmonics glide, so they score little. A pitch that scores enough gets a channel of its own, which first hears the last 6 seconds of audio again, so the first characters are kept. Tones closer than 25 Hz share a channel. At most 8 channels run at once.
+2. **A channel per signal.** Each channel mixes its pitch down to I and Q and averages them over 0.6 and then 0.3 of a dit, sized to the shorter of two dits: the one its own marks show and the one its decoder measures. Key-down needs the level halfway, in dB, between the channel's own noise and the level of its marks, and both follow the signal as it fades. A rise across the whole band away from the channels (a static crash, a voice) lifts the noise while it lasts. Digital silence (a muted input, or the first moments of a microphone stream) is left out of every noise estimate.
+3. **Checking each mark.** When a mark ends it must stand clear of the noise, hold its pitch, sit at a pitch the channel knows, be about as loud as the channel's earlier marks there, and not be a louder signal nearby heard through the channel's filter. A mark that fails is withdrawn and never reaches the decoder. Where another sound held the level up between two marks, the mark is cut in two.
+4. **Passing a channel on.** A new channel shows nothing until 5 of its last 6 marks agree in pitch, level and glide. Then its marks so far are decoded at once. A channel with no mark for 45 seconds is dropped.
+5. **Decoding each signal.** Each signal has its own decoder (`channel.ts`), built from the one for your own keying. Nobody presses Done on a radio, so an over ends after a silence of about 3 word gaps, and never under a second. Each over is read by the whole-over search. When the two sides of a QSO take turns on nearly one pitch, a clear change of speed at a word gap starts a new over there. A new line starts at each over and after a word that hands over (K, KN, SK, BK). A word is written once about 20 marks follow it and does not change after that. The detector's events reach the decoders in batches every 50 ms, and each decoder is told the time as it was about 0.35 seconds ago, since the detector can take that long to decide on a mark. The searches of every signal take turns in one worker.
+6. **Signals that stop.** A signal no longer heard keeps its text and is shown as quiet. A new channel within 25 Hz of it later goes on with it, on a new line. The 20 most recently heard of these are kept until Clear. On screen each signal keeps its last 20,000 characters (Save keeps 100,000), so memory stays the same over hours of listening.
+
+On 26 band clips made for the tests (`src/lib/radio/scenarios.ts`: strong and weak signals, fading, static, a voice nearby, pairs of signals 80, 150 and 300 Hz apart, QSOs on nearly one pitch, a busy band of 5, a straight key, a bug, a code-practice broadcast, drift and chirp), the whole pipeline as the app runs it gets 0.8% of characters wrong (26 errors in 3,315). Each of the 32 signals in them reads with under 10% wrong, and the 3 clips with no signal give no text at all (`src/lib/radio/multi.score.test.ts`, `RADIO_APP=all`). The same clips with other random noise, static, voices and fading, which the detector was not tuned on, give 2.0% and 0.9%. With a plain decoder per channel instead, the detector gets 0.8%, 1.1% and 1.1%. No recordings off a real radio have been tested yet. In Chromium the detector takes about 2% of the time the audio lasts, with 3 signals.
 
 ## Development
 
@@ -131,7 +144,7 @@ src/lib/decoder   decoder, whole-over search, stable live reading, pipeline
 src/lib/audio     AudioContext engine, worklet, keyboard keyer, live decoding, speech
 src/lib/train     courses, material, spaced repetition, scoring, fist analysis
 src/lib/qso       QSO parser and bot stations
-src/lib/radio     Radio: the source of signals, the interim one-pitch source, the transcript for Save
+src/lib/radio     Radio: the multi-signal detector and its worklet, a decoder per signal, the screen's source, the transcript for Save, test bands and scorecards
 src/lib/state     settings, IndexedDB store, router, signal state
 src/ui            components
 src/views         screens

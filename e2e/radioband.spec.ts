@@ -1,10 +1,12 @@
-// Radio with three stations in turn (e2e/.fixtures/radio-band.wav, played
-// over and over by the fake microphone): 9V1NE at 600 Hz, G4ABC at 780 Hz and
-// JA1XYZ at 500 Hz. Each is a signal of its own; one is followed in large
-// text and the others are listed by pitch.
+// Radio with three stations sending at the same time (e2e/.fixtures/radio-band.wav,
+// played over and over by the fake microphone): 9V1NE at 600 Hz, G4ABC at
+// 780 Hz and JA1XYZ at 500 Hz (RADIO_BAND in global-setup.ts). Each is read
+// as a signal of its own; one is followed in large text and the others are
+// listed by pitch.
 import { test, expect, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-import { BASE, collectErrors, instrument, settings } from './probe';
+import { BASE, collectErrors, instrument, longTasks, radioStats, savedSignals, settings, watchRadio } from './probe';
+import { RADIO_BAND } from './global-setup';
 
 test.setTimeout(150_000);
 
@@ -16,6 +18,7 @@ const hzOf = (s: string) => Number(s.match(/(\d+) Hz/)![1]);
 /** Listens until all three stations have been heard. */
 async function listen(page: Page, extra: Record<string, unknown> = {}) {
   await instrument(page);
+  await watchRadio(page);
   await settings(page, { ...BASE, input: 'mic', ...extra });
   await page.goto('./#/radio');
   await page.getByRole('button', { name: 'Start' }).click();
@@ -31,9 +34,57 @@ test('every station is a signal: one followed, the others listed by pitch', asyn
   expect(all.map((hz, i) => Math.abs(hz - [500, 600, 780][i]) < 20), `pitches ${all.join(', ')}`).toEqual([true, true, true]);
   expect(listed[0]).toBeLessThan(listed[1]);
   // Each row ends with what that station sent.
-  const texts = await rows(page).allInnerTexts();
-  for (const t of texts) expect(t).toMatch(/9V1NE|G4ABC|JA1XYZ|CQ|599/);
+  for (const row of await rows(page).all()) await expect(row).toContainText(/9V1NE|G4ABC|JA1XYZ|VK2BHF|CQ|599/, { timeout: 30_000 });
   expect(errors).toEqual([]);
+});
+
+test('the three stations sending at the same time are all read, each with its pitch and what it sent', async ({ page }) => {
+  const errors = collectErrors(page);
+  await listen(page);
+  // Keying is heard on more than one signal at the same moment.
+  await expect.poll(() => page.locator('main .led.on').count(), { intervals: [100], timeout: 30_000 }).toBeGreaterThanOrEqual(2);
+  // Within a pass or two of the recording, every station's whole text is read, in a signal of its own at its pitch.
+  let saved: Awaited<ReturnType<typeof savedSignals>> = [];
+  await expect
+    .poll(
+      async () => {
+        saved = await savedSignals(page);
+        return RADIO_BAND.map((st) => saved.filter((s) => Math.abs(s.hz - st.pitch) < 15 && s.text.includes(st.text)).length);
+      },
+      { intervals: [3000], timeout: 60_000 },
+    )
+    .toEqual([1, 1, 1])
+    .catch((e: unknown) => {
+      throw new Error(`${String(e)}\nRead: ${JSON.stringify(saved)}`);
+    });
+  expect(saved).toHaveLength(3);
+  for (const st of RADIO_BAND) {
+    const s = saved.find((x) => Math.abs(x.hz - st.pitch) < 15)!;
+    expect(Math.abs(s.wpm! - st.wpm), `${st.pitch} Hz: ${s.wpm} wpm`).toBeLessThanOrEqual(2);
+  }
+  expect(errors).toEqual([]);
+});
+
+test('the radio worklet takes a small share of each render quantum, and the page stays responsive', async ({ page }) => {
+  await listen(page);
+  const from = await page.evaluate(() => performance.now());
+  const before = await radioStats(page);
+  await page.waitForTimeout(20_000);
+  const after = await radioStats(page);
+  const long = await longTasks(page, from);
+  const quanta = after.quanta - before.quanta;
+  const ms = after.ms - before.ms;
+  const audio = after.audioSec - before.audioSec;
+  const perQuantum = ms / quanta;
+  const share = ms / (audio * 1000);
+  const longMs = long.reduce((a, t) => a + t.ms, 0);
+  const report = `Radio worklet, three stations, ${audio.toFixed(1)} s of audio: ${quanta} calls, ${perQuantum.toFixed(3)} ms per call of ${((1000 * audio) / quanta).toFixed(2)} ms of audio (${(share * 100).toFixed(1)}% of real time), longest ${after.maxMs.toFixed(2)} ms, timed by ${after.clock}. Main thread: ${long.length} long tasks, ${longMs.toFixed(0)} ms in all over 20 s.`;
+  console.log(report);
+  test.info().annotations.push({ type: 'cpu', description: report });
+  expect(quanta).toBeGreaterThan(5000);
+  // Well inside real time, even on a busy test machine.
+  expect(share).toBeLessThan(0.2);
+  expect(longMs).toBeLessThan(2000);
 });
 
 test('arrow keys move through the list and Enter follows a signal; Follow automatically goes back', async ({ page }) => {

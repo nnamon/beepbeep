@@ -26,7 +26,7 @@
     {
       name: 'Radio',
       to: ['radio'],
-      what: "BeepBeep writes down the Morse your radio receives. The signal that is sending shows in large text, and other signals are listed by pitch (how high the tone is). You can copy the text, or save every signal's text with times as a .txt file.",
+      what: "BeepBeep writes down the Morse your radio receives. It reads all the signals at once, each on its own. The signal that is sending shows in large text, and the others are listed by pitch (how high the tone is). You can copy the text, or save every signal's text with times as a .txt file.",
     },
     { name: 'Settings', to: ['settings'], what: 'Speeds, pitch, spoken answers, band conditions, input, and export and import of your progress.' },
     { name: 'Signal bar', to: ['setup'], what: 'It sits at the top right, or under the header on a phone. It shows the input, your tone and a key light. Select it to open Setup.' },
